@@ -223,7 +223,7 @@ mod が開ける扉は TPS だけではなく、MSPT 分布（p95/最大）・�
 ## マイルストーン
 
 **v1（バニラ / Forge / NeoForge、mod なし）**
-- [ ] 起動スクリプトのラップ、stdin/stdout 接続、java PID 特定
+- [x] 起動スクリプトのラップ、stdin/stdout 接続、java PID 特定
 - [ ] hsperfdata パーサ
 - [ ] `/proc` RSS + cgroup 取得
 - [ ] `JAVA_TOOL_OPTIONS` 注入と GC ログ tail
