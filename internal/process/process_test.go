@@ -2,7 +2,9 @@ package process
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +14,13 @@ import (
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	if command, ok := SupervisorCommand(os.Args); ok {
+		os.Exit(RunSupervisor(command))
+	}
+	os.Exit(m.Run())
+}
 
 func TestProcessConnectsStreamsAndInjectsGCLog(t *testing.T) {
 	dir := t.TempDir()
@@ -139,7 +148,7 @@ func TestSupervisorKillsProcessGroup(t *testing.T) {
 		t.Fatal("supervisor did not terminate the process group")
 	}
 
-	alive, err := processGroupAlive("/proc", server.PID())
+	alive, err := processGroupAlive("/proc", server.ServerPID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,8 +159,13 @@ func TestSupervisorKillsProcessGroup(t *testing.T) {
 
 func TestSupervisorKillsProcessGroupWhenParentExits(t *testing.T) {
 	dir := t.TempDir()
+	worker := filepath.Join(dir, "worker.sh")
+	workerContent := "#!/bin/sh\ntrap '' INT TERM HUP\nwhile :; do sleep 10; done\n"
+	if err := os.WriteFile(worker, []byte(workerContent), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	script := filepath.Join(dir, "run.sh")
-	content := "#!/bin/sh\necho $$ > child.pid\ntrap '' INT TERM HUP\nwhile :; do sleep 10; done\n"
+	content := "#!/bin/sh\n./worker.sh &\necho $! > child.pid\nexit 0\n"
 	if err := os.WriteFile(script, []byte(content), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -180,6 +194,63 @@ func TestSupervisorKillsProcessGroupWhenParentExits(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("child process %d survived its hso parent", pid)
+}
+
+func TestSupervisorDetectsAndStopsDetachedTmux(t *testing.T) {
+	tmux, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Skip("tmux is not installed")
+	}
+
+	dir := t.TempDir()
+	socket := filepath.Join(dir, fmt.Sprintf("tmux-%d.sock", os.Getpid()))
+	defer exec.Command(tmux, "-S", socket, "kill-server").Run()
+
+	script := filepath.Join(dir, "run.sh")
+	content := fmt.Sprintf(
+		"#!/bin/sh\nunset TMUX TMUX_PANE\nexec %s -S %s new-session -d /bin/sleep 30\n",
+		tmux,
+		socket,
+	)
+	if err := os.WriteFile(script, []byte(content), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	server, err := Start(Options{
+		Command: script,
+		WorkDir: dir,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finder := JavaFinder{
+		ProcessGroup:      server.ServerPID(),
+		ExpectedStartTime: server.RootStartTime(),
+		PollInterval:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, err = finder.Wait(ctx, server.PID())
+	if !errors.Is(err, ErrDetachedTerminal) {
+		_ = server.Signal(syscall.SIGTERM)
+		if strings.Contains(stderr.String(), "Operation not permitted") {
+			t.Skip("sandbox does not permit starting a tmux server")
+		}
+		t.Fatalf("finder error = %v; stderr = %q", err, stderr.String())
+	}
+	if err := server.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Wait(); err == nil {
+		t.Fatal("supervisor unexpectedly reported a clean exit")
+	}
+
+	if err := exec.Command(tmux, "-S", socket, "has-session").Run(); err == nil {
+		t.Fatal("detached tmux server survived supervisor shutdown")
+	}
 }
 
 func TestPdeathHelper(t *testing.T) {

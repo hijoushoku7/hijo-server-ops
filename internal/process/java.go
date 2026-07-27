@@ -18,8 +18,10 @@ var (
 )
 
 type JavaFinder struct {
-	ProcRoot     string
-	PollInterval time.Duration
+	ProcRoot          string
+	ProcessGroup      int
+	ExpectedStartTime uint64
+	PollInterval      time.Duration
 }
 
 func (f JavaFinder) Find(rootPID int) (int, error) {
@@ -27,7 +29,7 @@ func (f JavaFinder) Find(rootPID int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return findJava(processes, rootPID, 0)
+	return findJava(processes, rootPID, f.processGroup(rootPID), f.ExpectedStartTime)
 }
 
 func readProcesses(procRoot string) (map[int]procEntry, error) {
@@ -55,7 +57,12 @@ func readProcesses(procRoot string) (map[int]procEntry, error) {
 	return processes, nil
 }
 
-func findJava(processes map[int]procEntry, rootPID int, expectedStartTime uint64) (int, error) {
+func findJava(
+	processes map[int]procEntry,
+	rootPID int,
+	processGroup int,
+	expectedStartTime uint64,
+) (int, error) {
 	if root, ok := processes[rootPID]; ok && expectedStartTime != 0 && root.startTime != expectedStartTime {
 		return 0, ErrRootPIDReused
 	}
@@ -81,7 +88,7 @@ func findJava(processes map[int]procEntry, rootPID int, expectedStartTime uint64
 	// バックグラウンド化されて親子関係が切れたプロセスも、hsoが作った
 	// プロセスグループ内にいる限り対象に含める。
 	for pid, item := range processes {
-		if item.pgrp == rootPID {
+		if item.pgrp == processGroup {
 			visited[pid] = true
 		}
 	}
@@ -110,7 +117,7 @@ func (f JavaFinder) Wait(ctx context.Context, rootPID int) (int, error) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
-	var rootStartTime uint64
+	rootStartTime := f.ExpectedStartTime
 	for {
 		select {
 		case <-ctx.Done():
@@ -124,7 +131,7 @@ func (f JavaFinder) Wait(ctx context.Context, rootPID int) (int, error) {
 				rootStartTime = root.startTime
 			}
 
-			pid, err := findJava(processes, rootPID, rootStartTime)
+			pid, err := findJava(processes, rootPID, f.processGroup(rootPID), rootStartTime)
 			if err == nil {
 				return pid, nil
 			}
@@ -141,6 +148,13 @@ func (f JavaFinder) procRoot() string {
 		return f.ProcRoot
 	}
 	return "/proc"
+}
+
+func (f JavaFinder) processGroup(rootPID int) int {
+	if f.ProcessGroup != 0 {
+		return f.ProcessGroup
+	}
+	return rootPID
 }
 
 type procEntry struct {

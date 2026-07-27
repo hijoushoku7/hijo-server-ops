@@ -94,7 +94,7 @@ func TestFindJavaRejectsReusedRootPID(t *testing.T) {
 		101: {comm: "java", ppid: 100, pgrp: 100, startTime: 21},
 	}
 
-	_, err := findJava(processes, 100, 10)
+	_, err := findJava(processes, 100, 100, 10)
 	if !errors.Is(err, ErrRootPIDReused) {
 		t.Fatalf("err = %v", err)
 	}

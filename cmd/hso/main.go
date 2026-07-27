@@ -15,6 +15,9 @@ import (
 )
 
 func main() {
+	if command, ok := process.SupervisorCommand(os.Args); ok {
+		os.Exit(process.RunSupervisor(command))
+	}
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "hso: %v\n", err)
 		os.Exit(1)
@@ -45,10 +48,14 @@ func run() error {
 	findCtx, cancelFind := context.WithCancel(context.Background())
 	defer cancelFind()
 
+	finder := process.JavaFinder{
+		ProcessGroup:      server.ServerPID(),
+		ExpectedStartTime: server.RootStartTime(),
+	}
 	javaResult := make(chan findResult, 1)
 	javaFound := false
 	go func() {
-		pid, findErr := (process.JavaFinder{}).Wait(findCtx, server.PID())
+		pid, findErr := finder.Wait(findCtx, server.PID())
 		javaResult <- findResult{pid: pid, err: findErr}
 	}()
 
