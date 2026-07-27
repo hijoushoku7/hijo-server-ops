@@ -238,7 +238,8 @@ func withJavaToolOptions(extraEnv []string, gcLogPath string) []string {
 	env = append(env, extraEnv...)
 
 	const key = "JAVA_TOOL_OPTIONS"
-	flag := "-Xlog:gc:file=" + gcLogPath + ":time,uptime,level,tags"
+	flag := "-Xlog:gc:file=" + gcLogPath +
+		":time,uptime,level,tags:filecount=0"
 
 	value := ""
 	filtered := env[:0]

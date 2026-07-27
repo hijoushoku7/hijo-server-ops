@@ -59,6 +59,9 @@ printf 'got:%s\n' "$line"
 	if !strings.Contains(output, "-Dexisting=true -Xlog:gc:file="+gcLogPath) {
 		t.Fatalf("JAVA_TOOL_OPTIONS was %q", output)
 	}
+	if !strings.Contains(output, ":time,uptime,level,tags:filecount=0") {
+		t.Fatalf("JAVA_TOOL_OPTIONS was %q", output)
+	}
 	if !strings.Contains(output, "got:say hello") {
 		t.Fatalf("stdout = %q", output)
 	}
