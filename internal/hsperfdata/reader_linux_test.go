@@ -35,6 +35,13 @@ func TestReaderMapsPerfDataFile(t *testing.T) {
 	}
 }
 
+func TestHotSpotTempDirDoesNotFollowTMPDIR(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	if hotSpotTempDir != "/tmp" {
+		t.Fatalf("hotSpotTempDir = %q", hotSpotTempDir)
+	}
+}
+
 func TestReaderReportsMissingFile(t *testing.T) {
 	_, err := openAt(t.TempDir(), 123)
 	if !errors.Is(err, ErrNotFound) {

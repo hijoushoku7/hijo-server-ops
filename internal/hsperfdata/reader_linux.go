@@ -11,13 +11,15 @@ import (
 
 var ErrNotFound = errors.New("hsperfdataが見つかりません")
 
+const hotSpotTempDir = "/tmp"
+
 type Reader struct {
 	file *os.File
 	data []byte
 }
 
 func Open(pid int) (*Reader, error) {
-	return openAt(os.TempDir(), pid)
+	return openAt(hotSpotTempDir, pid)
 }
 
 func openAt(tempDir string, pid int) (*Reader, error) {
