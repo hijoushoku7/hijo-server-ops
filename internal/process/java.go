@@ -14,6 +14,7 @@ import (
 var (
 	ErrJavaNotFound     = errors.New("javaプロセスがまだ見つかりません")
 	ErrDetachedTerminal = errors.New("screen/tmuxを使う起動スクリプトには対応していません")
+	ErrRootPIDReused    = errors.New("起動スクリプトのPIDが再利用されました")
 )
 
 type JavaFinder struct {
@@ -22,14 +23,19 @@ type JavaFinder struct {
 }
 
 func (f JavaFinder) Find(rootPID int) (int, error) {
-	procRoot := f.procRoot()
+	processes, err := readProcesses(f.procRoot())
+	if err != nil {
+		return 0, err
+	}
+	return findJava(processes, rootPID, 0)
+}
+
+func readProcesses(procRoot string) (map[int]procEntry, error) {
 	entries, err := os.ReadDir(procRoot)
 	if err != nil {
-		return 0, fmt.Errorf("%sを読む: %w", procRoot, err)
+		return nil, fmt.Errorf("%sを読む: %w", procRoot, err)
 	}
-
 	processes := make(map[int]procEntry)
-	children := make(map[int][]int)
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
 		if err != nil || !entry.IsDir() {
@@ -45,6 +51,17 @@ func (f JavaFinder) Find(rootPID int) (int, error) {
 			continue
 		}
 		processes[pid] = item
+	}
+	return processes, nil
+}
+
+func findJava(processes map[int]procEntry, rootPID int, expectedStartTime uint64) (int, error) {
+	if root, ok := processes[rootPID]; ok && expectedStartTime != 0 && root.startTime != expectedStartTime {
+		return 0, ErrRootPIDReused
+	}
+
+	children := make(map[int][]int)
+	for pid, item := range processes {
 		children[item.ppid] = append(children[item.ppid], pid)
 	}
 
@@ -58,16 +75,27 @@ func (f JavaFinder) Find(rootPID int) (int, error) {
 		}
 		visited[pid] = true
 
-		item, ok := processes[pid]
-		if ok {
-			switch item.comm {
-			case "screen", "tmux", "tmux: server":
-				return 0, ErrDetachedTerminal
-			case "java":
-				return pid, nil
-			}
-		}
 		queue = append(queue, children[pid]...)
+	}
+
+	// バックグラウンド化されて親子関係が切れたプロセスも、hsoが作った
+	// プロセスグループ内にいる限り対象に含める。
+	for pid, item := range processes {
+		if item.pgrp == rootPID {
+			visited[pid] = true
+		}
+	}
+
+	for pid := range visited {
+		switch processes[pid].comm {
+		case "screen", "tmux", "tmux: server":
+			return 0, ErrDetachedTerminal
+		}
+	}
+	for pid := range visited {
+		if processes[pid].comm == "java" {
+			return pid, nil
+		}
 	}
 
 	return 0, ErrJavaNotFound
@@ -82,12 +110,21 @@ func (f JavaFinder) Wait(ctx context.Context, rootPID int) (int, error) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
+	var rootStartTime uint64
 	for {
 		select {
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		case <-timer.C:
-			pid, err := f.Find(rootPID)
+			processes, err := readProcesses(f.procRoot())
+			if err != nil {
+				return 0, err
+			}
+			if root, ok := processes[rootPID]; ok && rootStartTime == 0 {
+				rootStartTime = root.startTime
+			}
+
+			pid, err := findJava(processes, rootPID, rootStartTime)
 			if err == nil {
 				return pid, nil
 			}
@@ -107,8 +144,10 @@ func (f JavaFinder) procRoot() string {
 }
 
 type procEntry struct {
-	comm string
-	ppid int
+	comm      string
+	ppid      int
+	pgrp      int
+	startTime uint64
 }
 
 func parseProcStat(data []byte) (procEntry, error) {
@@ -120,16 +159,39 @@ func parseProcStat(data []byte) (procEntry, error) {
 	}
 
 	fields := strings.Fields(line[close+1:])
-	if len(fields) < 2 {
+	if len(fields) < 20 {
 		return procEntry{}, errors.New("不正な/proc statフィールド")
 	}
 	ppid, err := strconv.Atoi(fields[1])
 	if err != nil {
 		return procEntry{}, fmt.Errorf("PPIDを読む: %w", err)
 	}
+	pgrp, err := strconv.Atoi(fields[2])
+	if err != nil {
+		return procEntry{}, fmt.Errorf("プロセスグループIDを読む: %w", err)
+	}
+	startTime, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return procEntry{}, fmt.Errorf("開始時刻を読む: %w", err)
+	}
 
 	return procEntry{
-		comm: line[open+1 : close],
-		ppid: ppid,
+		comm:      line[open+1 : close],
+		ppid:      ppid,
+		pgrp:      pgrp,
+		startTime: startTime,
 	}, nil
+}
+
+func processGroupAlive(procRoot string, processGroup int) (bool, error) {
+	processes, err := readProcesses(procRoot)
+	if err != nil {
+		return false, err
+	}
+	for _, item := range processes {
+		if item.pgrp == processGroup {
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -46,6 +46,7 @@ func run() error {
 	defer cancelFind()
 
 	javaResult := make(chan findResult, 1)
+	javaFound := false
 	go func() {
 		pid, findErr := (process.JavaFinder{}).Wait(findCtx, server.PID())
 		javaResult <- findResult{pid: pid, err: findErr}
@@ -59,7 +60,14 @@ func run() error {
 		select {
 		case <-server.Done():
 			cancelFind()
-			return server.Wait()
+			waitErr := server.Wait()
+			if !javaFound {
+				if waitErr != nil {
+					return waitErr
+				}
+				return errors.New("起動スクリプトがjavaプロセスを開始せずに終了しました")
+			}
+			return waitErr
 		case result := <-javaResult:
 			if result.err != nil {
 				if errors.Is(result.err, context.Canceled) {
@@ -71,6 +79,7 @@ func run() error {
 				return fmt.Errorf("javaプロセスの特定: %w", result.err)
 			}
 			fmt.Fprintf(os.Stderr, "hso: java pid %d\n", result.pid)
+			javaFound = true
 			javaResult = nil
 		case sig := <-signals:
 			if err := server.Signal(sig); err != nil {
