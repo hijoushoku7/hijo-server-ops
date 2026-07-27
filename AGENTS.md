@@ -1,4 +1,4 @@
-# AGENTS.md
+# hijo-server-ops エージェント向け指示
 
 ## このリポジトリについて
 
