@@ -1,0 +1,9 @@
+/hso
+/dist/
+*.test
+*.out
+
+hso.toml
+*.log
+.tmp/
+.env
