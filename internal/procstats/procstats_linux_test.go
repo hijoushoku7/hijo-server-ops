@@ -1,38 +1,29 @@
 package procstats
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
-func TestReadMemory(t *testing.T) {
+func TestReadMemoryCgroupV2FromNonstandardMount(t *testing.T) {
 	procRoot := t.TempDir()
-	cgroupRoot := t.TempDir()
+	cgroupRoot := filepath.Join(t.TempDir(), "custom cgroup")
 	writeProcessFile(t, procRoot, 123, "status", "Name:\tjava\nVmRSS:\t12345 kB\n")
 	writeProcessFile(t, procRoot, 123, "cgroup", "0::/server.slice/minecraft\n")
 
 	groupDir := filepath.Join(cgroupRoot, "server.slice", "minecraft")
-	if err := os.MkdirAll(groupDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(groupDir, "memory.current"),
-		[]byte("23456789\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(groupDir, "memory.max"),
-		[]byte("1073741824\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
+	writeCgroupFile(t, groupDir, "memory.current", "23456789\n")
+	writeCgroupFile(t, groupDir, "memory.max", "1073741824\n")
+	mountInfo := writeMountInfo(t, procRoot, fmt.Sprintf(
+		"1 1 0:1 / %s rw - cgroup2 cgroup rw\n",
+		escapeMountField(cgroupRoot),
+	))
 
-	memory, err := readMemoryAt(procRoot, cgroupRoot, 123)
+	memory, err := readMemoryAt(procRoot, mountInfo, 123)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,19 +36,55 @@ func TestReadMemory(t *testing.T) {
 	}
 }
 
+func TestReadMemoryCurrentProcess(t *testing.T) {
+	memory, err := ReadMemory(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !memory.RSS.Available || memory.RSS.Value == 0 {
+		t.Fatalf("RSS = %#v", memory.RSS)
+	}
+}
+
+func TestReadMemoryCgroupV1(t *testing.T) {
+	procRoot := t.TempDir()
+	cgroupRoot := filepath.Join(t.TempDir(), "memory")
+	writeProcessFile(t, procRoot, 123, "status", "VmRSS:\t10 kB\n")
+	writeProcessFile(t, procRoot, 123, "cgroup", "5:cpu:/server\n6:memory:/server\n")
+
+	groupDir := filepath.Join(cgroupRoot, "server")
+	writeCgroupFile(t, groupDir, "memory.usage_in_bytes", "200\n")
+	writeCgroupFile(t, groupDir, "memory.limit_in_bytes", "500\n")
+	mountInfo := writeMountInfo(t, procRoot, fmt.Sprintf(
+		"2 1 0:2 / %s rw - cgroup cgroup rw,memory\n",
+		escapeMountField(cgroupRoot),
+	))
+
+	memory, err := readMemoryAt(procRoot, mountInfo, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNumber(t, memory.CgroupCurrent, 200)
+	if !memory.CgroupLimit.Available ||
+		memory.CgroupLimit.Unlimited ||
+		memory.CgroupLimit.Value != 500 {
+		t.Fatalf("CgroupLimit = %#v", memory.CgroupLimit)
+	}
+}
+
 func TestReadMemoryReportsUnlimitedCgroup(t *testing.T) {
 	procRoot := t.TempDir()
 	cgroupRoot := t.TempDir()
 	writeProcessFile(t, procRoot, 123, "status", "VmRSS:\t1 kB\n")
 	writeProcessFile(t, procRoot, 123, "cgroup", "0::/\n")
-	if err := os.WriteFile(filepath.Join(cgroupRoot, "memory.current"), []byte("100\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cgroupRoot, "memory.max"), []byte("max\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCgroupFile(t, cgroupRoot, "memory.current", "100\n")
+	writeCgroupFile(t, cgroupRoot, "memory.max", "max\n")
+	mountInfo := writeMountInfo(t, procRoot, fmt.Sprintf(
+		"1 1 0:1 / %s rw - cgroup2 cgroup rw\n",
+		escapeMountField(cgroupRoot),
+	))
 
-	memory, err := readMemoryAt(procRoot, cgroupRoot, 123)
+	memory, err := readMemoryAt(procRoot, mountInfo, 123)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,9 +96,10 @@ func TestReadMemoryReportsUnlimitedCgroup(t *testing.T) {
 func TestReadMemoryKeepsCgroupUnavailable(t *testing.T) {
 	procRoot := t.TempDir()
 	writeProcessFile(t, procRoot, 123, "status", "VmRSS:\t10 kB\n")
-	writeProcessFile(t, procRoot, 123, "cgroup", "5:memory:/server\n")
+	writeProcessFile(t, procRoot, 123, "cgroup", "")
+	mountInfo := writeMountInfo(t, procRoot, "")
 
-	memory, err := readMemoryAt(procRoot, t.TempDir(), 123)
+	memory, err := readMemoryAt(procRoot, mountInfo, 123)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,8 +113,9 @@ func TestReadMemoryKeepsMissingRSSUnavailable(t *testing.T) {
 	procRoot := t.TempDir()
 	writeProcessFile(t, procRoot, 123, "status", "Name:\tjava\n")
 	writeProcessFile(t, procRoot, 123, "cgroup", "")
+	mountInfo := writeMountInfo(t, procRoot, "")
 
-	memory, err := readMemoryAt(procRoot, t.TempDir(), 123)
+	memory, err := readMemoryAt(procRoot, mountInfo, 123)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,8 +128,19 @@ func TestReadMemoryRejectsMalformedRSS(t *testing.T) {
 	procRoot := t.TempDir()
 	writeProcessFile(t, procRoot, 123, "status", "VmRSS:\tunknown kB\n")
 
-	if _, err := readMemoryAt(procRoot, t.TempDir(), 123); err == nil {
+	if _, err := readMemoryAt(procRoot, "", 123); err == nil {
 		t.Fatal("readMemoryAt succeeded")
+	}
+}
+
+func TestResolveCgroupMountRoot(t *testing.T) {
+	mount := cgroupMount{
+		root:       "/parent",
+		mountPoint: "/sys/fs/cgroup",
+	}
+	got := resolveCgroupDir(mount, "/parent/server")
+	if got != "/sys/fs/cgroup/server" {
+		t.Fatalf("path = %q", got)
 	}
 }
 
@@ -113,6 +153,35 @@ func writeProcessFile(t *testing.T, root string, pid int, name, content string) 
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeCgroupFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeMountInfo(t *testing.T, root, content string) string {
+	t.Helper()
+	path := filepath.Join(root, "mountinfo")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func escapeMountField(value string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\134`,
+		" ", `\040`,
+		"\t", `\011`,
+		"\n", `\012`,
+	)
+	return replacer.Replace(value)
 }
 
 func assertNumber(t *testing.T, got Number, want uint64) {

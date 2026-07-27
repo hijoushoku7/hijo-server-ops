@@ -74,6 +74,43 @@ func TestMetricsKeepsUnavailableValuesExplicit(t *testing.T) {
 	}
 }
 
+func TestMetricsRejectsPartialSpaceSum(t *testing.T) {
+	snapshot := Snapshot{Counters: map[string]Counter{
+		"sun.gc.generations":               {long: 1},
+		"sun.gc.generation.0.spaces":       {long: 2},
+		"sun.gc.generation.0.capacity":     {long: 300},
+		"sun.gc.generation.0.maxCapacity":  {long: 600},
+		"sun.gc.generation.0.space.0.used": {long: 100},
+	}}
+
+	metrics := snapshot.Metrics()
+
+	if metrics.Generations[0].Memory.Used.Available || metrics.Heap.Used.Available {
+		t.Fatalf("Metrics = %#v", metrics)
+	}
+}
+
+func TestMetricsRejectsPartialGenerationSum(t *testing.T) {
+	snapshot := Snapshot{Counters: map[string]Counter{
+		"sun.gc.generations":               {long: 2},
+		"sun.gc.generation.0.spaces":       {long: 1},
+		"sun.gc.generation.0.capacity":     {long: 300},
+		"sun.gc.generation.0.maxCapacity":  {long: 600},
+		"sun.gc.generation.0.space.0.used": {long: 100},
+		"sun.gc.generation.1.spaces":       {long: 1},
+		"sun.gc.generation.1.maxCapacity":  {long: 1400},
+		"sun.gc.generation.1.space.0.used": {long: 400},
+	}}
+
+	metrics := snapshot.Metrics()
+
+	if metrics.Heap.Committed.Available {
+		t.Fatalf("Heap committed = %#v", metrics.Heap.Committed)
+	}
+	assertNumber(t, metrics.Heap.Used, 500)
+	assertNumber(t, metrics.Heap.Max, 2000)
+}
+
 func assertNumber(t *testing.T, got Number, want int64) {
 	t.Helper()
 	if !got.Available || got.Value != want {

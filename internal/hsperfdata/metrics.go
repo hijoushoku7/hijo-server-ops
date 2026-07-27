@@ -45,11 +45,16 @@ type Metrics struct {
 func (s Snapshot) Metrics() Metrics {
 	var metrics Metrics
 
-	generationCount, _ := s.Long("sun.gc.generations")
+	generationCount, generationsAvailable := s.Long("sun.gc.generations")
+	var (
+		heapUsed      []Number
+		heapCommitted []Number
+		heapMax       []Number
+	)
 	for index := int64(0); index < generationCount; index++ {
 		prefix := fmt.Sprintf("sun.gc.generation.%d", index)
 		name, _ := s.String(prefix + ".name")
-		spaces, _ := s.Long(prefix + ".spaces")
+		spaces, spacesAvailable := s.Long(prefix + ".spaces")
 
 		generation := Generation{
 			Name: name,
@@ -58,18 +63,25 @@ func (s Snapshot) Metrics() Metrics {
 				Max:       number(s, prefix+".maxCapacity"),
 			},
 		}
-		for space := int64(0); space < spaces; space++ {
-			used, ok := s.Long(fmt.Sprintf("%s.space.%d.used", prefix, space))
-			if !ok {
-				continue
+		if spacesAvailable {
+			used := make([]Number, 0, spaces)
+			for space := int64(0); space < spaces; space++ {
+				used = append(used, number(
+					s,
+					fmt.Sprintf("%s.space.%d.used", prefix, space),
+				))
 			}
-			generation.Memory.Used.Value += used
-			generation.Memory.Used.Available = true
+			generation.Memory.Used = sumNumbers(used)
 		}
 		metrics.Generations = append(metrics.Generations, generation)
-		addNumber(&metrics.Heap.Used, generation.Memory.Used)
-		addNumber(&metrics.Heap.Committed, generation.Memory.Committed)
-		addNumber(&metrics.Heap.Max, generation.Memory.Max)
+		heapUsed = append(heapUsed, generation.Memory.Used)
+		heapCommitted = append(heapCommitted, generation.Memory.Committed)
+		heapMax = append(heapMax, generation.Memory.Max)
+	}
+	if generationsAvailable {
+		metrics.Heap.Used = sumNumbers(heapUsed)
+		metrics.Heap.Committed = sumNumbers(heapCommitted)
+		metrics.Heap.Max = sumNumbers(heapMax)
 	}
 	if maximum, ok := s.Long("sun.gc.policy.maxCapacity"); ok {
 		metrics.Heap.Max = Number{Value: maximum, Available: true}
@@ -121,12 +133,16 @@ func number(snapshot Snapshot, name string) Number {
 	return Number{Value: value, Available: ok}
 }
 
-func addNumber(total *Number, value Number) {
-	if !value.Available {
-		return
+func sumNumbers(values []Number) Number {
+	var total Number
+	for _, value := range values {
+		if !value.Available {
+			return Number{}
+		}
+		total.Value += value.Value
 	}
-	total.Value += value.Value
 	total.Available = true
+	return total
 }
 
 func ticksToDuration(ticks, frequency int64) time.Duration {

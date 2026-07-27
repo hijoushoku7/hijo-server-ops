@@ -27,11 +27,22 @@ type Memory struct {
 	CgroupLimit   Limit
 }
 
-func ReadMemory(pid int) (Memory, error) {
-	return readMemoryAt("/proc", "/sys/fs/cgroup", pid)
+type cgroupMembership struct {
+	version int
+	path    string
 }
 
-func readMemoryAt(procRoot, cgroupRoot string, pid int) (Memory, error) {
+type cgroupMount struct {
+	version    int
+	root       string
+	mountPoint string
+}
+
+func ReadMemory(pid int) (Memory, error) {
+	return readMemoryAt("/proc", "/proc/self/mountinfo", pid)
+}
+
+func readMemoryAt(procRoot, mountInfoPath string, pid int) (Memory, error) {
 	if pid <= 0 {
 		return Memory{}, fmt.Errorf("PIDが不正です: %d", pid)
 	}
@@ -50,7 +61,7 @@ func readMemoryAt(procRoot, cgroupRoot string, pid int) (Memory, error) {
 	}
 
 	memory := Memory{RSS: rss}
-	cgroupPath, err := readCgroupPath(filepath.Join(
+	memberships, err := readCgroups(filepath.Join(
 		procRoot,
 		strconv.Itoa(pid),
 		"cgroup",
@@ -58,9 +69,36 @@ func readMemoryAt(procRoot, cgroupRoot string, pid int) (Memory, error) {
 	if err != nil {
 		return memory, nil
 	}
-	groupDir := filepath.Join(cgroupRoot, strings.TrimPrefix(cgroupPath, "/"))
-	memory.CgroupCurrent = readNumber(filepath.Join(groupDir, "memory.current"))
-	memory.CgroupLimit = readLimit(filepath.Join(groupDir, "memory.max"))
+	mounts, err := readCgroupMounts(mountInfoPath)
+	if err != nil {
+		return memory, nil
+	}
+
+	for _, membership := range memberships {
+		for _, mount := range mounts {
+			if membership.version != mount.version {
+				continue
+			}
+			groupDir := resolveCgroupDir(mount, membership.path)
+			switch membership.version {
+			case 2:
+				memory.CgroupCurrent = readNumber(filepath.Join(groupDir, "memory.current"))
+				memory.CgroupLimit = readLimit(filepath.Join(groupDir, "memory.max"), false)
+			case 1:
+				memory.CgroupCurrent = readNumber(filepath.Join(
+					groupDir,
+					"memory.usage_in_bytes",
+				))
+				memory.CgroupLimit = readLimit(filepath.Join(
+					groupDir,
+					"memory.limit_in_bytes",
+				), true)
+			}
+			if memory.CgroupCurrent.Available || memory.CgroupLimit.Available {
+				return memory, nil
+			}
+		}
+	}
 	return memory, nil
 }
 
@@ -86,29 +124,92 @@ func parseRSS(status *os.File) (Number, error) {
 	return Number{}, nil
 }
 
-func readCgroupPath(path string) (string, error) {
+func readCgroups(path string) ([]cgroupMembership, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer file.Close()
 
+	var memberships []cgroupMembership
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "0::") {
+		fields := strings.SplitN(scanner.Text(), ":", 3)
+		if len(fields) != 3 || fields[2] == "" || !filepath.IsAbs(fields[2]) {
 			continue
 		}
-		group := strings.TrimPrefix(line, "0::")
-		if group == "" || !filepath.IsAbs(group) {
-			return "", errors.New("cgroup v2のパスが不正です")
+		switch {
+		case fields[0] == "0" && fields[1] == "":
+			memberships = append(memberships, cgroupMembership{version: 2, path: fields[2]})
+		case contains(fields[1], "memory"):
+			memberships = append(memberships, cgroupMembership{version: 1, path: fields[2]})
 		}
-		return group, nil
 	}
 	if err := scanner.Err(); err != nil {
-		return "", err
+		return nil, err
 	}
-	return "", errors.New("cgroup v2を使用していません")
+	if len(memberships) == 0 {
+		return nil, errors.New("memory cgroupに所属していません")
+	}
+	return memberships, nil
+}
+
+func readCgroupMounts(path string) ([]cgroupMount, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var mounts []cgroupMount
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		separator := index(fields, "-")
+		if separator < 6 || separator+3 >= len(fields) {
+			continue
+		}
+
+		version := 0
+		switch fields[separator+1] {
+		case "cgroup2":
+			version = 2
+		case "cgroup":
+			if contains(fields[separator+3], "memory") {
+				version = 1
+			}
+		}
+		if version == 0 {
+			continue
+		}
+		mounts = append(mounts, cgroupMount{
+			version:    version,
+			root:       unescapeMountField(fields[3]),
+			mountPoint: unescapeMountField(fields[4]),
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(mounts) == 0 {
+		return nil, errors.New("memory cgroupのマウントがありません")
+	}
+	return mounts, nil
+}
+
+func resolveCgroupDir(mount cgroupMount, group string) string {
+	root := filepath.Clean(mount.root)
+	group = filepath.Clean(group)
+	relative := strings.TrimPrefix(group, string(filepath.Separator))
+	if root != string(filepath.Separator) {
+		switch {
+		case group == root:
+			relative = ""
+		case strings.HasPrefix(group, root+string(filepath.Separator)):
+			relative = strings.TrimPrefix(group, root+string(filepath.Separator))
+		}
+	}
+	return filepath.Join(mount.mountPoint, relative)
 }
 
 func readNumber(path string) Number {
@@ -123,7 +224,7 @@ func readNumber(path string) Number {
 	return Number{Value: value, Available: true}
 }
 
-func readLimit(path string) Limit {
+func readLimit(path string, version1 bool) Limit {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Limit{}
@@ -136,5 +237,37 @@ func readLimit(path string) Limit {
 	if err != nil {
 		return Limit{}
 	}
+	const cgroupV1Unlimited = uint64(1<<63 - 4096)
+	if version1 && limit >= cgroupV1Unlimited {
+		return Limit{Available: true, Unlimited: true}
+	}
 	return Limit{Value: limit, Available: true}
+}
+
+func contains(list, item string) bool {
+	for _, value := range strings.Split(list, ",") {
+		if value == item {
+			return true
+		}
+	}
+	return false
+}
+
+func index(values []string, target string) int {
+	for position, value := range values {
+		if value == target {
+			return position
+		}
+	}
+	return -1
+}
+
+func unescapeMountField(value string) string {
+	replacer := strings.NewReplacer(
+		`\040`, " ",
+		`\011`, "\t",
+		`\012`, "\n",
+		`\134`, `\`,
+	)
+	return replacer.Replace(value)
 }

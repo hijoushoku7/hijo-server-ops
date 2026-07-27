@@ -21,6 +21,10 @@ func Open(pid int) (*Reader, error) {
 }
 
 func openAt(tempDir string, pid int) (*Reader, error) {
+	return openAtUID(tempDir, pid, uint32(os.Geteuid()))
+}
+
+func openAtUID(tempDir string, pid int, uid uint32) (*Reader, error) {
 	if pid <= 0 {
 		return nil, fmt.Errorf("PIDが不正です: %d", pid)
 	}
@@ -33,7 +37,10 @@ func openAt(tempDir string, pid int) (*Reader, error) {
 		return nil, fmt.Errorf("hsperfdataを探す: %w", err)
 	}
 	for _, path := range matches {
-		reader, err := openPath(path)
+		if !ownedBy(filepath.Dir(path), uid) {
+			continue
+		}
+		reader, err := openPath(path, uid)
 		if err == nil {
 			return reader, nil
 		}
@@ -41,7 +48,7 @@ func openAt(tempDir string, pid int) (*Reader, error) {
 	return nil, fmt.Errorf("%w: PID %d", ErrNotFound, pid)
 }
 
-func openPath(path string) (*Reader, error) {
+func openPath(path string, uid uint32) (*Reader, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("hsperfdataを開く: %w", err)
@@ -51,9 +58,9 @@ func openPath(path string) (*Reader, error) {
 		_ = file.Close()
 		return nil, fmt.Errorf("hsperfdataのサイズを読む: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Size() < prologueSize {
+	if !info.Mode().IsRegular() || info.Size() < prologueSize || !fileInfoOwnedBy(info, uid) {
 		_ = file.Close()
-		return nil, errors.New("hsperfdataが通常ファイルではないか、短すぎます")
+		return nil, errors.New("hsperfdataの種類、サイズ、所有者が不正です")
 	}
 
 	data, err := syscall.Mmap(
@@ -92,4 +99,14 @@ func (r *Reader) Close() error {
 		r.file = nil
 	}
 	return errors.Join(unmapErr, closeErr)
+}
+
+func ownedBy(path string, uid uint32) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.IsDir() && fileInfoOwnedBy(info, uid)
+}
+
+func fileInfoOwnedBy(info os.FileInfo, uid uint32) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == uid
 }

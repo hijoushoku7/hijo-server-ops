@@ -42,6 +42,26 @@ func TestReaderReportsMissingFile(t *testing.T) {
 	}
 }
 
+func TestReaderIgnoresFilesOwnedByAnotherUID(t *testing.T) {
+	tempDir := t.TempDir()
+	perfDir := filepath.Join(tempDir, "hsperfdata_other")
+	if err := os.Mkdir(perfDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(perfDir, "123"),
+		perfData(t, binary.LittleEndian, longEntry("counter", 1)),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := openAtUID(tempDir, 123, uint32(os.Geteuid()+1))
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestClosedReaderCannotSample(t *testing.T) {
 	tempDir := t.TempDir()
 	perfDir := filepath.Join(tempDir, "hsperfdata_test")
