@@ -227,7 +227,7 @@ mod が開ける扉は TPS だけではなく、MSPT 分布（p95/最大）・�
 - [x] hsperfdata パーサ
 - [x] `/proc` RSS + cgroup 取得
 - [x] `JAVA_TOOL_OPTIONS` 注入と GC ログ tail
-- [ ] ログ分類パーサ（チャット / コマンド / 参加退出 / ラグ / その他）
+- [x] ログ分類パーサ（チャット / コマンド / 参加退出 / ラグ / その他）
 - [ ] TUI（統計ヘッダ + 3ペイン + 入力欄）
 - [ ] コマンド送信、restart / stop の矢印キー操作
 - [ ] goreleaser で amd64 / arm64 リリース
