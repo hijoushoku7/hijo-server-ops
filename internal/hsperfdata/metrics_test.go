@@ -8,6 +8,7 @@ import (
 func TestMetrics(t *testing.T) {
 	snapshot := Snapshot{Counters: map[string]Counter{
 		"sun.gc.policy.generations":               {long: 2},
+		"sun.gc.policy.name":                      {text: "Parallel", isString: true},
 		"sun.gc.generation.0.name":                {text: "young", isString: true},
 		"sun.gc.generation.0.spaces":              {long: 2},
 		"sun.gc.generation.0.capacity":            {long: 300},
@@ -59,6 +60,39 @@ func TestMetrics(t *testing.T) {
 	if !metrics.Collectors[0].Time.Available ||
 		metrics.Collectors[0].Time.Value != 1250*time.Millisecond {
 		t.Fatalf("collector time = %#v", metrics.Collectors[0].Time)
+	}
+}
+
+func TestMetricsUsesOneOverlappingHeapMaximumForG1(t *testing.T) {
+	snapshot := Snapshot{Counters: map[string]Counter{
+		"sun.gc.policy.generations":        {long: 2},
+		"sun.gc.policy.name":               {text: "GarbageFirst", isString: true},
+		"sun.gc.generation.0.spaces":       {long: 1},
+		"sun.gc.generation.0.capacity":     {long: 300},
+		"sun.gc.generation.0.maxCapacity":  {long: 1400},
+		"sun.gc.generation.0.space.0.used": {long: 100},
+		"sun.gc.generation.1.spaces":       {long: 1},
+		"sun.gc.generation.1.capacity":     {long: 700},
+		"sun.gc.generation.1.maxCapacity":  {long: 1400},
+		"sun.gc.generation.1.space.0.used": {long: 400},
+	}}
+
+	metrics := snapshot.Metrics()
+
+	assertNumber(t, metrics.Heap.Max, 1400)
+}
+
+func TestMetricsFallsBackToVMStartTimeForUptime(t *testing.T) {
+	now := time.UnixMilli(1_700_000_012_500)
+	snapshot := Snapshot{Counters: map[string]Counter{
+		"sun.rt.createVmBeginTime": {long: 1_700_000_000_000},
+	}}
+
+	metrics := snapshot.metricsAt(now)
+
+	if !metrics.Uptime.Available ||
+		metrics.Uptime.Value != 12_500*time.Millisecond {
+		t.Fatalf("Uptime = %#v", metrics.Uptime)
 	}
 }
 

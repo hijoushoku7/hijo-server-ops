@@ -2,6 +2,8 @@ package hsperfdata
 
 import (
 	"fmt"
+	"math"
+	"strings"
 	"time"
 )
 
@@ -43,9 +45,14 @@ type Metrics struct {
 }
 
 func (s Snapshot) Metrics() Metrics {
+	return s.metricsAt(time.Now())
+}
+
+func (s Snapshot) metricsAt(now time.Time) Metrics {
 	var metrics Metrics
 
 	generationCount, generationsAvailable := s.Long("sun.gc.policy.generations")
+	policyName, _ := s.String("sun.gc.policy.name")
 	var (
 		heapUsed      []Number
 		heapCommitted []Number
@@ -81,7 +88,7 @@ func (s Snapshot) Metrics() Metrics {
 	if generationsAvailable {
 		metrics.Heap.Used = sumNumbers(heapUsed)
 		metrics.Heap.Committed = sumNumbers(heapCommitted)
-		metrics.Heap.Max = sumNumbers(heapMax)
+		metrics.Heap.Max = heapMaximum(heapMax, policyName)
 	}
 	if maximum, ok := s.Long("sun.gc.policy.maxCapacity"); ok {
 		metrics.Heap.Max = Number{Value: maximum, Available: true}
@@ -96,6 +103,8 @@ func (s Snapshot) Metrics() Metrics {
 			Value:     ticksToDuration(ticks, frequency),
 			Available: true,
 		}
+	} else if started, ok := s.Long("sun.rt.createVmBeginTime"); ok {
+		metrics.Uptime = uptimeSince(started, now)
 	}
 
 	metrics.Threads = number(s, "java.threads.live")
@@ -118,6 +127,39 @@ func (s Snapshot) Metrics() Metrics {
 	}
 
 	return metrics
+}
+
+func heapMaximum(values []Number, policyName string) Number {
+	if strings.Contains(policyName, "GarbageFirst") ||
+		strings.Contains(policyName, "ZGC") ||
+		strings.Contains(policyName, "Shenandoah") {
+		var maximum Number
+		for _, value := range values {
+			if !value.Available || value.Value < 0 {
+				return Number{}
+			}
+			if !maximum.Available || value.Value > maximum.Value {
+				maximum = value
+			}
+		}
+		return maximum
+	}
+	return sumNumbers(values)
+}
+
+func uptimeSince(startedMillis int64, now time.Time) Duration {
+	nowMillis := now.UnixMilli()
+	if startedMillis < 0 || nowMillis < startedMillis {
+		return Duration{}
+	}
+	elapsedMillis := nowMillis - startedMillis
+	if elapsedMillis > math.MaxInt64/int64(time.Millisecond) {
+		return Duration{}
+	}
+	return Duration{
+		Value:     time.Duration(elapsedMillis) * time.Millisecond,
+		Available: true,
+	}
 }
 
 func memory(snapshot Snapshot, prefix string) Memory {

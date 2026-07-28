@@ -16,6 +16,7 @@ import (
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
+	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/ui"
 )
@@ -135,6 +136,29 @@ func TestStopServerReturnsSignalError(t *testing.T) {
 
 	if err := stopServer(server, false, time.Second); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+func TestServerExitErrorRejectsUnexpectedCleanExit(t *testing.T) {
+	err := serverExitError(nil, true, false)
+	if err == nil || !strings.Contains(err.Error(), "予期せず終了") {
+		t.Fatalf("err = %v", err)
+	}
+	if err := serverExitError(nil, true, true); err != nil {
+		t.Fatalf("expected exit error = %v", err)
+	}
+}
+
+func TestCalculateCPU(t *testing.T) {
+	previous := procstats.Duration{Value: time.Second, Available: true}
+	current := procstats.Duration{Value: 2500 * time.Millisecond, Available: true}
+
+	got, ok := calculateCPU(previous, current, time.Second)
+	if !ok || got != 150 {
+		t.Fatalf("CPU = %f, available = %t", got, ok)
+	}
+	if _, ok := calculateCPU(procstats.Duration{}, current, time.Second); ok {
+		t.Fatal("first CPU sample was available")
 	}
 }
 

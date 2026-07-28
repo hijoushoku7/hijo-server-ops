@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -83,6 +84,7 @@ type serverRuntime struct {
 	server       *process.Process
 	generation   uint64
 	javaFound    atomic.Bool
+	expectedExit atomic.Bool
 	cancel       context.CancelFunc
 	stdoutReader *io.PipeReader
 	stdoutWriter *io.PipeWriter
@@ -210,10 +212,15 @@ func (controller *serverController) sendCommand(action ui.Action) {
 		})
 		return
 	}
-	controller.program.Send(ui.ActionResultMsg{
-		Action: action,
-		Err:    runtime.server.Send(action.Command),
-	})
+	isStop := strings.EqualFold(strings.TrimSpace(action.Command), "stop")
+	if isStop {
+		runtime.expectedExit.Store(true)
+	}
+	err := runtime.server.Send(action.Command)
+	if err != nil && isStop {
+		runtime.expectedExit.Store(false)
+	}
+	controller.program.Send(ui.ActionResultMsg{Action: action, Err: err})
 }
 
 func (controller *serverController) restart() {
@@ -289,13 +296,25 @@ func (controller *serverController) waitForServer(runtime *serverRuntime) {
 	if !controller.detach(runtime) {
 		return
 	}
-	if !runtime.javaFound.Load() && waitErr == nil {
-		waitErr = errors.New("起動スクリプトがjavaプロセスを開始せずに終了しました")
-	}
+	waitErr = serverExitError(
+		waitErr,
+		runtime.javaFound.Load(),
+		runtime.expectedExit.Load(),
+	)
 	controller.program.Send(ui.ProcessExitedMsg{
 		Generation: runtime.generation,
 		Err:        waitErr,
 	})
+}
+
+func serverExitError(waitErr error, javaFound, expected bool) error {
+	if waitErr != nil || expected {
+		return waitErr
+	}
+	if !javaFound {
+		return errors.New("起動スクリプトがjavaプロセスを開始せずに終了しました")
+	}
+	return errors.New("Minecraftサーバーが予期せず終了しました")
 }
 
 func (controller *serverController) currentRuntime() *serverRuntime {
@@ -400,6 +419,8 @@ func collectMetrics(
 	defer ticker.Stop()
 
 	var reader *hsperfdata.Reader
+	var previousCPU procstats.Duration
+	var previousSample time.Time
 	defer func() {
 		if reader != nil {
 			_ = reader.Close()
@@ -436,12 +457,23 @@ func collectMetrics(
 		if memoryErr == nil && !memory.RSS.Available {
 			memoryErr = errRSSUnavailable
 		}
+		cpuTime, _ := procstats.ReadCPUTime(pid)
+		sampledAt := time.Now()
+		cpu, cpuAvailable := calculateCPU(
+			previousCPU,
+			cpuTime,
+			sampledAt.Sub(previousSample),
+		)
+		previousCPU = cpuTime
+		previousSample = sampledAt
 		program.Send(ui.MetricsMsg{
-			Generation:  generation,
-			JVM:         metrics,
-			Memory:      memory,
-			JVMError:    errorText(jvmErr),
-			MemoryError: errorText(memoryErr),
+			Generation:   generation,
+			JVM:          metrics,
+			Memory:       memory,
+			CPU:          cpu,
+			CPUAvailable: cpuAvailable,
+			JVMError:     errorText(jvmErr),
+			MemoryError:  errorText(memoryErr),
 		})
 
 		select {
@@ -450,6 +482,19 @@ func collectMetrics(
 		case <-ticker.C:
 		}
 	}
+}
+
+func calculateCPU(
+	previous procstats.Duration,
+	current procstats.Duration,
+	elapsed time.Duration,
+) (float64, bool) {
+	if !previous.Available || !current.Available ||
+		current.Value < previous.Value || elapsed <= 0 {
+		return 0, false
+	}
+	used := current.Value - previous.Value
+	return float64(used) / float64(elapsed) * 100, true
 }
 
 func errorText(err error) string {
@@ -466,13 +511,25 @@ func streamGC(
 	generation uint64,
 ) {
 	events := make(chan gclog.Event, 4)
+	result := make(chan error, 1)
 	go func() {
-		_ = (gclog.Tailer{Path: path}).Run(ctx, events)
+		result <- (gclog.Tailer{Path: path}).Run(ctx, events)
 	}()
 
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case err := <-result:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				program.Send(ui.LogMsg{
+					Generation: generation,
+					Entry: serverlog.Entry{
+						Kind:    serverlog.KindOther,
+						Message: "GC metrics unavailable: " + err.Error(),
+					},
+				})
+			}
 			return
 		case event := <-events:
 			program.Send(ui.GCMsg{Generation: generation, Event: event})

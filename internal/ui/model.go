@@ -54,11 +54,13 @@ type LogMsg struct {
 }
 
 type MetricsMsg struct {
-	Generation  uint64
-	JVM         hsperfdata.Metrics
-	Memory      procstats.Memory
-	JVMError    string
-	MemoryError string
+	Generation   uint64
+	JVM          hsperfdata.Metrics
+	Memory       procstats.Memory
+	CPU          float64
+	CPUAvailable bool
+	JVMError     string
+	MemoryError  string
 }
 
 type GCMsg struct {
@@ -111,6 +113,8 @@ type Model struct {
 	generation        uint64
 	metrics           hsperfdata.Metrics
 	memory            procstats.Memory
+	cpu               float64
+	cpuAvailable      bool
 	jvmMetricError    string
 	memoryMetricError string
 	gcStats           gclog.Stats
@@ -155,6 +159,8 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			Threads: message.JVM.Threads,
 		}
 		model.memory = message.Memory
+		model.cpu = message.CPU
+		model.cpuAvailable = message.CPUAvailable
 		model.updateMetricError("heap", &model.jvmMetricError, message.JVMError)
 		model.updateMetricError("RSS", &model.memoryMetricError, message.MemoryError)
 		model.addSample(message)
@@ -350,6 +356,8 @@ func (model *Model) offer(action Action) bool {
 func (model *Model) resetServerState() {
 	model.metrics = hsperfdata.Metrics{}
 	model.memory = procstats.Memory{}
+	model.cpu = 0
+	model.cpuAvailable = false
 	model.jvmMetricError = ""
 	model.memoryMetricError = ""
 	model.gcStats = gclog.Stats{}
@@ -522,7 +530,7 @@ func (model *Model) statsLines() []string {
 			formatDelta(model.memory.RSS, model.metrics.Heap.Committed),
 		),
 		fmt.Sprintf(
-			"GC   %d collections  total %s  last %s  freq %s  threads %s",
+			"GC   %d collections  total %s  last %s  freq %s",
 			model.gcStats.Collections,
 			formatPause(
 				model.gcStats.TotalPause,
@@ -533,13 +541,14 @@ func (model *Model) statsLines() []string {
 				model.gcStats.LastPause.Available,
 			),
 			formatFrequency(frequency.PerMinute, frequency.Available),
-			threads,
 		),
 		fmt.Sprintf(
-			"Players %d [%s]  Lag events: %d",
+			"Players %d [%s]  Lag events: %d  CPU %s  threads %s",
 			model.tracker.PlayerCount(),
 			model.players,
 			model.tracker.LagEvents(),
+			formatCPU(model.cpu, model.cpuAvailable),
+			threads,
 		),
 	}
 

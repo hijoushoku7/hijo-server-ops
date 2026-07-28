@@ -36,7 +36,8 @@ type Process struct {
 }
 
 func Start(options Options) (*Process, error) {
-	if err := validateCommand(options.Command, options.WorkDir); err != nil {
+	command, err := resolveCommand(options.Command, options.WorkDir)
+	if err != nil {
 		return nil, err
 	}
 
@@ -51,7 +52,7 @@ func Start(options Options) (*Process, error) {
 		_ = os.RemoveAll(gcLogDir)
 		return nil, fmt.Errorf("hsoの実行ファイルを確認する: %w", err)
 	}
-	cmd := exec.Command(executable, supervisorArgument, options.Command)
+	cmd := exec.Command(executable, supervisorArgument, command)
 	cmd.Dir = options.WorkDir
 	cmd.Env = withJavaToolOptions(options.Env, gcLogPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -120,22 +121,26 @@ func Start(options Options) (*Process, error) {
 	return process, nil
 }
 
-func validateCommand(command, workDir string) error {
+func resolveCommand(command, workDir string) (string, error) {
 	path := command
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(workDir, path)
 	}
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("起動スクリプトの絶対パスを求める: %w", err)
+	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("起動スクリプトを確認する: %w", err)
+		return "", fmt.Errorf("起動スクリプトを確認する: %w", err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("起動スクリプトはディレクトリです: %s", path)
+		return "", fmt.Errorf("起動スクリプトはディレクトリです: %s", path)
 	}
 	if info.Mode().Perm()&0o111 == 0 {
-		return fmt.Errorf("起動スクリプトに実行権限がありません: %s", path)
+		return "", fmt.Errorf("起動スクリプトに実行権限がありません: %s", path)
 	}
-	return nil
+	return path, nil
 }
 
 func (p *Process) PID() int {
@@ -239,7 +244,7 @@ func withJavaToolOptions(extraEnv []string, gcLogPath string) []string {
 
 	const key = "JAVA_TOOL_OPTIONS"
 	flag := "-Xlog:gc:file=" + gcLogPath +
-		":time,uptime,level,tags:filecount=0"
+		":time,uptime,level,tags:filesize=8M,filecount=2"
 
 	value := ""
 	filtered := env[:0]

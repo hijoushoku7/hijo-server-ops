@@ -59,7 +59,7 @@ printf 'got:%s\n' "$line"
 	if !strings.Contains(output, "-Dexisting=true -Xlog:gc:file="+gcLogPath) {
 		t.Fatalf("JAVA_TOOL_OPTIONS was %q", output)
 	}
-	if !strings.Contains(output, ":time,uptime,level,tags:filecount=0") {
+	if !strings.Contains(output, ":time,uptime,level,tags:filesize=8M,filecount=2") {
 		t.Fatalf("JAVA_TOOL_OPTIONS was %q", output)
 	}
 	if !strings.Contains(output, "got:say hello") {
@@ -80,6 +80,22 @@ func TestProcessReportsStartError(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "起動スクリプトを確認する") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestProcessRunsRelativeCommandWithoutSlash(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "run.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := Start(Options{Command: "run.sh", WorkDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Wait(); err != nil {
+		t.Fatal(err)
 	}
 }
 
