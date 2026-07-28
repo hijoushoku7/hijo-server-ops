@@ -13,7 +13,7 @@ import (
 )
 
 func TestModelBoundsLogsAndSamplesToScreen(t *testing.T) {
-	model := New()
+	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	for index := 0; index < model.layout.logLines()+2; index++ {
@@ -43,7 +43,7 @@ func TestModelBoundsLogsAndSamplesToScreen(t *testing.T) {
 }
 
 func TestModelRoutesLogsAndTracksPlayers(t *testing.T) {
-	model := New()
+	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	entries := []serverlog.Entry{
 		{Kind: serverlog.KindChat, Player: "alice", Chat: "hello"},
@@ -71,7 +71,7 @@ func TestModelRoutesLogsAndTracksPlayers(t *testing.T) {
 }
 
 func TestModelViewContainsBrailleGraphs(t *testing.T) {
-	model := New()
+	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	_, _ = model.Update(MetricsMsg{
 		JVM: hsperfdata.Metrics{Heap: hsperfdata.Memory{
@@ -102,7 +102,7 @@ func TestModelViewContainsBrailleGraphs(t *testing.T) {
 }
 
 func TestModelReleasesDisplayCachesWhenTerminalBecomesTooSmall(t *testing.T) {
-	model := New()
+	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
 		Kind:    serverlog.KindOther,
@@ -122,7 +122,7 @@ func TestModelReleasesDisplayCachesWhenTerminalBecomesTooSmall(t *testing.T) {
 }
 
 func TestModelDoesNotRetainMetricsThatAreNotDisplayed(t *testing.T) {
-	model := New()
+	model := newTestModel()
 	_, _ = model.Update(MetricsMsg{
 		JVM: hsperfdata.Metrics{
 			Generations: []hsperfdata.Generation{{Name: "young"}},
@@ -136,7 +136,7 @@ func TestModelDoesNotRetainMetricsThatAreNotDisplayed(t *testing.T) {
 }
 
 func TestModelReturnsProcessError(t *testing.T) {
-	model := New()
+	model := newTestModel()
 	want := errors.New("server failed")
 	_, command := model.Update(ProcessExitedMsg{Err: want})
 
@@ -146,6 +146,115 @@ func TestModelReturnsProcessError(t *testing.T) {
 	if _, ok := command().(tea.QuitMsg); !ok {
 		t.Fatalf("command = %T", command())
 	}
+}
+
+func TestModelSendsBoundedCommandInput(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, 0)
+
+	_, _ = model.Update(tea.KeyPressMsg{Text: strings.Repeat("a", maxInputRunes+10)})
+	if len(model.input) != maxInputRunes {
+		t.Fatalf("input length = %d", len(model.input))
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	action := <-actions
+	if action.Kind != ActionSendCommand ||
+		len([]rune(action.Command)) != maxInputRunes {
+		t.Fatalf("action = %#v", action)
+	}
+	if len(model.input) != 0 {
+		t.Fatalf("input was not cleared: %q", model.input)
+	}
+}
+
+func TestModelSelectsRestartAndStopWithArrowKeys(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, 0)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if model.focus != focusRestart {
+		t.Fatalf("focus = %d", model.focus)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action := <-actions; action.Kind != ActionRestart {
+		t.Fatalf("action = %#v", action)
+	}
+
+	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionRestart}})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.focus != focusStop {
+		t.Fatalf("focus = %d", model.focus)
+	}
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
+	}
+}
+
+func TestModelRecordsOnlySuccessfullySentCommands(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	action := Action{Kind: ActionSendCommand, Command: "say hello"}
+
+	_, _ = model.Update(ActionResultMsg{Action: action, Err: errors.New("failed")})
+	if model.commands.Len() != 0 {
+		t.Fatalf("failed command was recorded")
+	}
+	_, _ = model.Update(ActionResultMsg{Action: action})
+	if model.commands.Len() != 1 || model.commands.At(0) != "say hello" {
+		t.Fatalf("commands = %q", model.commands.At(0))
+	}
+}
+
+func TestModelClearsServerMetricsOnRestart(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	_, _ = model.Update(MetricsMsg{
+		JVM: hsperfdata.Metrics{Heap: hsperfdata.Memory{
+			Used: hsperfdata.Number{Value: 10, Available: true},
+		}},
+		Memory: procstats.Memory{
+			RSS: procstats.Number{Value: 20, Available: true},
+		},
+	})
+	_, _ = model.Update(ServerStartedMsg{})
+
+	if model.metrics.Heap.Used.Available || model.memory.RSS.Available ||
+		model.samples.Len() != 0 {
+		t.Fatalf("old server metrics were retained: %#v", model)
+	}
+}
+
+func TestModelIgnoresMessagesFromPreviousServer(t *testing.T) {
+	model := New(make(chan Action, 1), 2)
+	_, _ = model.Update(MetricsMsg{
+		Generation: 1,
+		Memory: procstats.Memory{
+			RSS: procstats.Number{Value: 20, Available: true},
+		},
+	})
+	_, _ = model.Update(LogMsg{
+		Generation: 1,
+		Entry: serverlog.Entry{
+			Kind:    serverlog.KindOther,
+			Message: "old server",
+		},
+	})
+
+	if model.memory.RSS.Available || model.logs.Len() != 0 {
+		t.Fatalf("old server state was accepted: %#v", model)
+	}
+}
+
+func TestTailKeepsVisibleRightEdge(t *testing.T) {
+	if got := tail("abc日本語", 5); got != "本語" {
+		t.Fatalf("tail = %q", got)
+	}
+}
+
+func newTestModel() *Model {
+	return New(make(chan Action, 8), 0)
 }
 
 func containsBraille(value string) bool {
