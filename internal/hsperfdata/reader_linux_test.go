@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -45,6 +46,25 @@ func TestHotSpotTempDirDoesNotFollowTMPDIR(t *testing.T) {
 func TestReaderReportsMissingFile(t *testing.T) {
 	_, err := openAt(t.TempDir(), 123)
 	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestReaderPreservesCandidateError(t *testing.T) {
+	tempDir := t.TempDir()
+	perfDir := filepath.Join(tempDir, "hsperfdata_test")
+	if err := os.Mkdir(perfDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(perfDir, "123"), []byte("short"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := openAt(tempDir, 123)
+	if err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(err.Error(), "種類、サイズ、所有者") {
 		t.Fatalf("err = %v", err)
 	}
 }

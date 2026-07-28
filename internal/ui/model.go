@@ -31,7 +31,10 @@ var (
 			Bold(true)
 )
 
-const maxInputRunes = 512
+const (
+	maxInputRunes       = 512
+	maxMetricErrorRunes = 256
+)
 
 type ActionKind uint8
 
@@ -51,9 +54,11 @@ type LogMsg struct {
 }
 
 type MetricsMsg struct {
-	Generation uint64
-	JVM        hsperfdata.Metrics
-	Memory     procstats.Memory
+	Generation  uint64
+	JVM         hsperfdata.Metrics
+	Memory      procstats.Memory
+	JVMError    string
+	MemoryError string
 }
 
 type GCMsg struct {
@@ -96,23 +101,25 @@ const (
 )
 
 type Model struct {
-	layout     layout
-	status     string
-	runErr     error
-	actions    chan<- Action
-	input      []rune
-	focus      focus
-	busy       bool
-	generation uint64
-	metrics    hsperfdata.Metrics
-	memory     procstats.Memory
-	gcStats    gclog.Stats
-	tracker    serverlog.Tracker
-	players    string
-	chat       lineBuffer
-	commands   lineBuffer
-	logs       lineBuffer
-	samples    sampleBuffer
+	layout            layout
+	status            string
+	runErr            error
+	actions           chan<- Action
+	input             []rune
+	focus             focus
+	busy              bool
+	generation        uint64
+	metrics           hsperfdata.Metrics
+	memory            procstats.Memory
+	jvmMetricError    string
+	memoryMetricError string
+	gcStats           gclog.Stats
+	tracker           serverlog.Tracker
+	players           string
+	chat              lineBuffer
+	commands          lineBuffer
+	logs              lineBuffer
+	samples           sampleBuffer
 }
 
 func New(actions chan<- Action, generation uint64) *Model {
@@ -148,6 +155,8 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			Threads: message.JVM.Threads,
 		}
 		model.memory = message.Memory
+		model.updateMetricError("heap", &model.jvmMetricError, message.JVMError)
+		model.updateMetricError("RSS", &model.memoryMetricError, message.MemoryError)
 		model.addSample(message)
 	case GCMsg:
 		if !model.accepts(message.Generation) {
@@ -341,6 +350,8 @@ func (model *Model) offer(action Action) bool {
 func (model *Model) resetServerState() {
 	model.metrics = hsperfdata.Metrics{}
 	model.memory = procstats.Memory{}
+	model.jvmMetricError = ""
+	model.memoryMetricError = ""
 	model.gcStats = gclog.Stats{}
 	model.tracker = serverlog.Tracker{}
 	model.players = ""
@@ -441,12 +452,48 @@ func (model *Model) addSample(message MetricsMsg) {
 	model.samples.Add(sample)
 }
 
+func (model *Model) updateMetricError(source string, current *string, next string) {
+	if next == *current {
+		return
+	}
+	next = truncateRunes(next, maxMetricErrorRunes)
+	if next == *current {
+		return
+	}
+	if next == "" {
+		if *current != "" {
+			model.addLog(serverlog.Entry{
+				Kind:    serverlog.KindOther,
+				Message: "metrics: " + source + " recovered",
+			})
+		}
+	} else {
+		model.addLog(serverlog.Entry{
+			Kind:    serverlog.KindOther,
+			Message: "metrics: " + source + " unavailable: " + next,
+		})
+	}
+	*current = next
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
 func (model *Model) statsTitle() string {
-	return fmt.Sprintf(
+	title := fmt.Sprintf(
 		"hijo-server-ops · %s · uptime %s",
 		model.status,
 		formatUptime(model.metrics.Uptime),
 	)
+	if model.jvmMetricError != "" || model.memoryMetricError != "" {
+		title += " · metrics degraded"
+	}
+	return title
 }
 
 func (model *Model) statsLines() []string {
@@ -515,6 +562,20 @@ func (model *Model) statsLines() []string {
 		2,
 		maximum,
 	)
+	if model.jvmMetricError != "" {
+		heap[0] = truncate(
+			"unavailable: "+model.jvmMetricError,
+			model.layout.graphWidth,
+		)
+		heap[1] = ""
+	}
+	if model.memoryMetricError != "" {
+		rss[0] = truncate(
+			"unavailable: "+model.memoryMetricError,
+			model.layout.graphWidth,
+		)
+		rss[1] = ""
+	}
 	for index, graphLine := range heap {
 		label := "     "
 		if index == 0 {

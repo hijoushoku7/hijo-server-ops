@@ -7,7 +7,7 @@ import (
 
 func TestMetrics(t *testing.T) {
 	snapshot := Snapshot{Counters: map[string]Counter{
-		"sun.gc.generations":                      {long: 2},
+		"sun.gc.policy.generations":               {long: 2},
 		"sun.gc.generation.0.name":                {text: "young", isString: true},
 		"sun.gc.generation.0.spaces":              {long: 2},
 		"sun.gc.generation.0.capacity":            {long: 300},
@@ -26,7 +26,7 @@ func TestMetrics(t *testing.T) {
 		"sun.gc.compressedclassspace.used":        {long: 10},
 		"sun.gc.compressedclassspace.capacity":    {long: 20},
 		"sun.gc.compressedclassspace.maxCapacity": {long: 100},
-		"sun.gc.collectors":                       {long: 1},
+		"sun.gc.policy.collectors":                {long: 1},
 		"sun.gc.collector.0.name":                 {text: "young GC", isString: true},
 		"sun.gc.collector.0.invocations":          {long: 12},
 		"sun.gc.collector.0.time":                 {long: 1250},
@@ -76,7 +76,7 @@ func TestMetricsKeepsUnavailableValuesExplicit(t *testing.T) {
 
 func TestMetricsRejectsPartialSpaceSum(t *testing.T) {
 	snapshot := Snapshot{Counters: map[string]Counter{
-		"sun.gc.generations":               {long: 1},
+		"sun.gc.policy.generations":        {long: 1},
 		"sun.gc.generation.0.spaces":       {long: 2},
 		"sun.gc.generation.0.capacity":     {long: 300},
 		"sun.gc.generation.0.maxCapacity":  {long: 600},
@@ -92,7 +92,7 @@ func TestMetricsRejectsPartialSpaceSum(t *testing.T) {
 
 func TestMetricsRejectsPartialGenerationSum(t *testing.T) {
 	snapshot := Snapshot{Counters: map[string]Counter{
-		"sun.gc.generations":               {long: 2},
+		"sun.gc.policy.generations":        {long: 2},
 		"sun.gc.generation.0.spaces":       {long: 1},
 		"sun.gc.generation.0.capacity":     {long: 300},
 		"sun.gc.generation.0.maxCapacity":  {long: 600},

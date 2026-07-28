@@ -89,7 +89,7 @@ func perfData(t *testing.T, order binary.ByteOrder, entries ...testEntry) []byte
 	}
 	data[5] = 2
 	data[7] = 1
-	order.PutUint32(data[0:4], magic)
+	binary.BigEndian.PutUint32(data[0:4], magic)
 	order.PutUint32(data[24:28], prologueSize)
 	order.PutUint32(data[28:32], uint32(len(entries)))
 
