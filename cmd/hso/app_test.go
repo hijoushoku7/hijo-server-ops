@@ -1,16 +1,35 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
+	"github.com/hijoushoku7/hijo-server-ops/internal/ui"
 )
+
+func TestMain(tests *testing.M) {
+	if command, ok := process.SupervisorCommand(os.Args); ok {
+		os.Exit(process.RunSupervisor(command))
+	}
+	if dir := os.Getenv("HSO_FAKE_JAVA_DIR"); dir != "" {
+		runFakeJava(dir)
+		os.Exit(0)
+	}
+	os.Exit(tests.Run())
+}
 
 func TestReadServerOutputParsesLines(t *testing.T) {
 	logs := make(chan serverlog.Entry, 4)
@@ -119,6 +138,78 @@ func TestStopServerReturnsSignalError(t *testing.T) {
 	}
 }
 
+func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
+	dir := t.TempDir()
+	javaPath := filepath.Join(dir, "java")
+	if err := os.Link(os.Args[0], javaPath); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "run.sh")
+	scriptContent := "#!/bin/sh\n" +
+		"export HSO_FAKE_JAVA_DIR='" + dir + "'\n" +
+		"exec '" + javaPath + "'\n"
+	if err := os.WriteFile(script, []byte(scriptContent), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	actions := make(chan ui.Action, actionQueueSize)
+	model := ui.New(actions, initialGeneration)
+	program := tea.NewProgram(
+		model,
+		tea.WithContext(ctx),
+		tea.WithInput(nil),
+		tea.WithoutRenderer(),
+	)
+	controller := newServerController(ctx, config.Config{
+		Server: config.Server{
+			Command: script,
+			WorkDir: dir,
+		},
+	}, program)
+	if err := controller.start(initialGeneration, false); err != nil {
+		t.Fatal(err)
+	}
+	programDone := make(chan error, 1)
+	go func() {
+		_, err := program.Run()
+		programDone <- err
+	}()
+
+	waitForControllerJava(t, controller)
+	controller.sendCommand(ui.Action{
+		Kind:    ui.ActionSendCommand,
+		Command: "say hello",
+	})
+	waitForFileLines(t, filepath.Join(dir, "commands"), 1)
+
+	controller.restart()
+	waitForFileLines(t, filepath.Join(dir, "launches"), 2)
+	waitForControllerJava(t, controller)
+	if runtime := controller.currentRuntime(); runtime.generation != 2 {
+		t.Fatalf("generation = %d", runtime.generation)
+	}
+
+	cancel()
+	if err := controller.shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-programDone:
+	case <-time.After(time.Second):
+		t.Fatal("Bubble Tea did not stop")
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "commands"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Fields(string(data)); len(got) != 4 ||
+		strings.Join(got, " ") != "say hello stop stop" {
+		t.Fatalf("commands = %q", data)
+	}
+}
+
 type fakeStoppableServer struct {
 	done           chan struct{}
 	commands       []string
@@ -153,4 +244,51 @@ func (s *fakeStoppableServer) Signal(signal os.Signal) error {
 		close(s.done)
 	}
 	return nil
+}
+
+func runFakeJava(dir string) {
+	appendTestLine(filepath.Join(dir, "launches"), "start")
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		command := scanner.Text()
+		appendTestLine(filepath.Join(dir, "commands"), command)
+		if command == "stop" {
+			return
+		}
+	}
+}
+
+func appendTestLine(path, line string) {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	_, _ = file.WriteString(line + "\n")
+	_ = file.Close()
+}
+
+func waitForControllerJava(t *testing.T, controller *serverController) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		runtime := controller.currentRuntime()
+		if runtime != nil && runtime.javaFound.Load() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("java process was not found")
+}
+
+func waitForFileLines(t *testing.T, path string, count int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		if err == nil && len(strings.Fields(string(data))) >= count {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%s did not contain %d lines", path, count)
 }

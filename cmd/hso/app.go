@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -29,6 +30,8 @@ const (
 	maxOutputLineBytes = 16 << 10
 	metricsInterval    = time.Second
 	gracefulStopWait   = 60 * time.Second
+	actionQueueSize    = 4
+	initialGeneration  = 1
 )
 
 type stoppableServer interface {
@@ -41,41 +44,20 @@ func runTUI(cfg config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	model := ui.New()
+	actions := make(chan ui.Action, actionQueueSize)
+	model := ui.New(actions, initialGeneration)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
-	logs := make(chan serverlog.Entry, logQueueSize)
-	go pumpLogs(ctx, program, logs)
 
-	stdoutReader, stdoutWriter := io.Pipe()
-	stderrReader, stderrWriter := io.Pipe()
-	go readServerOutput(stdoutReader, logs)
-	go readServerOutput(stderrReader, logs)
-
-	server, err := process.Start(process.Options{
-		Command: cfg.Server.Command,
-		WorkDir: cfg.Server.WorkDir,
-		Stdout:  stdoutWriter,
-		Stderr:  stderrWriter,
-	})
-	if err != nil {
-		_ = stdoutReader.Close()
-		_ = stdoutWriter.Close()
-		_ = stderrReader.Close()
-		_ = stderrWriter.Close()
+	controller := newServerController(ctx, cfg, program)
+	if err := controller.start(initialGeneration, false); err != nil {
 		return err
 	}
-
-	var javaFound atomic.Bool
-	go waitForServer(server, stdoutWriter, stderrWriter, &javaFound, program)
-	go findJava(ctx, server, &javaFound, program)
-	go streamGC(ctx, server.GCLogPath(), program)
+	go controller.handleActions(actions)
 
 	_, programErr := program.Run()
 	cancel()
 
-	stopErr := stopServer(server, javaFound.Load(), gracefulStopWait)
-	_ = stdoutReader.Close()
-	_ = stderrReader.Close()
+	stopErr := controller.shutdown()
 
 	if model.Err() != nil {
 		return model.Err()
@@ -87,6 +69,249 @@ func runTUI(cfg config.Config) error {
 		return nil
 	}
 	return programErr
+}
+
+type serverRuntime struct {
+	server       *process.Process
+	generation   uint64
+	javaFound    atomic.Bool
+	cancel       context.CancelFunc
+	stdoutReader *io.PipeReader
+	stdoutWriter *io.PipeWriter
+	stderrReader *io.PipeReader
+	stderrWriter *io.PipeWriter
+}
+
+func (runtime *serverRuntime) close() {
+	runtime.cancel()
+	_ = runtime.stdoutReader.Close()
+	_ = runtime.stdoutWriter.Close()
+	_ = runtime.stderrReader.Close()
+	_ = runtime.stderrWriter.Close()
+}
+
+type serverController struct {
+	ctx     context.Context
+	cfg     config.Config
+	program *tea.Program
+
+	operation sync.Mutex
+	currentMu sync.Mutex
+	current   *serverRuntime
+}
+
+func newServerController(
+	ctx context.Context,
+	cfg config.Config,
+	program *tea.Program,
+) *serverController {
+	return &serverController{
+		ctx:     ctx,
+		cfg:     cfg,
+		program: program,
+	}
+}
+
+func (controller *serverController) start(
+	generation uint64,
+	announce bool,
+) error {
+	if err := controller.ctx.Err(); err != nil {
+		return err
+	}
+	stdoutReader, stdoutWriter := io.Pipe()
+	stderrReader, stderrWriter := io.Pipe()
+	server, err := process.Start(process.Options{
+		Command: controller.cfg.Server.Command,
+		WorkDir: controller.cfg.Server.WorkDir,
+		Stdout:  stdoutWriter,
+		Stderr:  stderrWriter,
+	})
+	if err != nil {
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		_ = stderrReader.Close()
+		_ = stderrWriter.Close()
+		return err
+	}
+
+	runtimeCtx, runtimeCancel := context.WithCancel(controller.ctx)
+	runtime := &serverRuntime{
+		server:       server,
+		generation:   generation,
+		cancel:       runtimeCancel,
+		stdoutReader: stdoutReader,
+		stdoutWriter: stdoutWriter,
+		stderrReader: stderrReader,
+		stderrWriter: stderrWriter,
+	}
+	controller.currentMu.Lock()
+	controller.current = runtime
+	controller.currentMu.Unlock()
+
+	if announce {
+		controller.program.Send(ui.ServerStartedMsg{Generation: generation})
+	}
+
+	logs := make(chan serverlog.Entry, logQueueSize)
+	go pumpLogs(runtimeCtx, controller.program, logs, generation)
+	go readAndCloseServerOutput(stdoutReader, logs)
+	go readAndCloseServerOutput(stderrReader, logs)
+	go controller.waitForServer(runtime)
+	go findJava(
+		runtimeCtx,
+		server,
+		&runtime.javaFound,
+		controller.program,
+		generation,
+	)
+	go streamGC(
+		runtimeCtx,
+		server.GCLogPath(),
+		controller.program,
+		generation,
+	)
+	return nil
+}
+
+func (controller *serverController) handleActions(actions <-chan ui.Action) {
+	for {
+		select {
+		case <-controller.ctx.Done():
+			return
+		case action := <-actions:
+			switch action.Kind {
+			case ui.ActionRestart:
+				controller.restart()
+			case ui.ActionSendCommand:
+				controller.sendCommand(action)
+			}
+		}
+	}
+}
+
+func (controller *serverController) sendCommand(action ui.Action) {
+	controller.operation.Lock()
+	defer controller.operation.Unlock()
+
+	runtime := controller.currentRuntime()
+	if runtime == nil {
+		controller.program.Send(ui.ActionResultMsg{
+			Action: action,
+			Err:    errors.New("サーバーは停止しています"),
+		})
+		return
+	}
+	controller.program.Send(ui.ActionResultMsg{
+		Action: action,
+		Err:    runtime.server.Send(action.Command),
+	})
+}
+
+func (controller *serverController) restart() {
+	controller.operation.Lock()
+	defer controller.operation.Unlock()
+
+	runtime := controller.currentRuntime()
+	if runtime == nil {
+		controller.program.Send(ui.ActionResultMsg{
+			Action: ui.Action{Kind: ui.ActionRestart},
+			Err:    errors.New("サーバーは停止しています"),
+		})
+		return
+	}
+	if !runtime.javaFound.Load() {
+		controller.program.Send(ui.ActionResultMsg{
+			Action: ui.Action{Kind: ui.ActionRestart},
+			Err:    errors.New("javaプロセスの起動完了後に再起動できます"),
+		})
+		return
+	}
+	if !controller.detach(runtime) {
+		return
+	}
+
+	runtime.cancel()
+	controller.program.Send(ui.ServerRestartingMsg{})
+	if err := stopServer(
+		runtime.server,
+		runtime.javaFound.Load(),
+		gracefulStopWait,
+	); err != nil {
+		runtime.close()
+		controller.program.Send(ui.FatalMsg{Err: err})
+		return
+	}
+	runtime.close()
+	if controller.ctx.Err() != nil {
+		return
+	}
+
+	nextGeneration := runtime.generation + 1
+	if err := controller.start(nextGeneration, true); err != nil {
+		controller.program.Send(ui.FatalMsg{
+			Err: fmt.Errorf("サーバーを再起動する: %w", err),
+		})
+	}
+}
+
+func (controller *serverController) shutdown() error {
+	controller.operation.Lock()
+	defer controller.operation.Unlock()
+
+	runtime := controller.detachCurrent()
+	if runtime == nil {
+		return nil
+	}
+	runtime.cancel()
+	err := stopServer(
+		runtime.server,
+		runtime.javaFound.Load(),
+		gracefulStopWait,
+	)
+	runtime.close()
+	return err
+}
+
+func (controller *serverController) waitForServer(runtime *serverRuntime) {
+	waitErr := runtime.server.Wait()
+	_ = runtime.stdoutWriter.Close()
+	_ = runtime.stderrWriter.Close()
+	runtime.cancel()
+	if !controller.detach(runtime) {
+		return
+	}
+	if !runtime.javaFound.Load() && waitErr == nil {
+		waitErr = errors.New("起動スクリプトがjavaプロセスを開始せずに終了しました")
+	}
+	controller.program.Send(ui.ProcessExitedMsg{
+		Generation: runtime.generation,
+		Err:        waitErr,
+	})
+}
+
+func (controller *serverController) currentRuntime() *serverRuntime {
+	controller.currentMu.Lock()
+	defer controller.currentMu.Unlock()
+	return controller.current
+}
+
+func (controller *serverController) detachCurrent() *serverRuntime {
+	controller.currentMu.Lock()
+	defer controller.currentMu.Unlock()
+	runtime := controller.current
+	controller.current = nil
+	return runtime
+}
+
+func (controller *serverController) detach(runtime *serverRuntime) bool {
+	controller.currentMu.Lock()
+	defer controller.currentMu.Unlock()
+	if controller.current != runtime {
+		return false
+	}
+	controller.current = nil
+	return true
 }
 
 func stopServer(server stoppableServer, javaFound bool, wait time.Duration) error {
@@ -120,20 +345,12 @@ func stopServer(server stoppableServer, javaFound bool, wait time.Duration) erro
 	return nil
 }
 
-func waitForServer(
-	server *process.Process,
-	stdout *io.PipeWriter,
-	stderr *io.PipeWriter,
-	javaFound *atomic.Bool,
-	program *tea.Program,
+func readAndCloseServerOutput(
+	input *io.PipeReader,
+	logs chan serverlog.Entry,
 ) {
-	waitErr := server.Wait()
-	_ = stdout.Close()
-	_ = stderr.Close()
-	if !javaFound.Load() && waitErr == nil {
-		waitErr = errors.New("起動スクリプトがjavaプロセスを開始せずに終了しました")
-	}
-	program.Send(ui.ProcessExitedMsg{Err: waitErr})
+	defer input.Close()
+	readServerOutput(input, logs)
 }
 
 func findJava(
@@ -141,6 +358,7 @@ func findJava(
 	server *process.Process,
 	javaFound *atomic.Bool,
 	program *tea.Program,
+	generation uint64,
 ) {
 	finder := process.JavaFinder{
 		ProcessGroup:      server.ServerPID(),
@@ -152,18 +370,24 @@ func findJava(
 			return
 		}
 		program.Send(ui.FatalMsg{
-			Err: fmt.Errorf("javaプロセスの特定: %w", err),
+			Generation: generation,
+			Err:        fmt.Errorf("javaプロセスの特定: %w", err),
 		})
 		_ = server.Signal(syscall.SIGTERM)
 		return
 	}
 
 	javaFound.Store(true)
-	program.Send(ui.JavaFoundMsg{PID: pid})
-	go collectMetrics(ctx, pid, program)
+	program.Send(ui.JavaFoundMsg{Generation: generation, PID: pid})
+	go collectMetrics(ctx, pid, program, generation)
 }
 
-func collectMetrics(ctx context.Context, pid int, program *tea.Program) {
+func collectMetrics(
+	ctx context.Context,
+	pid int,
+	program *tea.Program,
+	generation uint64,
+) {
 	ticker := time.NewTicker(metricsInterval)
 	defer ticker.Stop()
 
@@ -193,7 +417,11 @@ func collectMetrics(ctx context.Context, pid int, program *tea.Program) {
 		}
 
 		memory, _ := procstats.ReadMemory(pid)
-		program.Send(ui.MetricsMsg{JVM: metrics, Memory: memory})
+		program.Send(ui.MetricsMsg{
+			Generation: generation,
+			JVM:        metrics,
+			Memory:     memory,
+		})
 
 		select {
 		case <-ctx.Done():
@@ -203,7 +431,12 @@ func collectMetrics(ctx context.Context, pid int, program *tea.Program) {
 	}
 }
 
-func streamGC(ctx context.Context, path string, program *tea.Program) {
+func streamGC(
+	ctx context.Context,
+	path string,
+	program *tea.Program,
+	generation uint64,
+) {
 	events := make(chan gclog.Event, 4)
 	go func() {
 		_ = (gclog.Tailer{Path: path}).Run(ctx, events)
@@ -214,7 +447,7 @@ func streamGC(ctx context.Context, path string, program *tea.Program) {
 		case <-ctx.Done():
 			return
 		case event := <-events:
-			program.Send(ui.GCMsg{Event: event})
+			program.Send(ui.GCMsg{Generation: generation, Event: event})
 		}
 	}
 }
@@ -223,13 +456,17 @@ func pumpLogs(
 	ctx context.Context,
 	program *tea.Program,
 	logs <-chan serverlog.Entry,
+	generation uint64,
 ) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case entry := <-logs:
-			program.Send(ui.LogMsg{Entry: entry})
+			program.Send(ui.LogMsg{
+				Generation: generation,
+				Entry:      entry,
+			})
 		}
 	}
 }

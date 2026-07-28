@@ -71,7 +71,14 @@ panes = ["stats", "chat", "commands", "log"]
 hso -config /path/to/hso.toml
 ```
 
-コマンド入力と restart / stop 操作は次の実装フェーズで有効化する。
+コンソール欄でコマンドを入力し、Enter で Minecraft サーバーへ送信する。
+入力は 512 文字を上限とし、操作キューも固定長にしてメモリ使用量を制限する。
+↓ または Tab で `restart` / `stop` にフォーカスを移し、← → で選択、
+Enter で実行する。↑ または Esc で入力欄へ戻る。
+
+`restart` は Minecraft の `stop` コマンドによる正常終了を待ってから同じ
+起動スクリプトを再実行する。Java プロセスをまだ特定できていない起動途中
+では、安全に停止できないため `restart` を受け付けない。
 
 ## ビルド
 
