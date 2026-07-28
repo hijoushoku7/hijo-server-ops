@@ -86,7 +86,11 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case LogMsg:
 		model.addLog(message.Entry)
 	case MetricsMsg:
-		model.metrics = message.JVM
+		model.metrics = hsperfdata.Metrics{
+			Heap:    message.JVM.Heap,
+			Uptime:  message.JVM.Uptime,
+			Threads: message.JVM.Threads,
+		}
 		model.memory = message.Memory
 		model.addSample(message)
 	case GCMsg:

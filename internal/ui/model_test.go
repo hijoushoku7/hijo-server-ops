@@ -121,6 +121,20 @@ func TestModelReleasesDisplayCachesWhenTerminalBecomesTooSmall(t *testing.T) {
 	}
 }
 
+func TestModelDoesNotRetainMetricsThatAreNotDisplayed(t *testing.T) {
+	model := New()
+	_, _ = model.Update(MetricsMsg{
+		JVM: hsperfdata.Metrics{
+			Generations: []hsperfdata.Generation{{Name: "young"}},
+			Collectors:  []hsperfdata.Collector{{Name: "G1 young"}},
+		},
+	})
+
+	if model.metrics.Generations != nil || model.metrics.Collectors != nil {
+		t.Fatalf("unused metrics were retained: %#v", model.metrics)
+	}
+}
+
 func TestModelReturnsProcessError(t *testing.T) {
 	model := New()
 	want := errors.New("server failed")
