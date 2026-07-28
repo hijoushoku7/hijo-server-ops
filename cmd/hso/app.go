@@ -34,6 +34,14 @@ const (
 	initialGeneration  = 1
 )
 
+var errHeapCountersUnavailable = errors.New(
+	"hsperfdataにヒープ使用量カウンタがありません",
+)
+
+var errRSSUnavailable = errors.New(
+	"/procのstatusにVmRSSがありません",
+)
+
 type stoppableServer interface {
 	Done() <-chan struct{}
 	Send(string) error
@@ -400,10 +408,13 @@ func collectMetrics(
 
 	for {
 		var metrics hsperfdata.Metrics
+		var jvmErr error
 		if reader == nil {
 			opened, err := hsperfdata.Open(pid)
 			if err == nil {
 				reader = opened
+			} else {
+				jvmErr = err
 			}
 		}
 		if reader != nil {
@@ -411,16 +422,26 @@ func collectMetrics(
 			if err != nil {
 				_ = reader.Close()
 				reader = nil
+				jvmErr = err
 			} else {
 				metrics = snapshot.Metrics()
+				if !metrics.Heap.Used.Available ||
+					!metrics.Heap.Committed.Available {
+					jvmErr = errHeapCountersUnavailable
+				}
 			}
 		}
 
-		memory, _ := procstats.ReadMemory(pid)
+		memory, memoryErr := procstats.ReadMemory(pid)
+		if memoryErr == nil && !memory.RSS.Available {
+			memoryErr = errRSSUnavailable
+		}
 		program.Send(ui.MetricsMsg{
-			Generation: generation,
-			JVM:        metrics,
-			Memory:     memory,
+			Generation:  generation,
+			JVM:         metrics,
+			Memory:      memory,
+			JVMError:    errorText(jvmErr),
+			MemoryError: errorText(memoryErr),
 		})
 
 		select {
@@ -429,6 +450,13 @@ func collectMetrics(
 		case <-ticker.C:
 		}
 	}
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func streamGC(

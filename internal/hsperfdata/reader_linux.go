@@ -38,6 +38,7 @@ func openAtUID(tempDir string, pid int, uid uint32) (*Reader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("hsperfdataを探す: %w", err)
 	}
+	var candidateErr error
 	for _, path := range matches {
 		if !ownedBy(filepath.Dir(path), uid) {
 			continue
@@ -46,6 +47,12 @@ func openAtUID(tempDir string, pid int, uid uint32) (*Reader, error) {
 		if err == nil {
 			return reader, nil
 		}
+		if candidateErr == nil {
+			candidateErr = err
+		}
+	}
+	if candidateErr != nil {
+		return nil, candidateErr
 	}
 	return nil, fmt.Errorf("%w: PID %d", ErrNotFound, pid)
 }

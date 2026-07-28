@@ -45,7 +45,7 @@ type Metrics struct {
 func (s Snapshot) Metrics() Metrics {
 	var metrics Metrics
 
-	generationCount, generationsAvailable := s.Long("sun.gc.generations")
+	generationCount, generationsAvailable := s.Long("sun.gc.policy.generations")
 	var (
 		heapUsed      []Number
 		heapCommitted []Number
@@ -100,7 +100,7 @@ func (s Snapshot) Metrics() Metrics {
 
 	metrics.Threads = number(s, "java.threads.live")
 
-	collectorCount, _ := s.Long("sun.gc.collectors")
+	collectorCount, _ := s.Long("sun.gc.policy.collectors")
 	for index := int64(0); index < collectorCount; index++ {
 		prefix := fmt.Sprintf("sun.gc.collector.%d", index)
 		name, _ := s.String(prefix + ".name")

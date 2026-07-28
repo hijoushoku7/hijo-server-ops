@@ -62,7 +62,7 @@ func Parse(data []byte) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if order.Uint32(data[0:4]) != magic {
+	if binary.BigEndian.Uint32(data[0:4]) != magic {
 		return Snapshot{}, errors.New("hsperfdataのマジック値が不正です")
 	}
 	if data[5] != 2 {

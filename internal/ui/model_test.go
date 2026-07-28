@@ -135,6 +135,45 @@ func TestModelDoesNotRetainMetricsThatAreNotDisplayed(t *testing.T) {
 	}
 }
 
+func TestModelReportsMetricFailureOnceAndRecovery(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+
+	failure := MetricsMsg{JVMError: "hsperfdataが見つかりません"}
+	_, _ = model.Update(failure)
+	_, _ = model.Update(failure)
+
+	if model.logs.Len() != 1 {
+		t.Fatalf("failure logs = %d", model.logs.Len())
+	}
+	if !strings.Contains(model.statsTitle(), "metrics degraded") {
+		t.Fatalf("title = %q", model.statsTitle())
+	}
+	if !strings.Contains(strings.Join(model.statsLines(), "\n"), failure.JVMError) {
+		t.Fatalf("stats = %q", model.statsLines())
+	}
+
+	_, _ = model.Update(MetricsMsg{})
+	if model.logs.Len() != 2 ||
+		!strings.Contains(model.logs.At(1), "heap recovered") {
+		t.Fatalf("logs = %q, %q", model.logs.At(0), model.logs.At(1))
+	}
+	if strings.Contains(model.statsTitle(), "metrics degraded") {
+		t.Fatalf("title = %q", model.statsTitle())
+	}
+}
+
+func TestModelBoundsCurrentMetricError(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(MetricsMsg{
+		JVMError: strings.Repeat("あ", maxMetricErrorRunes+10),
+	})
+
+	if len([]rune(model.jvmMetricError)) != maxMetricErrorRunes {
+		t.Fatalf("error runes = %d", len([]rune(model.jvmMetricError)))
+	}
+}
+
 func TestModelReturnsProcessError(t *testing.T) {
 	model := newTestModel()
 	want := errors.New("server failed")
