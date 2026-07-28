@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -27,7 +28,14 @@ const (
 	outputBufferSize   = 4 << 10
 	maxOutputLineBytes = 16 << 10
 	metricsInterval    = time.Second
+	gracefulStopWait   = 60 * time.Second
 )
+
+type stoppableServer interface {
+	Done() <-chan struct{}
+	Send(string) error
+	Signal(os.Signal) error
+}
 
 func runTUI(cfg config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -65,22 +73,51 @@ func runTUI(cfg config.Config) error {
 	_, programErr := program.Run()
 	cancel()
 
-	select {
-	case <-server.Done():
-	default:
-		_ = server.Signal(syscall.SIGTERM)
-		<-server.Done()
-	}
+	stopErr := stopServer(server, javaFound.Load(), gracefulStopWait)
 	_ = stdoutReader.Close()
 	_ = stderrReader.Close()
 
 	if model.Err() != nil {
 		return model.Err()
 	}
+	if stopErr != nil {
+		return stopErr
+	}
 	if ui.IsExpectedExit(programErr) {
 		return nil
 	}
 	return programErr
+}
+
+func stopServer(server stoppableServer, javaFound bool, wait time.Duration) error {
+	select {
+	case <-server.Done():
+		return nil
+	default:
+	}
+
+	if javaFound {
+		if err := server.Send("stop"); err == nil {
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-server.Done():
+				return nil
+			case <-timer.C:
+			}
+		}
+	}
+
+	if err := server.Signal(syscall.SIGTERM); err != nil {
+		select {
+		case <-server.Done():
+			return nil
+		default:
+			return fmt.Errorf("サーバーを停止する: %w", err)
+		}
+	}
+	<-server.Done()
+	return nil
 }
 
 func waitForServer(
