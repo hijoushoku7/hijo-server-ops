@@ -51,6 +51,12 @@ hso
 
 ## 設定
 
+テンプレートをコピーして `hso.toml` を作る。
+
+```bash
+cp hso.toml.example hso.toml
+```
+
 `hso.toml`
 
 ```toml
