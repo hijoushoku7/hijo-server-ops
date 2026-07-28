@@ -1,0 +1,6 @@
+# このファイルを hso.toml にコピーし、起動スクリプトを指定する。
+[server]
+command = "./run.sh"
+
+# hso.toml と Minecraft サーバーが別ディレクトリにある場合だけ指定する。
+# workdir = "/srv/minecraft"
