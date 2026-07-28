@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReadMemoryCgroupV2FromNonstandardMount(t *testing.T) {
@@ -43,6 +44,36 @@ func TestReadMemoryCurrentProcess(t *testing.T) {
 	}
 	if !memory.RSS.Available || memory.RSS.Value == 0 {
 		t.Fatalf("RSS = %#v", memory.RSS)
+	}
+}
+
+func TestReadCPUTimeCurrentProcess(t *testing.T) {
+	cpuTime, err := ReadCPUTime(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cpuTime.Available || cpuTime.Value < 0 {
+		t.Fatalf("CPU time = %#v", cpuTime)
+	}
+}
+
+func TestParseCPUTimeAllowsParenthesesInCommand(t *testing.T) {
+	fields := make([]string, 13)
+	for index := range fields {
+		fields[index] = "0"
+	}
+	fields[0] = "S"
+	fields[11] = "125"
+	fields[12] = "75"
+
+	cpuTime, err := parseCPUTime([]byte(
+		"123 (server ) name) " + strings.Join(fields, " ") + "\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cpuTime.Available || cpuTime.Value != 2*time.Second {
+		t.Fatalf("CPU time = %#v", cpuTime)
 	}
 }
 

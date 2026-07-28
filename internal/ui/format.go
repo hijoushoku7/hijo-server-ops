@@ -106,6 +106,13 @@ func formatFrequency(value float64, available bool) string {
 	return fmt.Sprintf("%.2f/min", value)
 }
 
+func formatCPU(value float64, available bool) string {
+	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.0f%%", value)
+}
+
 func fitLine(value string, width int) string {
 	value = truncate(value, width)
 	visible := stringWidth(value)

@@ -1,5 +1,6 @@
 /hso
 /dist/
+/mc-server-test/
 *.test
 *.out
 

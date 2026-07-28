@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Number struct {
@@ -27,6 +28,11 @@ type Memory struct {
 	CgroupLimit   Limit
 }
 
+type Duration struct {
+	Value     time.Duration
+	Available bool
+}
+
 type cgroupMembership struct {
 	version int
 	path    string
@@ -40,6 +46,55 @@ type cgroupMount struct {
 
 func ReadMemory(pid int) (Memory, error) {
 	return readMemoryAt("/proc", "/proc/self/mountinfo", pid)
+}
+
+func ReadCPUTime(pid int) (Duration, error) {
+	return readCPUTimeAt("/proc", pid)
+}
+
+func readCPUTimeAt(procRoot string, pid int) (Duration, error) {
+	if pid <= 0 {
+		return Duration{}, fmt.Errorf("PIDが不正です: %d", pid)
+	}
+	data, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return Duration{}, fmt.Errorf("プロセスのstatを読む: %w", err)
+	}
+	return parseCPUTime(data)
+}
+
+func parseCPUTime(data []byte) (Duration, error) {
+	line := strings.TrimSpace(string(data))
+	close := strings.LastIndexByte(line, ')')
+	if close < 0 {
+		return Duration{}, errors.New("プロセスのstat形式が不正です")
+	}
+	fields := strings.Fields(line[close+1:])
+	if len(fields) < 13 {
+		return Duration{}, errors.New("プロセスのstatフィールドが不足しています")
+	}
+	user, err := strconv.ParseUint(fields[11], 10, 64)
+	if err != nil {
+		return Duration{}, fmt.Errorf("プロセスのuser CPU時間を読む: %w", err)
+	}
+	system, err := strconv.ParseUint(fields[12], 10, 64)
+	if err != nil {
+		return Duration{}, fmt.Errorf("プロセスのsystem CPU時間を読む: %w", err)
+	}
+	if user > ^uint64(0)-system {
+		return Duration{}, errors.New("プロセスのCPU時間が大きすぎます")
+	}
+	// Linuxのamd64/arm64では/procのCPU時間にUSER_HZ=100を使う。
+	const clockTicksPerSecond = uint64(100)
+	ticks := user + system
+	seconds := ticks / clockTicksPerSecond
+	if seconds > uint64((1<<63-1)/int64(time.Second)) {
+		return Duration{}, errors.New("プロセスのCPU時間が大きすぎます")
+	}
+	value := time.Duration(seconds)*time.Second +
+		time.Duration(ticks%clockTicksPerSecond)*time.Second/
+			time.Duration(clockTicksPerSecond)
+	return Duration{Value: value, Available: true}, nil
 }
 
 func readMemoryAt(procRoot, mountInfoPath string, pid int) (Memory, error) {
