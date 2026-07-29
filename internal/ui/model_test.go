@@ -2,10 +2,12 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
@@ -16,15 +18,19 @@ func TestModelBoundsLogsAndSamplesToScreen(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	for index := 0; index < model.layout.logLines()+2; index++ {
+	for index := 0; index < historyLines+2; index++ {
 		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
 			Kind:    serverlog.KindOther,
-			Message: strings.Repeat("x", 200) + string(rune('a'+index)),
+			Message: strings.Repeat("x", 200) + string(rune('a'+index%26)),
 		}})
 	}
 
-	if model.logs.Len() != model.layout.logLines() {
-		t.Fatalf("logs = %d, limit = %d", model.logs.Len(), model.layout.logLines())
+	if model.logs.Len() != historyLines {
+		t.Fatalf("logs = %d, limit = %d", model.logs.Len(), historyLines)
+	}
+	if window := model.logs.Window(model.layout.logLines()); len(window) !=
+		model.layout.logLines() {
+		t.Fatalf("window = %d, viewport = %d", len(window), model.layout.logLines())
 	}
 	if stringWidth(model.logs.At(0)) > model.layout.rightContentWidth() {
 		t.Fatalf("line width = %d", stringWidth(model.logs.At(0)))
@@ -211,13 +217,13 @@ func TestModelSendsBoundedCommandInput(t *testing.T) {
 	}
 }
 
-func TestModelSelectsRestartAndStopWithArrowKeys(t *testing.T) {
+func TestModelSelectsRestartAndStopWithTab(t *testing.T) {
 	actions := make(chan Action, 1)
 	model := New(actions, 0)
 
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	if model.focus != focusRestart {
-		t.Fatalf("focus = %d", model.focus)
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if model.consoleFocus != consoleRestart {
+		t.Fatalf("consoleFocus = %d", model.consoleFocus)
 	}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if action := <-actions; action.Kind != ActionRestart {
@@ -225,13 +231,178 @@ func TestModelSelectsRestartAndStopWithArrowKeys(t *testing.T) {
 	}
 
 	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionRestart}})
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if model.focus != focusStop {
-		t.Fatalf("focus = %d", model.focus)
+	if model.consoleFocus != consoleStop {
+		t.Fatalf("consoleFocus = %d", model.consoleFocus)
 	}
 	if _, ok := command().(tea.QuitMsg); !ok {
 		t.Fatalf("command = %T", command())
+	}
+}
+
+func TestModelMovesBetweenPanelsInSelectMode(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Console フォーカス中は矢印がパネル移動に使われない。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if model.panel != panelConsole || model.mode != modeFocus {
+		t.Fatalf("panel = %d, mode = %d", model.panel, model.mode)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.mode != modeSelect {
+		t.Fatalf("mode = %d", model.mode)
+	}
+
+	moves := []struct {
+		code rune
+		want panel
+	}{
+		{tea.KeyUp, panelCommands},
+		{tea.KeyUp, panelChat},
+		{tea.KeyRight, panelLog},
+		{tea.KeyLeft, panelChat},
+		{tea.KeyDown, panelCommands},
+		{tea.KeyDown, panelConsole},
+	}
+	for _, move := range moves {
+		_, _ = model.Update(tea.KeyPressMsg{Code: move.code})
+		if model.panel != move.want {
+			t.Fatalf("panel = %d, want %d", model.panel, move.want)
+		}
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.mode != modeFocus || model.consoleFocus != consoleInput {
+		t.Fatalf("mode = %d, consoleFocus = %d", model.mode, model.consoleFocus)
+	}
+}
+
+func TestModelScrollsFocusedBufferAndKeepsPositionOnNewLines(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	viewport := model.layout.logLines()
+	for index := 0; index < viewport*3; index++ {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:    serverlog.KindOther,
+			Message: fmt.Sprintf("line %d", index),
+		}})
+	}
+
+	// Log パネルへフォーカスする。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if model.panel != panelLog {
+		t.Fatalf("panel = %d", model.panel)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	if model.logs.Offset() != viewport {
+		t.Fatalf("offset = %d, viewport = %d", model.logs.Offset(), viewport)
+	}
+	top := model.logs.Window(viewport)[0]
+
+	// 遡っている間は新着で表示が流れない。
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind:    serverlog.KindOther,
+		Message: "newest",
+	}})
+	if got := model.logs.Window(viewport)[0]; got != top {
+		t.Fatalf("window shifted: %q -> %q", top, got)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+	if model.logs.Offset() != 0 {
+		t.Fatalf("offset = %d", model.logs.Offset())
+	}
+	window := model.logs.Window(viewport)
+	if window[len(window)-1] != "newest" {
+		t.Fatalf("tail = %q", window[len(window)-1])
+	}
+}
+
+func TestModelReturnsToLatestWhenFocusIsReleased(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	viewport := model.layout.logLines()
+	for index := 0; index < viewport*3; index++ {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:    serverlog.KindOther,
+			Message: fmt.Sprintf("line %d", index),
+		}})
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	if model.logs.Offset() == 0 {
+		t.Fatalf("buffer did not scroll back")
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.mode != modeSelect {
+		t.Fatalf("mode = %d", model.mode)
+	}
+	if model.logs.Offset() != 0 {
+		t.Fatalf("offset = %d, want 0", model.logs.Offset())
+	}
+	if !strings.Contains(model.View().Content, "line "+fmt.Sprint(viewport*3-1)) {
+		t.Fatalf("view does not show the latest line")
+	}
+}
+
+func TestModelKeybarReflectsMode(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+
+	if !strings.Contains(model.keybar(), "execute") {
+		t.Fatalf("console keybar = %q", model.keybar())
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !strings.Contains(model.keybar(), "focus") {
+		t.Fatalf("select keybar = %q", model.keybar())
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !strings.Contains(model.keybar(), "page") {
+		t.Fatalf("buffer keybar = %q", model.keybar())
+	}
+}
+
+func TestModelHighlightsFocusedPanelFrame(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	focusedBorder := model.frameFor(panelConsole).render(focusedFrame.topLeft + focusedFrame.horizontal)
+	plainBorder := model.frameFor(panelLog).
+		render(plainFrame.topLeft + plainFrame.horizontal)
+	if focusedBorder == plainBorder {
+		t.Fatalf("focused and plain borders are identical: %q", focusedBorder)
+	}
+
+	content := model.View().Content
+	if !strings.Contains(content, focusedBorder) {
+		t.Fatalf("view does not contain the focused border")
+	}
+	if !strings.Contains(content, plainBorder) {
+		t.Fatalf("view does not contain the plain border")
+	}
+
+	// 選択モードへ抜けると、同じ Console の枠が別の色になる。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	selectedBorder := model.frameFor(panelConsole).
+		render(selectedFrame.topLeft + selectedFrame.horizontal)
+	if selectedBorder == focusedBorder {
+		t.Fatalf("selected border is not distinguishable from focused")
+	}
+	if !strings.Contains(model.View().Content, selectedBorder) {
+		t.Fatalf("view does not contain the selected border")
 	}
 }
 
@@ -296,8 +467,296 @@ func TestTailKeepsVisibleRightEdge(t *testing.T) {
 	}
 }
 
+func TestModelShowsPlayersInTheirOwnPanel(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	for _, name := range []string{"alice", "bob", "carol"} {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:   serverlog.KindPlayerJoin,
+			Player: name,
+		}})
+	}
+
+	panelContent := stripANSI(model.renderPlayersPanel())
+	for _, name := range []string{"alice", "bob", "carol"} {
+		if !strings.Contains(panelContent, name) {
+			t.Fatalf("players panel is missing %q:\n%s", name, panelContent)
+		}
+	}
+
+	// 名前の列挙は Stats 行から消え、人数だけが残る。
+	stats := strings.Join(model.statsLines(), "\n")
+	if !strings.Contains(stats, "Players 3") {
+		t.Fatalf("stats = %q", stats)
+	}
+	if strings.Contains(stats, "alice") {
+		t.Fatalf("stats still lists player names: %q", stats)
+	}
+}
+
+func TestModelScrollsPlayersFromTheTop(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	viewport := model.layout.playerLines()
+	for index := 0; index < viewport+3; index++ {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:   serverlog.KindPlayerJoin,
+			Player: fmt.Sprintf("player%02d", index),
+		}})
+	}
+	focusPlayers(t, model)
+
+	// 一覧は先頭から並ぶので、初期状態は先頭が見えている。
+	if !strings.Contains(stripANSI(model.renderPlayersPanel()), "player00") {
+		t.Fatalf("players panel does not start at the top")
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+	if model.playerCursor != viewport+2 {
+		t.Fatalf("cursor = %d, want %d", model.playerCursor, viewport+2)
+	}
+	content := stripANSI(model.renderPlayersPanel())
+	if strings.Contains(content, "player00") {
+		t.Fatalf("scrolled panel still shows the first player:\n%s", content)
+	}
+	if !strings.Contains(content, fmt.Sprintf("player%02d", viewport+2)) {
+		t.Fatalf("panel does not show the last player:\n%s", content)
+	}
+
+	// Esc は先頭へ戻す。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.playerCursor != 0 || model.mode != modeSelect {
+		t.Fatalf("cursor = %d, mode = %d", model.playerCursor, model.mode)
+	}
+}
+
+func TestModelPutsPlayerCommandIntoTheConsole(t *testing.T) {
+	actions := make(chan Action, 4)
+	model := New(actions, 0)
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	for _, name := range []string{"alice", "bob"} {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:   serverlog.KindPlayerJoin,
+			Player: name,
+		}})
+	}
+	focusPlayers(t, model)
+
+	// bob を選んでコマンド一覧へ。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.playerStage != playerStageCommands || model.playerTarget != "bob" {
+		t.Fatalf("stage = %d, target = %q", model.playerStage, model.playerTarget)
+	}
+	// コマンド一覧はモーダルとして重ねて出る。背後のプレイヤー一覧は残る。
+	box, _, _ := model.commandModal()
+	if !strings.Contains(stripANSI(box), "bob") ||
+		!strings.Contains(stripANSI(box), "kick") {
+		t.Fatalf("command modal:\n%s", stripANSI(box))
+	}
+	view := stripANSI(model.View().Content)
+	if !strings.Contains(view, "alice") || !strings.Contains(view, "kick") {
+		t.Fatalf("view does not show the modal over the player list:\n%s", view)
+	}
+
+	// kick を選ぶと、即実行ではなく Console に組み立てられる。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if string(model.input) != "kick bob " {
+		t.Fatalf("input = %q", string(model.input))
+	}
+	if model.panel != panelConsole || model.consoleFocus != consoleInput {
+		t.Fatalf("panel = %d, focus = %d", model.panel, model.consoleFocus)
+	}
+	select {
+	case action := <-actions:
+		t.Fatalf("command was sent without confirmation: %#v", action)
+	default:
+	}
+
+	// もう一度 Enter を押してはじめて送信される。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	action := <-actions
+	if action.Kind != ActionSendCommand || action.Command != "kick bob" {
+		t.Fatalf("action = %#v", action)
+	}
+}
+
+func TestModelKeepsViewRectangularWithTheCommandModal(t *testing.T) {
+	for _, size := range [][2]int{{72, 21}, {80, 24}, {120, 40}} {
+		model := newTestModel()
+		_, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		for index := 0; index < 6; index++ {
+			_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+				Kind:   serverlog.KindPlayerJoin,
+				Player: fmt.Sprintf("player%02d", index),
+			}})
+		}
+		focusPlayers(t, model)
+
+		// どのプレイヤー行から開いても、モーダルは画面内に収まる。
+		for cursor := 0; cursor < 6; cursor++ {
+			model.playerCursor = cursor
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+			lines := strings.Split(model.View().Content, "\n")
+			if len(lines) != size[1] {
+				t.Fatalf("%dx%d cursor %d: height = %d",
+					size[0], size[1], cursor, len(lines))
+			}
+			for index, line := range lines {
+				if width := stringWidth(line); width != size[0] {
+					t.Fatalf("%dx%d cursor %d: line %d width = %d: %q",
+						size[0], size[1], cursor, index, width, stripANSI(line))
+				}
+			}
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+		}
+	}
+}
+
+func TestOverlayReplacesTheTargetSpanOnly(t *testing.T) {
+	base := "0123456789\nabcdefghij\nABCDEFGHIJ"
+
+	got := stripANSI(overlay(base, "XX\nYY", 3, 1))
+
+	want := "0123456789\nabcXXfghij\nABCYYFGHIJ"
+	if got != want {
+		t.Fatalf("overlay = %q, want %q", got, want)
+	}
+}
+
+func TestOverlayKeepsWidthAcrossWideCharacters(t *testing.T) {
+	// 全角文字の途中で切ると、左は文字が落ち、右は文字が残る。
+	// どちらの側でも行幅が変わらないことを全位置で確かめる。
+	base := "日本語テスト"
+	for x := 0; x <= stringWidth(base); x++ {
+		got := stripANSI(overlay(base, "XX", x, 0))
+		if width := stringWidth(got); width != stringWidth(base) {
+			t.Fatalf("x = %d: width = %d, want %d: %q",
+				x, width, stringWidth(base), got)
+		}
+	}
+}
+
+func TestOverlayIgnoresRowsOutsideTheBase(t *testing.T) {
+	base := "0123\n4567"
+
+	got := stripANSI(overlay(base, "XX\nYY\nZZ", 1, 1))
+
+	// 下地からはみ出す 2 行目以降は捨てられ、行数は増えない。
+	if want := "0123\n4XX7"; got != want {
+		t.Fatalf("overlay = %q, want %q", got, want)
+	}
+}
+
+func TestModelLeavesPlayerCommandsWithEscape(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind:   serverlog.KindPlayerJoin,
+		Player: "alice",
+	}})
+	focusPlayers(t, model)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.playerStage != playerStagePlayers || model.mode != modeFocus {
+		t.Fatalf("stage = %d, mode = %d", model.playerStage, model.mode)
+	}
+
+	// もう一度 Esc で選択モードへ抜ける。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.mode != modeSelect {
+		t.Fatalf("mode = %d", model.mode)
+	}
+}
+
+func TestModelKeepsPlayerCursorInRangeWhenPlayersLeave(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	for _, name := range []string{"alice", "bob", "carol"} {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:   serverlog.KindPlayerJoin,
+			Player: name,
+		}})
+	}
+	focusPlayers(t, model)
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+
+	for _, name := range []string{"carol", "bob"} {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:   serverlog.KindPlayerLeave,
+			Player: name,
+		}})
+	}
+	if model.playerCursor != 0 {
+		t.Fatalf("cursor = %d, want 0", model.playerCursor)
+	}
+	if !strings.Contains(stripANSI(model.renderPlayersPanel()), "alice") {
+		t.Fatalf("players panel lost the remaining player")
+	}
+}
+
+// focusPlayers は Console から Players パネルへフォーカスを移す。
+func focusPlayers(t *testing.T, model *Model) {
+	t.Helper()
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	for index := 0; index < 3; index++ {
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	}
+	if model.panel != panelPlayers {
+		t.Fatalf("panel = %d", model.panel)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.mode != modeFocus {
+		t.Fatalf("mode = %d", model.mode)
+	}
+}
+
+func TestModelViewKeepsRectangularWithThreeTopPanels(t *testing.T) {
+	for _, size := range [][2]int{{72, 21}, {80, 24}, {120, 40}} {
+		model := newTestModel()
+		_, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		_, _ = model.Update(MetricsMsg{
+			JVM: hsperfdata.Metrics{Heap: hsperfdata.Memory{
+				Used: hsperfdata.Number{Value: 2 << 30, Available: true},
+				Max:  hsperfdata.Number{Value: 4 << 30, Available: true},
+			}},
+			Memory: procstats.Memory{
+				RSS:       procstats.Number{Value: 3 << 30, Available: true},
+				HostTotal: procstats.Number{Value: 16 << 30, Available: true},
+			},
+			CPU:          125,
+			CPUAvailable: true,
+		})
+
+		content := model.View().Content
+		lines := strings.Split(content, "\n")
+		if len(lines) != size[1] {
+			t.Fatalf("%dx%d: height = %d", size[0], size[1], len(lines))
+		}
+		for index, line := range lines {
+			if width := stringWidth(line); width != size[0] {
+				t.Fatalf(
+					"%dx%d: line %d width = %d: %q",
+					size[0], size[1], index, width, stripANSI(line),
+				)
+			}
+		}
+		if !strings.Contains(content, "Meters") ||
+			!strings.Contains(content, "Players") {
+			t.Fatalf("%dx%d: view is missing the new panels", size[0], size[1])
+		}
+	}
+}
+
 func newTestModel() *Model {
 	return New(make(chan Action, 8), 0)
+}
+
+func stripANSI(value string) string {
+	return ansi.Strip(value)
 }
 
 func containsBraille(value string) bool {

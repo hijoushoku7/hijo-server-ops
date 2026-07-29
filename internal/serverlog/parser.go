@@ -72,6 +72,11 @@ var (
 	commandPattern = regexp.MustCompile(
 		`^(\S+)\s+issued server command:\s+(.+)$`,
 	)
+	// バニラの sendCommandFeedback による `[実行者: 結果]` 形式。
+	// プレイヤーが実行したコマンドはこの形でしかログに出ないことが多い。
+	commandFeedbackPattern = regexp.MustCompile(
+		`^\[([^\[\]:]+):\s*(.+)\]$`,
+	)
 	joinPattern = regexp.MustCompile(
 		`^(\S+)\s+joined the game$`,
 	)
@@ -112,6 +117,12 @@ func Parse(line string) Entry {
 		return entry
 	}
 	if match := commandPattern.FindStringSubmatch(message); match != nil {
+		entry.Kind = KindCommand
+		entry.Player = match[1]
+		entry.Command = match[2]
+		return entry
+	}
+	if match := commandFeedbackPattern.FindStringSubmatch(message); match != nil {
 		entry.Kind = KindCommand
 		entry.Player = match[1]
 		entry.Command = match[2]

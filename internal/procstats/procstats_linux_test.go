@@ -164,6 +164,52 @@ func TestReadMemoryRejectsMalformedRSS(t *testing.T) {
 	}
 }
 
+func TestReadMemTotalConvertsKibibytes(t *testing.T) {
+	procRoot := t.TempDir()
+	writeProcessFile(t, procRoot, 123, "status", "VmRSS:\t10 kB\n")
+	writeProcessFile(t, procRoot, 123, "cgroup", "")
+	mountInfo := writeMountInfo(t, procRoot, "")
+	meminfo := filepath.Join(procRoot, "meminfo")
+	content := "MemTotal:       16384000 kB\nMemFree:         1000 kB\n"
+	if err := os.WriteFile(meminfo, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	memory, err := readMemoryAt(procRoot, mountInfo, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNumber(t, memory.HostTotal, 16384000*1024)
+}
+
+func TestReadMemTotalKeepsUnreadableValuesUnavailable(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "missing file"},
+		{name: "no MemTotal", content: "MemFree: 1000 kB\n"},
+		{name: "wrong unit", content: "MemTotal: 16384000 MB\n"},
+		{name: "missing unit", content: "MemTotal: 16384000\n"},
+		{name: "not a number", content: "MemTotal: unknown kB\n"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "meminfo")
+			if test.content != "" {
+				if err := os.WriteFile(path, []byte(test.content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if got := readMemTotal(path); got.Available {
+				t.Fatalf("HostTotal = %#v", got)
+			}
+		})
+	}
+}
+
 func TestResolveCgroupMountRoot(t *testing.T) {
 	mount := cgroupMount{
 		root:       "/parent",
