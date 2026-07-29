@@ -96,4 +96,5 @@ CGO_ENABLED=0 go build -ldflags="-s -w" -o hso ./cmd/hso
 
 ## ドキュメント
 
-詳細な仕様・技術調査は [docs/spec.md](docs/spec.md) を参照。
+- [ビルド手順](docs/build.md)
+- [仕様・技術調査](docs/spec.md)
