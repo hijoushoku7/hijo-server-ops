@@ -43,6 +43,53 @@ func TestParseForgeCommand(t *testing.T) {
 	}
 }
 
+func TestParseCommandFeedback(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		player  string
+		command string
+	}{
+		{
+			name:    "gamemode",
+			message: "[alice: Set own game mode to Creative Mode]",
+			player:  "alice",
+			command: "Set own game mode to Creative Mode",
+		},
+		{
+			name:    "no space after colon",
+			message: "[alice:changed gamemode]",
+			player:  "alice",
+			command: "changed gamemode",
+		},
+		{
+			name:    "nested brackets",
+			message: "[alice: Given [Diamond] * 1 to bob]",
+			player:  "alice",
+			command: "Given [Diamond] * 1 to bob",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := Parse("[12:34:56] [Server thread/INFO]: " + test.message)
+
+			assertKind(t, entry, KindCommand)
+			if entry.Player != test.player || entry.Command != test.command {
+				t.Fatalf("Entry = %#v", entry)
+			}
+		})
+	}
+}
+
+func TestParseCommandFeedbackDoesNotMatchChat(t *testing.T) {
+	entry := Parse(
+		"[12:34:56] [Server thread/INFO]: [Not Secure] <alice> hello",
+	)
+
+	assertKind(t, entry, KindChat)
+}
+
 func TestParsePlayerChanges(t *testing.T) {
 	tests := []struct {
 		name    string

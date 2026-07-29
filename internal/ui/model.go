@@ -29,6 +29,9 @@ var (
 			Foreground(lipgloss.Color("#282A36")).
 			Background(lipgloss.Color("#F1FA8C")).
 			Bold(true)
+	keyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#282A36")).
+			Background(lipgloss.Color("#BBBBBB"))
 )
 
 const (
@@ -94,21 +97,15 @@ type ActionResultMsg struct {
 	Err    error
 }
 
-type focus uint8
-
-const (
-	focusInput focus = iota
-	focusRestart
-	focusStop
-)
-
 type Model struct {
 	layout            layout
 	status            string
 	runErr            error
 	actions           chan<- Action
 	input             []rune
-	focus             focus
+	mode              mode
+	panel             panel
+	consoleFocus      consoleFocus
 	busy              bool
 	generation        uint64
 	metrics           hsperfdata.Metrics
@@ -119,7 +116,11 @@ type Model struct {
 	memoryMetricError string
 	gcStats           gclog.Stats
 	tracker           serverlog.Tracker
-	players           string
+	playerList        []string
+	playerCursor      int
+	playerStage       playerStage
+	playerTarget      string
+	commandCursor     int
 	chat              lineBuffer
 	commands          lineBuffer
 	logs              lineBuffer
@@ -127,10 +128,13 @@ type Model struct {
 }
 
 func New(actions chan<- Action, generation uint64) *Model {
+	// 起動直後からコマンドを打てるよう、Console にフォーカスした状態で始める。
 	return &Model{
 		status:     "starting",
 		actions:    actions,
 		generation: generation,
+		mode:       modeFocus,
+		panel:      panelConsole,
 	}
 }
 
@@ -231,38 +235,49 @@ func (model *Model) View() tea.View {
 		stats := renderPanel(
 			model.statsTitle(),
 			model.statsLines(),
-			model.layout.width,
+			model.layout.statsWidth,
 			statsHeight,
 			false,
+			plainFrame,
 		)
-		chat := renderBufferPanel(
-			"Chat",
-			model.chat,
+		top := joinColumns(
+			joinColumns(stats, model.renderMetersPanel()),
+			model.renderPlayersPanel(),
+		)
+		chat := model.renderBufferPanel(
+			panelChat,
+			&model.chat,
 			model.layout.leftWidth,
 			model.layout.chatHeight,
 		)
-		commands := renderBufferPanel(
-			"Commands",
-			model.commands,
+		commands := model.renderBufferPanel(
+			panelCommands,
+			&model.commands,
 			model.layout.leftWidth,
 			model.layout.commandHeight,
 		)
 		left := chat + "\n" + commands
-		logs := renderBufferPanel(
-			"Log",
-			model.logs,
+		logs := model.renderBufferPanel(
+			panelLog,
+			&model.logs,
 			model.layout.rightWidth,
 			model.layout.bodyHeight,
 		)
 		body := joinColumns(left, logs)
 		footer := renderPanel(
-			"Console",
+			panelConsole.title(),
 			[]string{model.consoleLine()},
 			model.layout.width,
 			footerHeight,
 			false,
+			model.frameFor(panelConsole),
 		)
-		content = stats + "\n" + body + "\n" + footer
+		content = top + "\n" + body + "\n" + footer + "\n" + model.keybar()
+		if model.mode == modeFocus && model.panel == panelPlayers &&
+			model.playerStage == playerStageCommands {
+			box, x, y := model.commandModal()
+			content = overlay(content, box, x, y)
+		}
 	}
 
 	view := tea.NewView(content)
@@ -280,39 +295,179 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if message.String() == "ctrl+c" {
 		return model, tea.Quit
 	}
+	if model.mode == modeSelect {
+		return model.handleSelectKey(key)
+	}
+	if model.panel == panelConsole {
+		return model.handleConsoleKey(key)
+	}
+	if model.panel == panelPlayers {
+		return model.handlePlayersKey(key)
+	}
+	return model.handleBufferKey(key)
+}
 
+// handlePlayersKey はプレイヤー一覧フォーカス中。プレイヤーを選ぶ段階と、
+// そのプレイヤーへのコマンドを選ぶ段階の 2 段階で動く。
+func (model *Model) handlePlayersKey(key tea.Key) (tea.Model, tea.Cmd) {
+	if model.playerStage == playerStageCommands {
+		return model.handlePlayerCommandKey(key)
+	}
+
+	cursor := moveCursor(key, model.playerCursor, len(model.playerList),
+		model.layout.playerLines())
 	switch key.Code {
-	case tea.KeyUp, tea.KeyEscape:
-		model.focus = focusInput
-	case tea.KeyDown:
-		if model.focus == focusInput {
-			model.focus = focusRestart
+	case tea.KeyEscape:
+		model.playerCursor = 0
+		model.mode = modeSelect
+	case tea.KeyEnter, tea.KeyKpEnter:
+		if model.playerCursor < len(model.playerList) {
+			model.playerTarget = model.playerList[model.playerCursor]
+			model.playerStage = playerStageCommands
+			model.commandCursor = 0
 		}
+	default:
+		model.playerCursor = cursor
+	}
+	return model, nil
+}
+
+// handlePlayerCommandKey はコマンド選択中。選んだコマンドは即実行せず、
+// Console 入力欄に組み立てて置く。ban / kick の誤操作を Enter の
+// もう一押しで止められ、tell の本文や理由もそのまま続けて書ける。
+func (model *Model) handlePlayerCommandKey(key tea.Key) (tea.Model, tea.Cmd) {
+	switch key.Code {
+	case tea.KeyEscape:
+		model.playerStage = playerStagePlayers
+	case tea.KeyEnter, tea.KeyKpEnter:
+		command := playerCommands[model.commandCursor]
+		model.input = []rune(fmt.Sprintf(command.template, model.playerTarget))
+		model.playerStage = playerStagePlayers
+		model.panel = panelConsole
+		model.consoleFocus = consoleInput
+	default:
+		model.commandCursor = moveCursor(key, model.commandCursor,
+			len(playerCommands), model.layout.playerLines())
+	}
+	return model, nil
+}
+
+// moveCursor は縦リスト共通のカーソル移動。
+func moveCursor(key tea.Key, cursor, count, viewport int) int {
+	switch key.Code {
+	case tea.KeyUp:
+		cursor--
+	case tea.KeyDown:
+		cursor++
+	case tea.KeyPgUp:
+		cursor -= viewport
+	case tea.KeyPgDown:
+		cursor += viewport
+	case tea.KeyHome:
+		cursor = 0
+	case tea.KeyEnd:
+		cursor = count - 1
+	}
+	return clamp(cursor, 0, max(0, count-1))
+}
+
+// windowStart はカーソルが見える範囲の表示開始位置。スクロール位置を
+// 状態として持たず毎回導出するので、リストが変わってもずれない。
+func windowStart(cursor, count, viewport int) int {
+	if viewport <= 0 || count <= viewport {
+		return 0
+	}
+	return clamp(cursor-viewport/2, 0, count-viewport)
+}
+
+// handleSelectKey は選択モード。矢印でパネルを移動し、Enter でフォーカスする。
+func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
+	move := neighbors[model.panel]
+	switch key.Code {
+	case tea.KeyUp:
+		model.panel = move.up
+	case tea.KeyDown:
+		model.panel = move.down
 	case tea.KeyLeft:
-		model.focus = focusRestart
+		model.panel = move.left
 	case tea.KeyRight:
-		model.focus = focusStop
+		model.panel = move.right
+	case tea.KeyEnter, tea.KeyKpEnter:
+		model.mode = modeFocus
+		model.consoleFocus = consoleInput
+	}
+	return model, nil
+}
+
+// handleConsoleKey は Console フォーカス中。左右キーは入力に使うため、
+// restart / stop の選択は Tab で巡回する。
+func (model *Model) handleConsoleKey(key tea.Key) (tea.Model, tea.Cmd) {
+	switch key.Code {
+	case tea.KeyEscape:
+		model.mode = modeSelect
 	case tea.KeyTab:
-		model.focus = (model.focus + 1) % 3
+		model.consoleFocus = (model.consoleFocus + 1) % consoleFocusCount
 	case tea.KeyBackspace:
-		if model.focus == focusInput && len(model.input) > 0 {
+		if model.consoleFocus == consoleInput && len(model.input) > 0 {
 			model.input = model.input[:len(model.input)-1]
 		}
 	case tea.KeyEnter, tea.KeyKpEnter:
-		if model.focus == focusStop {
+		switch model.consoleFocus {
+		case consoleStop:
 			return model, tea.Quit
-		}
-		if model.focus == focusRestart {
+		case consoleRestart:
 			model.offer(Action{Kind: ActionRestart})
-			break
+		default:
+			model.sendInput()
 		}
-		model.sendInput()
 	default:
-		if model.focus == focusInput && key.Text != "" {
+		if model.consoleFocus == consoleInput && key.Text != "" {
 			model.appendInput(key.Text)
 		}
 	}
 	return model, nil
+}
+
+// handleBufferKey は Chat / Commands / Log フォーカス中のスクロール操作。
+func (model *Model) handleBufferKey(key tea.Key) (tea.Model, tea.Cmd) {
+	buffer, viewport := model.focusedBuffer()
+	if buffer == nil {
+		return model, nil
+	}
+
+	switch key.Code {
+	case tea.KeyEscape:
+		// フォーカスを外したら最新行の追従に戻す。遡ったまま放置すると
+		// 新着ログが見えなくなる。
+		buffer.ScrollToEnd()
+		model.mode = modeSelect
+	case tea.KeyUp:
+		buffer.Scroll(1, viewport)
+	case tea.KeyDown:
+		buffer.Scroll(-1, viewport)
+	case tea.KeyPgUp:
+		buffer.Scroll(viewport, viewport)
+	case tea.KeyPgDown:
+		buffer.Scroll(-viewport, viewport)
+	case tea.KeyHome:
+		buffer.Scroll(buffer.Len(), viewport)
+	case tea.KeyEnd:
+		buffer.ScrollToEnd()
+	}
+	return model, nil
+}
+
+func (model *Model) focusedBuffer() (*lineBuffer, int) {
+	switch model.panel {
+	case panelChat:
+		return &model.chat, model.layout.chatLines()
+	case panelCommands:
+		return &model.commands, model.layout.commandLines()
+	case panelLog:
+		return &model.logs, model.layout.logLines()
+	default:
+		return nil, 0
+	}
 }
 
 func (model *Model) appendInput(text string) {
@@ -362,16 +517,24 @@ func (model *Model) resetServerState() {
 	model.memoryMetricError = ""
 	model.gcStats = gclog.Stats{}
 	model.tracker = serverlog.Tracker{}
-	model.players = ""
+	model.playerList = nil
+	model.playerCursor = 0
+	model.playerStage = playerStagePlayers
 	model.samples.SetLimit(0)
 	model.samples.SetLimit(model.layout.graphWidth * 2)
 }
 
 func (model *Model) resize(width, height int) {
 	model.layout = calculateLayout(width, height)
-	model.chat.SetLimit(model.layout.chatLines())
-	model.commands.SetLimit(model.layout.commandLines())
-	model.logs.SetLimit(model.layout.logLines())
+	// 表示できないサイズでは保持もやめる。表示できる間は画面高に関わらず
+	// 一定の履歴を持ち、スクロールで遡れるようにする。
+	history := 0
+	if model.layout.ready {
+		history = historyLines
+	}
+	model.chat.SetLimit(history)
+	model.commands.SetLimit(history)
+	model.logs.SetLimit(history)
 	model.chat.Truncate(model.layout.leftContentWidth())
 	model.commands.Truncate(model.layout.leftContentWidth())
 	model.logs.Truncate(model.layout.rightContentWidth())
@@ -381,16 +544,17 @@ func (model *Model) resize(width, height int) {
 func (model *Model) consoleLine() string {
 	restart := "[restart]"
 	stop := "[stop]"
+	focused := model.mode == modeFocus && model.panel == panelConsole
 	cursor := ""
-	if model.focus == focusInput {
+	if focused && model.consoleFocus == consoleInput {
 		cursor = "█"
 	}
-	if model.focus == focusRestart {
+	if focused && model.consoleFocus == consoleRestart {
 		restart = selectedStyle.Render(restart)
 	} else {
 		restart = dimStyle.Render(restart)
 	}
-	if model.focus == focusStop {
+	if focused && model.consoleFocus == consoleStop {
 		stop = selectedStyle.Render(stop)
 	} else {
 		stop = dimStyle.Render(stop)
@@ -429,7 +593,13 @@ func (model *Model) addLog(entry serverlog.Entry) {
 	model.tracker.Apply(entry)
 	if entry.Kind == serverlog.KindPlayerJoin ||
 		entry.Kind == serverlog.KindPlayerLeave {
-		model.players = strings.Join(model.tracker.Players(), " ")
+		model.playerList = model.tracker.Players()
+		// 退出などで一覧が縮んでもカーソルが範囲外に残らないようにする。
+		model.playerCursor = clamp(
+			model.playerCursor,
+			0,
+			max(0, len(model.playerList)-1),
+		)
 	}
 
 	switch entry.Kind {
@@ -542,10 +712,11 @@ func (model *Model) statsLines() []string {
 			),
 			formatFrequency(frequency.PerMinute, frequency.Available),
 		),
+		// 名前の列挙は Players パネルに移した。ここは他の指標と並べて
+		// 見たい人数だけを残す。
 		fmt.Sprintf(
-			"Players %d [%s]  Lag events: %d  CPU %s  threads %s",
+			"Players %d  Lag events: %d  CPU %s  threads %s",
 			model.tracker.PlayerCount(),
-			model.players,
 			model.tracker.LagEvents(),
 			formatCPU(model.cpu, model.cpuAvailable),
 			threads,
@@ -619,14 +790,115 @@ func (model *Model) graphMaximum() uint64 {
 	return maximum
 }
 
-func renderBufferPanel(title string, buffer lineBuffer, width, height int) string {
-	contentHeight := max(0, height-2)
-	lines := make([]string, contentHeight)
-	padding := max(0, contentHeight-buffer.Len())
-	for index := 0; index < buffer.Len() && padding+index < len(lines); index++ {
-		lines[padding+index] = buffer.At(index)
+// renderMetersPanel は CPU / Heap / RSS を横棒メーターで出す。
+// 表示専用でフォーカス対象ではない。
+func (model *Model) renderMetersPanel() string {
+	rss, source := rssMeter(model.memory)
+	meters := []meter{
+		cpuMeter(model.cpu, model.cpuAvailable),
+		heapMeter(model.metrics.Heap),
+		rss,
 	}
-	return renderPanel(title, lines, width, height, true)
+
+	// RSS の分母に cgroup 制限とホスト総メモリのどちらを使ったかを明示する。
+	title := "Meters"
+	if source != "" {
+		title += " · RSS/" + source
+	}
+	return renderPanel(
+		title,
+		meterLines(meters, model.layout.metersContentWidth()),
+		model.layout.metersWidth,
+		statsHeight,
+		false,
+		plainFrame,
+	)
+}
+
+// renderPlayersPanel はオンラインのプレイヤー一覧。フォーカス中は
+// カーソル行を反転させる。行全体を埋めてから着色するので帯状になる。
+func (model *Model) renderPlayersPanel() string {
+	focused := model.mode == modeFocus && model.panel == panelPlayers
+	viewport := model.layout.playerLines()
+	width := model.layout.playersContentWidth()
+	start := windowStart(model.playerCursor, len(model.playerList), viewport)
+
+	lines := make([]string, viewport)
+	for index := 0; index < viewport; index++ {
+		position := start + index
+		if position >= len(model.playerList) {
+			continue
+		}
+		line := fitLine(truncate(model.playerList[position], width), width)
+		if focused && position == model.playerCursor {
+			line = selectedStyle.Render(line)
+		}
+		lines[index] = line
+	}
+
+	return renderPanel(
+		fmt.Sprintf("%s %d", panelPlayers.title(), len(model.playerList)),
+		lines,
+		model.layout.playersWidth,
+		statsHeight,
+		false,
+		model.frameFor(panelPlayers),
+	)
+}
+
+// commandModal は選択中のプレイヤーへのコマンド一覧を、その行の左下に
+// 重ねて出すためのモーダルと位置を返す。一覧を差し替えず重ねることで、
+// どのプレイヤーを選んだのかが背後に見えたままになる。
+func (model *Model) commandModal() (string, int, int) {
+	width := stringWidth(model.playerTarget) + 5
+	for _, command := range playerCommands {
+		width = max(width, stringWidth(command.label)+4)
+	}
+	height := len(playerCommands) + 2
+
+	lines := make([]string, 0, len(playerCommands))
+	for index, command := range playerCommands {
+		line := fitLine(" "+command.label, width-2)
+		if index == model.commandCursor {
+			line = selectedStyle.Render(line)
+		}
+		lines = append(lines, line)
+	}
+
+	// 押したプレイヤー行の左下に出す。画面からはみ出す場合だけ内側へ寄せる。
+	start := windowStart(
+		model.playerCursor,
+		len(model.playerList),
+		model.layout.playerLines(),
+	)
+	x := model.layout.statsWidth + model.layout.metersWidth
+	y := model.playerCursor - start + 2
+	x = clamp(x, 0, max(0, model.layout.width-width))
+	y = clamp(y, 0, max(0, model.layout.height-height))
+
+	box := renderPanel(model.playerTarget, lines, width, height, false, modalFrame)
+	return box, x, y
+}
+
+func (model *Model) renderBufferPanel(
+	target panel,
+	buffer *lineBuffer,
+	width, height int,
+) string {
+	contentHeight := max(0, height-2)
+	window := buffer.Window(contentHeight)
+	lines := make([]string, contentHeight)
+	padding := max(0, contentHeight-len(window))
+	for index := 0; index < len(window) && padding+index < len(lines); index++ {
+		lines[padding+index] = window[index]
+	}
+
+	// 最新に追従していないことが分かるよう、遡り行数をタイトルに出す。
+	title := target.title()
+	if offset := buffer.Offset(); offset > 0 {
+		title = fmt.Sprintf("%s ↑%d", title, offset)
+	}
+	return renderPanel(title, lines, width, height, true, model.frameFor(target))
 }
 
 func renderPanel(
@@ -635,6 +907,7 @@ func renderPanel(
 	width int,
 	height int,
 	alignBottom bool,
+	box frame,
 ) string {
 	if width <= 0 || height <= 0 {
 		return ""
@@ -645,10 +918,16 @@ func renderPanel(
 
 	innerWidth := width - 2
 	contentHeight := height - 2
-	title = truncate(title, max(0, width-4))
-	top := "┌─ " + titleStyle.Render(title) + " "
-	top += strings.Repeat("─", max(0, width-stringWidth(top)-1)) + "┐"
+	// 枠 2 + 前後の空白 2 + 右上の角 1 を除いた分しかタイトルは置けない。
+	title = truncate(title, max(0, width-5))
+	top := box.render(box.topLeft+box.horizontal) + " " +
+		titleStyle.Render(title) + " "
+	top += box.render(
+		strings.Repeat(box.horizontal, max(0, width-stringWidth(top)-1)) +
+			box.topRight,
+	)
 
+	vertical := box.render(box.vertical)
 	var result strings.Builder
 	result.WriteString(top)
 	start := 0
@@ -657,20 +936,71 @@ func renderPanel(
 	}
 	for row := 0; row < contentHeight; row++ {
 		result.WriteByte('\n')
-		result.WriteString("│")
+		result.WriteString(vertical)
 		line := ""
 		position := start + row
 		if position >= 0 && position < len(lines) {
 			line = lines[position]
 		}
 		result.WriteString(fitLine(line, innerWidth))
-		result.WriteString("│")
+		result.WriteString(vertical)
 	}
 	result.WriteByte('\n')
-	result.WriteString("└")
-	result.WriteString(strings.Repeat("─", innerWidth))
-	result.WriteString("┘")
+	result.WriteString(box.render(
+		box.bottomLeft +
+			strings.Repeat(box.horizontal, innerWidth) +
+			box.bottomRight,
+	))
 	return result.String()
+}
+
+// keybar は nano 風のキー説明行。モードとフォーカス先で内容が変わる。
+func (model *Model) keybar() string {
+	var keys [][2]string
+	switch {
+	case model.mode == modeSelect:
+		keys = [][2]string{
+			{"←↑↓→", "select"},
+			{"Enter", "focus"},
+			{"^C", "exit"},
+		}
+	case model.panel == panelConsole:
+		keys = [][2]string{
+			{"Esc", "select"},
+			{"Tab", "input/restart/stop"},
+			{"Enter", "execute"},
+			{"^C", "exit"},
+		}
+	case model.panel == panelPlayers &&
+		model.playerStage == playerStageCommands:
+		keys = [][2]string{
+			{"Esc", "back"},
+			{"↑↓", "command"},
+			{"Enter", "put in console"},
+			{"^C", "exit"},
+		}
+	case model.panel == panelPlayers:
+		keys = [][2]string{
+			{"Esc", "select"},
+			{"↑↓", "player"},
+			{"Enter", "commands"},
+			{"^C", "exit"},
+		}
+	default:
+		keys = [][2]string{
+			{"Esc", "select"},
+			{"↑↓", "scroll"},
+			{"PgUp/PgDn", "page"},
+			{"End", "latest"},
+			{"^C", "exit"},
+		}
+	}
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, keyStyle.Render(" "+key[0]+" ")+" "+key[1])
+	}
+	return fitLine(strings.Join(parts, "  "), model.layout.width)
 }
 
 func joinColumns(left, right string) string {

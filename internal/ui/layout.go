@@ -2,9 +2,18 @@ package ui
 
 const (
 	minimumWidth  = 72
-	minimumHeight = 20
+	minimumHeight = 21
 	statsHeight   = 10
 	footerHeight  = 3
+	keybarHeight  = 1
+	// historyLines は各ペインが保持する行数。表示行数と切り離すことで
+	// 画面外へ流れた行まで遡れる。
+	historyLines = 500
+	// 上段 3 列のうち Meters と Players に確保する最小幅。
+	// Meters は "CPU ███░ 100%"、Players は Minecraft のユーザー名上限
+	// である 16 文字がそのまま入る幅（枠の 2 列を足して 18）。
+	minimumMetersWidth  = 20
+	minimumPlayersWidth = 18
 )
 
 type layout struct {
@@ -17,6 +26,9 @@ type layout struct {
 	chatHeight    int
 	commandHeight int
 	graphWidth    int
+	statsWidth    int
+	metersWidth   int
+	playersWidth  int
 }
 
 func calculateLayout(width, height int) layout {
@@ -26,13 +38,45 @@ func calculateLayout(width, height int) layout {
 	}
 
 	result.ready = true
-	result.bodyHeight = height - statsHeight - footerHeight
+	result.bodyHeight = height - statsHeight - footerHeight - keybarHeight
 	result.leftWidth = width * 2 / 5
 	result.rightWidth = width - result.leftWidth
 	result.chatHeight = result.bodyHeight / 2
 	result.commandHeight = result.bodyHeight - result.chatHeight
-	result.graphWidth = max(0, width-2-6)
+
+	// 上段は Stats / Meters / Players の 3 列。Meters と Players は
+	// 必要な最小幅を確保し、余りをすべて Stats に回す。Stats は行が長く、
+	// 狭いほど削られて困るのがこの列だけのため。
+	result.playersWidth = clamp(width*3/20, minimumPlayersWidth, 22)
+	result.metersWidth = clamp(width/4, minimumMetersWidth, 28)
+	result.statsWidth = width - result.playersWidth - result.metersWidth
+	result.graphWidth = max(0, result.statsWidth-2-6)
 	return result
+}
+
+func clamp(value, low, high int) int {
+	return min(max(value, low), high)
+}
+
+func (current layout) playerLines() int {
+	if !current.ready {
+		return 0
+	}
+	return max(0, statsHeight-2)
+}
+
+func (current layout) playersContentWidth() int {
+	if !current.ready {
+		return 0
+	}
+	return max(0, current.playersWidth-2)
+}
+
+func (current layout) metersContentWidth() int {
+	if !current.ready {
+		return 0
+	}
+	return max(0, current.metersWidth-2)
 }
 
 func (current layout) chatLines() int {

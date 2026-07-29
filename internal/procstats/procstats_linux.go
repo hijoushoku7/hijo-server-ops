@@ -26,6 +26,9 @@ type Memory struct {
 	RSS           Number
 	CgroupCurrent Number
 	CgroupLimit   Limit
+	// HostTotal は /proc/meminfo の MemTotal。cgroup 制限がない環境で
+	// RSS の割合を出すための分母に使う。
+	HostTotal Number
 }
 
 type Duration struct {
@@ -115,7 +118,10 @@ func readMemoryAt(procRoot, mountInfoPath string, pid int) (Memory, error) {
 		return Memory{}, fmt.Errorf("プロセスのstatusを閉じる: %w", closeErr)
 	}
 
-	memory := Memory{RSS: rss}
+	memory := Memory{
+		RSS:       rss,
+		HostTotal: readMemTotal(filepath.Join(procRoot, "meminfo")),
+	}
 	memberships, err := readCgroups(filepath.Join(
 		procRoot,
 		strconv.Itoa(pid),
@@ -155,6 +161,29 @@ func readMemoryAt(procRoot, mountInfoPath string, pid int) (Memory, error) {
 		}
 	}
 	return memory, nil
+}
+
+// readMemTotal は /proc/meminfo の MemTotal を返す。読めなければ n/a。
+func readMemTotal(path string) Number {
+	file, err := os.Open(path)
+	if err != nil {
+		return Number{}
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 3 || fields[0] != "MemTotal:" || fields[2] != "kB" {
+			continue
+		}
+		kibibytes, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			return Number{}
+		}
+		return Number{Value: kibibytes * 1024, Available: true}
+	}
+	return Number{}
 }
 
 func parseRSS(status *os.File) (Number, error) {
