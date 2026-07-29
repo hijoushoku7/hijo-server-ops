@@ -12,10 +12,10 @@
 curl -fsSLo /tmp/go1.25.12.linux-amd64.tar.gz \
   https://go.dev/dl/go1.25.12.linux-amd64.tar.gz
 
-mkdir -p /home/hijoushoku9/.local/share/go-1.25.12
+mkdir -p "$HOME/.local/share/go-1.25.12"
 
 tar -xzf /tmp/go1.25.12.linux-amd64.tar.gz \
-  -C /home/hijoushoku9/.local/share/go-1.25.12 \
+  -C "$HOME/.local/share/go-1.25.12" \
   --strip-components=1
 ```
 
@@ -25,7 +25,7 @@ arm64環境では、ファイル名とURLの`linux-amd64`を`linux-arm64`へ
 現在のシェルでGoを使えるようにする。
 
 ```bash
-export PATH="/home/hijoushoku9/.local/share/go-1.25.12/bin:$PATH"
+export PATH="$HOME/.local/share/go-1.25.12/bin:$PATH"
 ```
 
 `export`は現在のシェルにしか反映されない。ログイン後も有効にする場合は、
@@ -54,7 +54,7 @@ rm /tmp/go1.25.12.linux-amd64.tar.gz
 リポジトリ直下へ移動する。
 
 ```bash
-cd /home/hijoushoku9/projects/hijo-server-ops
+cd /path/to/hijo-server-ops
 ```
 
 テストを実行する。
