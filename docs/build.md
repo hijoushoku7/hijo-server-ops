@@ -57,13 +57,20 @@ rm /tmp/go1.25.12.linux-amd64.tar.gz
 cd /path/to/hijo-server-ops
 ```
 
-テストを実行する。
+ビルドスクリプトを実行する。
 
 ```bash
-go test ./...
+./scripts/build.sh
 ```
 
-Linux向けの静的バイナリをビルドする。
+スクリプトは次の処理を順番に実行する。
+
+1. PATHまたは`$HOME/.local/share/go-1.25.12/bin/go`からGoを検出
+2. `go test ./...`で全テストを実行
+3. `CGO_ENABLED=0`でLinux向けの静的バイナリをビルド
+4. `go version -m ./hso`でビルド情報を表示
+
+スクリプトを使わず、ビルドだけを直接実行する場合は次のコマンドを使う。
 
 ```bash
 CGO_ENABLED=0 go build \
@@ -72,14 +79,8 @@ CGO_ENABLED=0 go build \
   ./cmd/hso
 ```
 
-このコマンドは、リポジトリ直下の既存`hso`を最新ソースからビルドした
+どちらの方法も、リポジトリ直下の既存`hso`を最新ソースからビルドした
 バイナリで置き換える。
-
-ビルド情報を確認する。
-
-```bash
-go version -m ./hso
-```
 
 ## 起動
 
