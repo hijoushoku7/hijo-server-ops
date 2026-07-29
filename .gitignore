@@ -8,3 +8,10 @@ hso.toml
 *.log
 .tmp/
 .env
+
+# Ignore agents files
+/.claude/
+/.codex/
+/.agents/
+AGENTS.md
+CLAUDE.md
