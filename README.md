@@ -19,7 +19,7 @@ Minecraft サーバー用のラッパー型 TUI コンソール。**Linux 専用
 ```
 ┌─ hijo-server-ops · uptime 3d 04:12:33 ─┐┌─ Meters · RSS/cgroup ─┐┌─ Players 3 ──┐
 │ Heap 2.1G / 3.2G committed (max 4.0G)  ││ CPU  ███░░░░░░░  82%  ││ alice        │
-│ RSS  5.4G / 8.0G limit  Δ +3.3G        ││ Heap █████▂░░░░  52%  ││ bob          │
+│ RSS  5.4G / 8.0G limit  Δ +3.3G        ││ Heap █████▏░░░░  52%  ││ bob          │
 │ GC   142 collections  last 12.3ms      ││ RSS  ███████░░░  67%  ││ carol        │
 │ Players 3  Lag events: 2  CPU 82%      ││                       ││              │
 │ Heap ⡀⡠⡴⡿⠋⢀⡠⡴⡿⠋                        ││                       ││              │
@@ -80,8 +80,10 @@ panes = ["stats", "chat", "commands", "log"]
 
 起動スクリプトは実行可能ファイルとして用意する。`workdir` を省略した
 場合は `hso.toml` のあるディレクトリを使う。TUI は 72 列 × 21 行以上の
-端末で表示する。ログは各ペインごとに 500 行、メモリ推移は Braille
-グラフの横幅に入るサンプル数だけを保持する。
+端末で表示する。ただし 72 列では上段左の Stats の行末が切れる（Δ・post-GC・
+Braille グラフは残る）。全項目が読めるのは **94 列**から。ログは各ペイン
+ごとに 500 行、メモリ推移は Braille グラフの横幅に入るサンプル数だけを
+保持する。
 
 ```bash
 hso -config /path/to/hso.toml

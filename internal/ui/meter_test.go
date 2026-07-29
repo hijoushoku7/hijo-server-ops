@@ -34,6 +34,22 @@ func TestRenderMeterFillsProportionally(t *testing.T) {
 	}
 }
 
+func TestRenderMeterUsesLeftAlignedPartialBlocks(t *testing.T) {
+	// 端数セルは左寄せの部分ブロック（▏▎▍…）。下寄せ（▁▂▃…）だと
+	// 横棒の途中に細い横線が出てしまう。
+	bar := stripANSI(renderMeter(0.5, 5))
+
+	if width := stringWidth(bar); width != 5 {
+		t.Fatalf("width = %d: %q", width, bar)
+	}
+	if !strings.ContainsAny(bar, "▏▎▍▌▋▊▉") {
+		t.Fatalf("bar has no partial block: %q", bar)
+	}
+	if strings.ContainsAny(bar, "▁▂▃▄▅▆▇") {
+		t.Fatalf("bar uses bottom-aligned blocks: %q", bar)
+	}
+}
+
 func TestHeapMeterIsUnavailableWithoutMax(t *testing.T) {
 	item := heapMeter(hsperfdata.Memory{
 		Used: hsperfdata.Number{Value: 1 << 30, Available: true},

@@ -27,6 +27,11 @@ func (buffer *lineBuffer) Add(line string) {
 	}
 	buffer.lines[buffer.start] = line
 	buffer.start = (buffer.start + 1) % len(buffer.lines)
+	// 満杯のときは最古行が押し出されて全体が 1 行ずれるので、空きがある
+	// ときと同じく offset も進めないと遡り位置が流れてしまう。
+	if buffer.offset > 0 {
+		buffer.offset++
+	}
 	buffer.clampOffset()
 }
 

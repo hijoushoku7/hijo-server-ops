@@ -919,6 +919,8 @@ func renderPanel(
 	innerWidth := width - 2
 	contentHeight := height - 2
 	// 枠 2 + 前後の空白 2 + 右上の角 1 を除いた分しかタイトルは置けない。
+	// width が 6 未満だとこれでも 1 セルはみ出すが、パネルは最小 18 列、
+	// モーダルは最小 17 列なのでそこには到達しない。
 	title = truncate(title, max(0, width-5))
 	top := box.render(box.topLeft+box.horizontal) + " " +
 		titleStyle.Render(title) + " "

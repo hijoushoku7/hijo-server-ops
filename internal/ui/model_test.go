@@ -626,6 +626,19 @@ func TestOverlayReplacesTheTargetSpanOnly(t *testing.T) {
 	}
 }
 
+func TestOverlayKeepsWidthAcrossWideCharacters(t *testing.T) {
+	// 全角文字の途中で切ると、左は文字が落ち、右は文字が残る。
+	// どちらの側でも行幅が変わらないことを全位置で確かめる。
+	base := "日本語テスト"
+	for x := 0; x <= stringWidth(base); x++ {
+		got := stripANSI(overlay(base, "XX", x, 0))
+		if width := stringWidth(got); width != stringWidth(base) {
+			t.Fatalf("x = %d: width = %d, want %d: %q",
+				x, width, stringWidth(base), got)
+		}
+	}
+}
+
 func TestOverlayIgnoresRowsOutsideTheBase(t *testing.T) {
 	base := "0123\n4567"
 

@@ -69,8 +69,9 @@ func renderMeter(ratio float64, width int) string {
 	var bar strings.Builder
 	bar.WriteString(strings.Repeat("█", full))
 	if remainder > 0 && full < width {
-		// U+2588 から遡ると 1/8 刻みの部分ブロックになる。
-		bar.WriteRune(rune('█' - (8 - remainder)))
+		// U+2588 の先が左寄せの部分ブロック（▏▎▍…）。手前へ遡ると
+		// 下寄せ（▁▂▃…）になり、横棒には使えない。
+		bar.WriteRune(rune('█' + (8 - remainder)))
 		full++
 	}
 	return style.Render(bar.String()) +
