@@ -17,11 +17,12 @@ fi
 cd "$project_dir"
 
 "$go_command" version
+echo "ビルド開始: $project_dir"
 "$go_command" test ./...
 CGO_ENABLED=0 "$go_command" build \
 	-ldflags="-s -w" \
 	-o hso \
 	./cmd/hso
-
-echo "ビルド完了: $project_dir/hso"
+echo "依存関係のバージョン情報:"
 "$go_command" version -m ./hso
+echo "ビルド完了: $project_dir/hso"
