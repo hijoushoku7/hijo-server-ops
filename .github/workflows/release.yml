@@ -1,0 +1,93 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: go test
+        run: go test ./...
+
+      - name: バイナリのビルド
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eu
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            name="hso_${VERSION}_linux_${arch}"
+            mkdir -p "dist/$name"
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
+              -trimpath -ldflags="-s -w" -o "dist/$name/hso" ./cmd/hso
+            cp hso.toml.example "dist/$name/hso.toml"
+            cp README.md "dist/$name/README.md"
+            tar -czf "dist/$name.tar.gz" -C dist "$name"
+            rm -rf "dist/$name"
+          done
+          (cd dist && sha256sum *.tar.gz > checksums.txt)
+          ls -la dist
+
+      - name: リリースノートの作成
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cat > dist/notes.md <<EOF
+          Minecraft サーバー用ラッパー型 TUI コンソール \`hso\` $VERSION。
+
+          ## 対応環境
+
+          Linux のみ（\`/proc\`・cgroup に依存）。
+
+          ## インストール
+
+          \`\`\`sh
+          tar xzf hso_${VERSION}_linux_amd64.tar.gz
+          cd hso_${VERSION}_linux_amd64
+          # hso.toml の command を起動スクリプトのパスに書き換える
+          ./hso
+          \`\`\`
+
+          アーカイブは \`hso\`（実行ファイル）・\`hso.toml\`（設定テンプレート）・
+          \`README.md\` を同名ディレクトリに展開する。
+
+          ## アセット
+
+          | ファイル | 対象 |
+          | --- | --- |
+          | \`hso_${VERSION}_linux_amd64.tar.gz\` | Linux x86_64 |
+          | \`hso_${VERSION}_linux_arm64.tar.gz\` | Linux arm64 |
+          | \`checksums.txt\` | SHA-256 チェックサム |
+
+          \`CGO_ENABLED=0\` / \`-trimpath -ldflags="-s -w"\` でビルド。
+          EOF
+
+      - name: リリースの作成・アップロード
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eu
+          assets="dist/hso_${VERSION}_linux_amd64.tar.gz dist/hso_${VERSION}_linux_arm64.tar.gz dist/checksums.txt"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release edit "$VERSION" --notes-file dist/notes.md
+            gh release upload "$VERSION" $assets --clobber
+          else
+            gh release create "$VERSION" $assets \
+              --title "$VERSION" \
+              --notes-file dist/notes.md \
+              --generate-notes
+          fi
