@@ -138,6 +138,19 @@ Tab で行う。最新行から遡っている間はパネルのタイトルに 
 起動スクリプトを再実行する。Java プロセスをまだ特定できていない起動途中
 では、安全に停止できないため `restart` を受け付けない。
 
+## インストール
+
+[Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) から
+アーカイブを取得する。
+
+```bash
+tar xzf hso_v0.1_linux_amd64.tar.gz
+cd hso_v0.1_linux_amd64
+```
+
+`hso`（実行ファイル）と `hso.toml`（設定テンプレート）が展開される。arm64
+環境では `linux_arm64` のアーカイブを使う。
+
 ## ビルド
 
 ```bash

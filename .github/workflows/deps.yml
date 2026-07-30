@@ -1,0 +1,39 @@
+name: deps
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 毎週月曜 09:00 JST (00:00 UTC)
+    - cron: "0 0 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: go mod tidy の差分チェック
+        run: |
+          go mod tidy
+          if ! git diff --exit-code go.mod go.sum; then
+            echo "go mod tidy を実行して go.mod / go.sum をコミットしてください。" >&2
+            exit 1
+          fi
+
+      # 新しい CVE の公表で無関係な PR が落ちないよう、PR では失敗させない。
+      - name: govulncheck
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
