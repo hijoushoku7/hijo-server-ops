@@ -33,7 +33,5 @@ jobs:
             exit 1
           fi
 
-      # 新しい CVE の公表で無関係な PR が落ちないよう、PR では失敗させない。
       - name: govulncheck
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
