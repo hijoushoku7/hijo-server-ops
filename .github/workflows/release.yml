@@ -82,12 +82,17 @@ jobs:
         run: |
           set -eu
           assets="dist/hso_${VERSION}_linux_amd64.tar.gz dist/hso_${VERSION}_linux_arm64.tar.gz dist/checksums.txt"
+          # v1.0.0-rc1 のようなハイフン付きタグはプレリリース扱いにする。
+          case "$VERSION" in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
           if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release edit "$VERSION" --notes-file dist/notes.md
+            gh release edit "$VERSION" --notes-file dist/notes.md --prerelease="$prerelease"
             gh release upload "$VERSION" $assets --clobber
           else
             gh release create "$VERSION" $assets \
               --title "$VERSION" \
               --notes-file dist/notes.md \
-              --generate-notes
+              --prerelease="$prerelease"
           fi

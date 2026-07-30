@@ -231,7 +231,7 @@ CGO_ENABLED=0 go build -ldflags="-s -w" -o hso ./cmd/hso
 - `CGO_ENABLED=0` で完全静的リンク。glibc に依存しないので Alpine（musl）でもそのまま動く。**リリースビルドでは必須**
 - サイズは 8〜15MB 程度
 - **`linux/amd64` と `linux/arm64` の両方を出す**（Oracle Cloud Ampere / Raspberry Pi でのホストが多いため）
-- GitHub Releases + goreleaser、加えて arch 判定して `/usr/local/bin` に置くだけの `install.sh`
+- 配布は GitHub Releases。`v*` タグの push で `.github/workflows/release.yml` が amd64 / arm64 の tar.gz を作って添付する（goreleaser は使わない）
 - v2 の Fabric mod jar は `//go:embed` でバイナリに埋め込み、`hso install-mod` で `mods/` に書き出す。**ユーザーから見える成果物はバイナリ1個**に保つ
 
 ---
@@ -312,7 +312,7 @@ mod が開ける扉は TPS だけではなく、MSPT 分布（p95/最大）・�
 - [x] パネル選択 / フォーカスとスクロール、キー説明行
 - [x] CPU / Heap / RSS のメーター表示、プレイヤー一覧パネル
 - [x] プレイヤー選択からのコマンド組み立て（モーダル）
-- [ ] goreleaser で amd64 / arm64 リリース
+- [x] GitHub Actions で amd64 / arm64 リリース
 
 **v2**
 - [ ] Fabric mod による TPS / MSPT 取得

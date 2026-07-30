@@ -8,6 +8,13 @@ on:
     # 毎週月曜 09:00 JST (00:00 UTC)
     - cron: "0 0 * * 1"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deps-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deps:
     runs-on: ubuntu-latest
@@ -26,5 +33,7 @@ jobs:
             exit 1
           fi
 
+      # 新しい CVE の公表で無関係な PR が落ちないよう、PR では失敗させない。
       - name: govulncheck
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
