@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -122,7 +123,6 @@ type Model struct {
 	playerTarget      string
 	commandCursor     int
 	chat              lineBuffer
-	commands          lineBuffer
 	logs              lineBuffer
 	samples           sampleBuffer
 }
@@ -250,13 +250,7 @@ func (model *Model) View() tea.View {
 			model.layout.leftWidth,
 			model.layout.chatHeight,
 		)
-		commands := model.renderBufferPanel(
-			panelCommands,
-			&model.commands,
-			model.layout.leftWidth,
-			model.layout.commandHeight,
-		)
-		left := chat + "\n" + commands
+		left := chat + "\n" + model.renderGraphPanel()
 		logs := model.renderBufferPanel(
 			panelLog,
 			&model.logs,
@@ -461,8 +455,6 @@ func (model *Model) focusedBuffer() (*lineBuffer, int) {
 	switch model.panel {
 	case panelChat:
 		return &model.chat, model.layout.chatLines()
-	case panelCommands:
-		return &model.commands, model.layout.commandLines()
 	case panelLog:
 		return &model.logs, model.layout.logLines()
 	default:
@@ -533,10 +525,8 @@ func (model *Model) resize(width, height int) {
 		history = historyLines
 	}
 	model.chat.SetLimit(history)
-	model.commands.SetLimit(history)
 	model.logs.SetLimit(history)
 	model.chat.Truncate(model.layout.leftContentWidth())
-	model.commands.Truncate(model.layout.leftContentWidth())
 	model.logs.Truncate(model.layout.rightContentWidth())
 	model.samples.SetLimit(model.layout.graphWidth * 2)
 }
@@ -607,11 +597,12 @@ func (model *Model) addLog(entry serverlog.Entry) {
 		line := fmt.Sprintf("<%s> %s", entry.Player, entry.Chat)
 		model.chat.Add(truncate(line, model.layout.leftContentWidth()))
 	case serverlog.KindCommand:
+		// 専用ペインは Graph に譲ったので、コマンドの実行記録は Log に混ぜる。
 		line := entry.Command
 		if entry.Player != "" {
 			line = entry.Player + ": " + entry.Command
 		}
-		model.commands.Add(truncate(line, model.layout.leftContentWidth()))
+		model.logs.Add(truncate(line, model.layout.rightContentWidth()))
 	default:
 		model.logs.Add(truncate(entry.Message, model.layout.rightContentWidth()))
 	}
@@ -685,7 +676,8 @@ func (model *Model) statsLines() []string {
 		threads = fmt.Sprintf("%d", model.metrics.Threads.Value)
 	}
 
-	lines := []string{
+	// グラフは Graph パネルへ移したので、ここは数値だけ。行間を空けて読む。
+	rows := []string{
 		fmt.Sprintf(
 			"Heap %s / %s committed (max %s)  post-GC %s",
 			formatJVMBytes(model.metrics.Heap.Used),
@@ -725,71 +717,92 @@ func (model *Model) statsLines() []string {
 		),
 	}
 
-	maximum := model.graphMaximum()
-	heap := renderBraille(
-		model.samples,
-		func(sample memorySample) (uint64, bool) {
-			return sample.heap, sample.heapKnown
-		},
-		model.layout.graphWidth,
-		2,
-		maximum,
-	)
-	rss := renderBraille(
-		model.samples,
-		func(sample memorySample) (uint64, bool) {
-			return sample.rss, sample.rssKnown
-		},
-		model.layout.graphWidth,
-		2,
-		maximum,
-	)
-	if model.jvmMetricError != "" {
-		heap[0] = truncate(
-			"unavailable: "+model.jvmMetricError,
-			model.layout.graphWidth,
-		)
-		heap[1] = ""
-	}
-	if model.memoryMetricError != "" {
-		rss[0] = truncate(
-			"unavailable: "+model.memoryMetricError,
-			model.layout.graphWidth,
-		)
-		rss[1] = ""
-	}
-	for index, graphLine := range heap {
-		label := "     "
-		if index == 0 {
-			label = "Heap "
+	lines := make([]string, 0, len(rows)*2-1)
+	for index, row := range rows {
+		if index > 0 {
+			lines = append(lines, "")
 		}
-		lines = append(lines, heapStyle.Render(label+graphLine))
-	}
-	for index, graphLine := range rss {
-		label := "     "
-		if index == 0 {
-			label = "RSS  "
-		}
-		lines = append(lines, rssStyle.Render(label+graphLine))
+		lines = append(lines, row)
 	}
 	return lines
 }
 
-func (model *Model) graphMaximum() uint64 {
-	var maximum uint64
-	if model.metrics.Heap.Max.Available && model.metrics.Heap.Max.Value > 0 {
-		maximum = uint64(model.metrics.Heap.Max.Value)
+// renderGraphPanel は heap と rss を 1 枚に重ねた braille グラフ。
+// 表示専用でフォーカス対象ではない。
+func (model *Model) renderGraphPanel() string {
+	width := model.layout.leftContentWidth()
+	var lines []string
+	if model.jvmMetricError != "" {
+		lines = append(lines, dimStyle.Render(truncate(
+			"heap unavailable: "+model.jvmMetricError, width)))
 	}
+	if model.memoryMetricError != "" {
+		lines = append(lines, dimStyle.Render(truncate(
+			"rss unavailable: "+model.memoryMetricError, width)))
+	}
+
+	low, high, ok := model.graphRange()
+	if ok {
+		lines = append(lines, renderChart(
+			model.samples,
+			[]chartSeries{
+				{value: heapValue, style: heapStyle},
+				{value: rssValue, style: rssStyle},
+			},
+			width,
+			model.layout.graphLines()-len(lines),
+			low,
+			high,
+		)...)
+	}
+	return renderPanel(
+		model.graphTitle(),
+		lines,
+		model.layout.leftWidth,
+		model.layout.graphHeight,
+		false,
+		plainFrame,
+	)
+}
+
+// graphTitle には凡例と、画面に写っている時間の幅を出す。
+// サンプルは 1 秒に 1 つなので、保持数がそのまま秒数になる。
+func (model *Model) graphTitle() string {
+	title := "Graph · " +
+		heapStyle.Render("heap") + dimStyle.Render(" / ") +
+		rssStyle.Render("rss")
+	if model.samples.Len() > 0 {
+		title += fmt.Sprintf(" · %ds", model.samples.Len())
+	}
+	return title
+}
+
+// graphRange は縦軸の範囲を保持中のサンプルから決める。0 起点にすると
+// GC のノコギリ波も RSS のじわ増えも潰れるので、実測の min/max に
+// 上下 5% の余白を付けた範囲を使う（原則6）。
+func (model *Model) graphRange() (uint64, uint64, bool) {
+	low := uint64(math.MaxUint64)
+	high := uint64(0)
 	for index := 0; index < model.samples.Len(); index++ {
 		sample := model.samples.At(index)
-		if sample.heapKnown && sample.heap > maximum {
-			maximum = sample.heap
-		}
-		if sample.rssKnown && sample.rss > maximum {
-			maximum = sample.rss
+		for _, value := range []sampleValue{heapValue, rssValue} {
+			number, available := value(sample)
+			if !available {
+				continue
+			}
+			low = min(low, number)
+			high = max(high, number)
 		}
 	}
-	return maximum
+	if high == 0 {
+		return 0, 0, false
+	}
+
+	margin := max((high-low)/20, high/100)
+	if margin == 0 {
+		margin = 1
+	}
+	return low - min(low, margin), high + margin, true
 }
 
 // renderMetersPanel は CPU / Heap / RSS を横棒メーターで出す。

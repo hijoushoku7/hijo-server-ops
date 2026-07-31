@@ -64,8 +64,9 @@ func TestModelRoutesLogsAndTracksPlayers(t *testing.T) {
 	if model.chat.At(0) != "<alice> hello" {
 		t.Fatalf("chat = %q", model.chat.At(0))
 	}
-	if model.commands.At(0) != "alice: /time set day" {
-		t.Fatalf("command = %q", model.commands.At(0))
+	// コマンドは専用ペインをやめて Log に流している。
+	if model.logs.At(0) != "alice: /time set day" {
+		t.Fatalf("command = %q", model.logs.At(0))
 	}
 	if model.tracker.PlayerCount() != 1 || model.tracker.LagEvents() != 1 {
 		t.Fatalf(
@@ -126,7 +127,7 @@ func TestModelReleasesDisplayCachesWhenTerminalBecomesTooSmall(t *testing.T) {
 	})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 20, Height: 5})
 
-	if model.chat.lines != nil || model.commands.lines != nil ||
+	if model.chat.lines != nil ||
 		model.logs.lines != nil || model.samples.samples != nil {
 		t.Fatalf("display caches were retained: %#v", model)
 	}
@@ -160,8 +161,13 @@ func TestModelReportsMetricFailureOnceAndRecovery(t *testing.T) {
 	if !strings.Contains(model.statsTitle(), "metrics degraded") {
 		t.Fatalf("title = %q", model.statsTitle())
 	}
-	if !strings.Contains(strings.Join(model.statsLines(), "\n"), failure.JVMError) {
-		t.Fatalf("stats = %q", model.statsLines())
+	// 取れない理由はグラフの代わりに Graph パネルへ出す。パネル幅で切られる
+	// ので、頭が出ていることだけを見る。
+	if !strings.Contains(
+		stripANSI(model.renderGraphPanel()),
+		"heap unavailable: hsperfdata",
+	) {
+		t.Fatalf("graph = %q", stripANSI(model.renderGraphPanel()))
 	}
 
 	_, _ = model.Update(MetricsMsg{})
@@ -261,11 +267,10 @@ func TestModelMovesBetweenPanelsInSelectMode(t *testing.T) {
 		code rune
 		want panel
 	}{
-		{tea.KeyUp, panelCommands},
 		{tea.KeyUp, panelChat},
-		{tea.KeyRight, panelLog},
+		{tea.KeyUp, panelPlayers},
+		{tea.KeyDown, panelLog},
 		{tea.KeyLeft, panelChat},
-		{tea.KeyDown, panelCommands},
 		{tea.KeyDown, panelConsole},
 	}
 	for _, move := range moves {
@@ -413,12 +418,12 @@ func TestModelRecordsOnlySuccessfullySentCommands(t *testing.T) {
 	action := Action{Kind: ActionSendCommand, Command: "say hello"}
 
 	_, _ = model.Update(ActionResultMsg{Action: action, Err: errors.New("failed")})
-	if model.commands.Len() != 0 {
+	if model.logs.Len() != 0 {
 		t.Fatalf("failed command was recorded")
 	}
 	_, _ = model.Update(ActionResultMsg{Action: action})
-	if model.commands.Len() != 1 || model.commands.At(0) != "say hello" {
-		t.Fatalf("commands = %q", model.commands.At(0))
+	if model.logs.Len() != 1 || model.logs.At(0) != "say hello" {
+		t.Fatalf("logs = %q", model.logs.At(0))
 	}
 }
 

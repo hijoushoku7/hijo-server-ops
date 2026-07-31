@@ -55,6 +55,18 @@ func formatBytes(value uint64) string {
 	)
 }
 
+// formatAxisBytes は Y 軸ラベル用に桁を詰めた表記。10 以上は小数を落とし、
+// "512M" "5.4G" のように 4 桁以内へ収める。
+func formatAxisBytes(value uint64) string {
+	text := formatBytes(value)
+	unit := text[len(text)-1]
+	whole, _, found := strings.Cut(text[:len(text)-1], ".")
+	if found && len(whole) > 1 {
+		return whole + string(unit)
+	}
+	return text
+}
+
 func formatDelta(rss procstats.Number, committed hsperfdata.Number) string {
 	if !rss.Available || !committed.Available || committed.Value < 0 ||
 		rss.Value > math.MaxInt64 {

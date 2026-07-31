@@ -2,6 +2,7 @@ package ui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -40,43 +41,70 @@ func TestSampleBufferResizeKeepsNewestAndReleasesStorage(t *testing.T) {
 	}
 }
 
-func TestRenderBraillePlacesLatestSampleAtRightEdge(t *testing.T) {
+func TestPlotSeriesPlacesLatestSampleAtRightEdge(t *testing.T) {
 	var samples sampleBuffer
 	samples.SetLimit(2)
 	samples.Add(memorySample{heap: 0, heapKnown: true})
 
-	lines := renderBraille(
-		samples,
-		func(sample memorySample) (uint64, bool) {
-			return sample.heap, sample.heapKnown
-		},
-		1,
-		1,
-		10,
-	)
+	cells := plotSeries(samples, heapValue, 1, 1, 0, 10)
 
-	if got, want := lines, []string{"⢀"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("lines = %q, want %q", got, want)
+	// 最新の 1 点は右下のドット。
+	if got, want := cells, []byte{1 << 7}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("cells = %v, want %v", got, want)
 	}
 }
 
-func TestRenderBrailleLeavesUnavailableGap(t *testing.T) {
+func TestPlotSeriesLeavesUnavailableGap(t *testing.T) {
 	var samples sampleBuffer
 	samples.SetLimit(2)
 	samples.Add(memorySample{})
 
-	lines := renderBraille(
+	cells := plotSeries(samples, heapValue, 1, 1, 0, 10)
+
+	if got, want := cells, []byte{0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("cells = %v, want %v", got, want)
+	}
+}
+
+func TestRenderChartDrawsAxisLabelsAndBothSeries(t *testing.T) {
+	var samples sampleBuffer
+	samples.SetLimit(4)
+	samples.Add(memorySample{
+		heap: 1 << 30, heapKnown: true,
+		rss: 3 << 30, rssKnown: true,
+	})
+	samples.Add(memorySample{
+		heap: 2 << 30, heapKnown: true,
+		rss: 3 << 30, rssKnown: true,
+	})
+
+	lines := renderChart(
 		samples,
-		func(sample memorySample) (uint64, bool) {
-			return sample.heap, sample.heapKnown
+		[]chartSeries{
+			{value: heapValue, style: heapStyle},
+			{value: rssValue, style: rssStyle},
 		},
-		1,
-		1,
-		10,
+		axisWidth+2,
+		2,
+		1<<30,
+		4<<30,
 	)
 
-	if got, want := lines, []string{" "}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("lines = %q, want %q", got, want)
+	if len(lines) != 2 {
+		t.Fatalf("lines = %d", len(lines))
+	}
+	// 上端に最大値、下端に最小値のラベルが出る。
+	if !strings.Contains(stripANSI(lines[0]), "4.0G┤") ||
+		!strings.Contains(stripANSI(lines[1]), "1.0G┤") {
+		t.Fatalf("axis labels = %q", stripANSI(lines[0]+lines[1]))
+	}
+	if !containsBraille(strings.Join(lines, "")) {
+		t.Fatalf("chart has no braille: %q", stripANSI(strings.Join(lines, "")))
+	}
+	for index, line := range lines {
+		if width := stringWidth(stripANSI(line)); width != axisWidth+2 {
+			t.Fatalf("line %d width = %d", index, width)
+		}
 	}
 }
 
