@@ -56,15 +56,32 @@ func formatBytes(value uint64) string {
 }
 
 // formatAxisBytes は Y 軸ラベル用に桁を詰めた表記。10 以上は小数を落とし、
-// "512M" "5.4G" のように 4 桁以内へ収める。
+// 1000 を超えたら 1 つ上の単位へ繰り上げて、"512M" "1.0G" "16G" のように
+// 常に 4 桁以内へ収める。軸の欄は 4 桁しかなく、あふれると単位が切られて
+// ただの数字になってしまうため。
 func formatAxisBytes(value uint64) string {
-	text := formatBytes(value)
-	unit := text[len(text)-1]
-	whole, _, found := strings.Cut(text[:len(text)-1], ".")
-	if found && len(whole) > 1 {
-		return whole + string(unit)
+	const unit = uint64(1024)
+	const units = "KMGTPE"
+	if value < unit {
+		return fmt.Sprintf("%dB", value)
 	}
-	return text
+
+	divisor := unit
+	exponent := 0
+	for value/divisor >= unit && exponent < len(units)-1 {
+		divisor *= unit
+		exponent++
+	}
+	scaled := float64(value) / float64(divisor)
+	// 999.95 以上は丸めると 4 桁になるので、1 つ上の単位で出す。
+	if scaled >= 999.95 && exponent < len(units)-1 {
+		scaled /= float64(unit)
+		exponent++
+	}
+	if scaled >= 10 {
+		return fmt.Sprintf("%.0f%c", scaled, units[exponent])
+	}
+	return fmt.Sprintf("%.1f%c", scaled, units[exponent])
 }
 
 func formatDelta(rss procstats.Number, committed hsperfdata.Number) string {

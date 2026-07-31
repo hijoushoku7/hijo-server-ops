@@ -196,7 +196,11 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.status = "starting"
 		model.busy = false
 	case ActionResultMsg:
-		model.busy = false
+		// 設定の保存はサーバー操作ではないので、進行中の操作の busy を
+		// 巻き込まない。
+		if message.Action.Kind != ActionSaveSettings {
+			model.busy = false
+		}
 		if message.Err != nil {
 			model.status = "操作失敗: " + message.Err.Error()
 			break
@@ -708,17 +712,7 @@ func (model *Model) statsLines() []string {
 			formatJVMBytes(model.metrics.Heap.Max),
 			postGC,
 		),
-		fmt.Sprintf(
-			"RSS  %s / %s total (%s)  limit %s  Δ %s",
-			formatProcBytes(model.memory.RSS),
-			formatProcBytes(model.memory.HostTotal),
-			highlight(
-				formatRSSPercent(model.memory),
-				rssRatio(model.memory),
-			),
-			formatLimit(model.memory.CgroupLimit),
-			formatDelta(model.memory.RSS, model.metrics.Heap.Committed),
-		),
+		model.rssLine(),
 		fmt.Sprintf(
 			"GC   %d collections  total %s  last %s  freq %s",
 			model.gcStats.Collections,
@@ -754,6 +748,41 @@ func (model *Model) statsLines() []string {
 		lines = append(lines, row)
 	}
 	return lines
+}
+
+// rssLine は Stats の RSS 行。パーセントは必ず使った分母の隣に置く。
+// cgroup 制限があるときは総メモリではなく制限が実効的な上限なので、
+// そちらを分母にする（Meters と同じ規則）。
+//
+// 幅が足りないときは分母を落として短い形にする。Δ（RSS - Heap committed）
+// はこのツールの核心なので、切られる前に他を削る。
+func (model *Model) rssLine() string {
+	rss := formatProcBytes(model.memory.RSS)
+	ratio := highlight(formatRSSPercent(model.memory), rssRatio(model.memory))
+	delta := formatDelta(model.memory.RSS, model.metrics.Heap.Committed)
+
+	short := fmt.Sprintf("RSS  %s (%s)  Δ %s", rss, ratio, delta)
+	limit, source := rssDenominator(model.memory)
+	if source == "" {
+		return short
+	}
+
+	label := "total"
+	if source == "cgroup" {
+		label = "limit"
+	}
+	full := fmt.Sprintf(
+		"RSS  %s / %s %s (%s)  Δ %s",
+		rss,
+		formatBytes(limit),
+		label,
+		ratio,
+		delta,
+	)
+	if stringWidth(full) > model.layout.statsWidth-2 {
+		return short
+	}
+	return full
 }
 
 // renderGraphPanel は heap と rss を 1 枚に重ねた braille グラフ。

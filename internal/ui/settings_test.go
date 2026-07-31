@@ -8,6 +8,8 @@ import (
 )
 
 func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
+	// スタイルはパッケージ変数なので、後続のテストへ持ち越さない。
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
 	actions := make(chan Action, 1)
 	model := New(actions, 0, DefaultSettings())
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})

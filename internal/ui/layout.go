@@ -54,7 +54,7 @@ func calculateLayout(width, height int) layout {
 	result.playersWidth = clamp(width*3/20, minimumPlayersWidth, 22)
 	result.metersWidth = clamp(width/4, minimumMetersWidth, 28)
 	result.statsWidth = width - result.playersWidth - result.metersWidth
-	// Graph は左列の下半分。Y 軸ラベルの分だけ描画幅が狭い。
+	// Graph は左列の上半分。Y 軸ラベルの分だけ描画幅が狭い。
 	result.graphWidth = max(0, result.leftWidth-2-axisWidth)
 	return result
 }

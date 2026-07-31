@@ -773,3 +773,62 @@ func containsBraille(value string) bool {
 	}
 	return false
 }
+
+func TestStatsRSSLineKeepsDeltaOnNarrowTerminals(t *testing.T) {
+	model := newTestModel()
+	model.memory = procstats.Memory{
+		RSS:       procstats.Number{Value: 5400 << 20, Available: true},
+		HostTotal: procstats.Number{Value: 16 << 30, Available: true},
+	}
+	model.metrics = hsperfdata.Metrics{Heap: hsperfdata.Memory{
+		Committed: hsperfdata.Number{Value: 2100 << 20, Available: true},
+	}}
+
+	// 最小幅では分母を落としてでも Δ を残す。Δ はこのツールの核心。
+	model.resize(minimumWidth, minimumHeight)
+	narrow := model.rssLine()
+	if stringWidth(narrow) > model.layout.statsWidth-2 {
+		t.Fatalf("narrow line = %q (%d 桁)", narrow, stringWidth(narrow))
+	}
+	if !strings.Contains(narrow, "Δ +3.2G") {
+		t.Fatalf("narrow line = %q", narrow)
+	}
+
+	// 広ければ分母も出す。
+	model.resize(110, 30)
+	wide := stripANSI(model.rssLine())
+	if !strings.Contains(wide, "16.0G total") ||
+		!strings.Contains(wide, "Δ +3.2G") {
+		t.Fatalf("wide line = %q", wide)
+	}
+
+	// cgroup 制限があるときは、割合の分母をそちらに切り替えて隣に置く。
+	model.memory.CgroupLimit = procstats.Limit{Value: 8 << 30, Available: true}
+	limited := stripANSI(model.rssLine())
+	if !strings.Contains(limited, "8.0G limit (66%)") {
+		t.Fatalf("limited line = %q", limited)
+	}
+}
+
+func TestGraphRangeAddsMarginAndReportsUnavailable(t *testing.T) {
+	model := newTestModel()
+	model.resize(110, 30)
+	if _, _, ok := model.graphRange(); ok {
+		t.Fatal("range is available without samples")
+	}
+
+	// 1 点しかなくても高さ 0 の範囲は返さない。
+	model.samples.Add(memorySample{heap: 1 << 30, heapKnown: true})
+	low, high, ok := model.graphRange()
+	if !ok || low >= high {
+		t.Fatalf("low = %d, high = %d, ok = %t", low, high, ok)
+	}
+
+	// 余白が値より大きくても下限は 0 で飽和する。
+	model.samples.SetLimit(0)
+	model.samples.SetLimit(4)
+	model.samples.Add(memorySample{heap: 1, heapKnown: true})
+	if low, _, ok := model.graphRange(); !ok || low != 0 {
+		t.Fatalf("low = %d, ok = %t", low, ok)
+	}
+}

@@ -110,3 +110,23 @@ func TestRatiosReportUnavailableAsNaN(t *testing.T) {
 		t.Fatalf("rssRatio = %f", ratio)
 	}
 }
+
+func TestFormatAxisBytesStaysWithinFourColumns(t *testing.T) {
+	// 1000〜1023 の帯は繰り上げないと 5 桁になり、軸の欄で単位が切れる。
+	cases := map[uint64]string{
+		1004 << 20: "1.0G",
+		1023 << 20: "1.0G",
+		999 << 20:  "999M",
+		1 << 30:    "1.0G",
+		16 << 30:   "16G",
+		512 << 20:  "512M",
+	}
+	for value, want := range cases {
+		if got := formatAxisBytes(value); got != want {
+			t.Fatalf("formatAxisBytes(%d) = %q, want %q", value, got, want)
+		}
+		if width := stringWidth(formatAxisBytes(value)); width > axisWidth-1 {
+			t.Fatalf("formatAxisBytes(%d) width = %d", value, width)
+		}
+	}
+}

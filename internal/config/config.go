@@ -83,6 +83,14 @@ func Load(path string) (Config, error) {
 // コメントは残らない。書き込みは一時ファイル経由にして、途中で失敗しても
 // 元の設定ファイルを壊さないようにする。
 func Save(path string, cfg Config) error {
+	// Load が既定値として入れた workdir をそのまま書き戻すと、書いていな
+	// かったユーザーの設定に絶対パスが増える。設定ファイルと同じ場所なら
+	// 省いて、ディレクトリごと移動しても壊れないままにする。
+	if directory, err := filepath.Abs(filepath.Dir(path)); err == nil &&
+		cfg.Server.WorkDir == directory {
+		cfg.Server.WorkDir = ""
+	}
+
 	temporary := path + ".tmp"
 	if err := os.WriteFile(temporary, []byte(render(cfg)), 0o644); err != nil {
 		return fmt.Errorf("設定ファイルを書く: %w", err)
