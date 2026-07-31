@@ -26,13 +26,15 @@ func TestMissingConfig(t *testing.T) {
 }
 
 func TestIsTerminal(t *testing.T) {
+	// /dev/null はキャラクタデバイスだが端末ではない。ここを取り違えると
+	// hso </dev/null でウィザードが開いて入力待ちのまま止まる。
 	file, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	if !isTerminal(file) {
-		t.Fatal("/dev/null はキャラクタデバイス")
+	if isTerminal(file) {
+		t.Fatal("/dev/null は端末ではない")
 	}
 
 	regular, err := os.Create(filepath.Join(t.TempDir(), "log"))

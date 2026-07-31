@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/charmbracelet/x/term"
+
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/setup"
@@ -54,14 +56,12 @@ func missingConfig(path string) bool {
 
 // interactive は対話的なウィザードを出せる端末かどうか。パイプや
 // systemd 配下では出せないので、その場合は普通のエラーで終わらせる。
+// /dev/null もキャラクタデバイスなので、ファイルの種類ではなく
+// termios を引けるかどうかで判定する。
 func interactive() bool {
 	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
 }
 
 func isTerminal(file *os.File) bool {
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(file.Fd())
 }
