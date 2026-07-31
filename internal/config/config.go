@@ -39,10 +39,14 @@ func Load(path string) (Config, error) {
 
 	metadata, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
-		return cfg, fmt.Errorf("設定ファイルを読む: %w", err)
+		return cfg, fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))
 	}
 	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
-		return cfg, fmt.Errorf("不明な設定項目: %s", joinKeys(undecoded))
+		return cfg, fmt.Errorf(
+			"不明な設定項目: %s%s",
+			joinKeys(undecoded),
+			reinitialize(path),
+		)
 	}
 
 	cfg.Server.Command = strings.TrimSpace(cfg.Server.Command)
@@ -135,6 +139,17 @@ func quote(value string) string {
 		"\t", `\t`,
 	)
 	return `"` + replacer.Replace(value) + `"`
+}
+
+// reinitialize は設定ファイルが読めないときの直し方を添える。古い形式の
+// 項目が残っているのが主な原因で、消して起動し直せばセットアップから
+// 作り直せる、というところまで書かないと何をすればいいか分からない。
+func reinitialize(path string) string {
+	return fmt.Sprintf(
+		"\nhso.toml を初期化してください: %s を削除して hso を起動すると"+
+			"セットアップから作り直せます",
+		path,
+	)
 }
 
 func joinKeys(keys []toml.Key) string {

@@ -70,6 +70,11 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "server.commnad") {
 		t.Fatalf("err = %v", err)
 	}
+	// 何をすればいいか分かるよう、直し方とファイルの場所も添える。
+	if !strings.Contains(err.Error(), "hso.toml を初期化してください") ||
+		!strings.Contains(err.Error(), path) {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 func writeConfig(t *testing.T, path, content string) {
