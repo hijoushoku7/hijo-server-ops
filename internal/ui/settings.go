@@ -5,6 +5,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 // Settings は設定モーダルで変更できる値。項目を増やすときは、ここへ
@@ -133,13 +135,13 @@ type settingItem struct {
 
 var settingItems = []settingItem{
 	{
-		label: "枠",
+		label: msg.LabelFrame,
 		options: []settingOption{
-			{label: "既定", value: "dracula"},
-			{label: "モノクロ", value: "mono"},
-			{label: "ネオン", value: "neon"},
-			{label: "海", value: "ocean"},
-			{label: "森", value: "forest"},
+			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptMono, value: "mono"},
+			{label: msg.OptNeon, value: "neon"},
+			{label: msg.OptOcean, value: "ocean"},
+			{label: msg.OptForest, value: "forest"},
 		},
 		get: func(settings Settings) string { return settings.FramePreset },
 		set: func(settings *Settings, value string) {
@@ -147,13 +149,13 @@ var settingItems = []settingItem{
 		},
 	},
 	{
-		label: "グラフの線",
+		label: msg.LabelGraphLine,
 		options: []settingOption{
-			{label: "既定", value: "dracula"},
-			{label: "モノクロ", value: "mono"},
-			{label: "暖色", value: "warm"},
-			{label: "寒色", value: "cool"},
-			{label: "シンプル", value: "safe"},
+			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptMono, value: "mono"},
+			{label: msg.OptWarm, value: "warm"},
+			{label: msg.OptCool, value: "cool"},
+			{label: msg.OptSafe, value: "safe"},
 		},
 		get: func(settings Settings) string { return settings.GraphPreset },
 		set: func(settings *Settings, value string) {
@@ -161,12 +163,12 @@ var settingItems = []settingItem{
 		},
 	},
 	{
-		label: "メーターの棒",
+		label: msg.LabelMeterBar,
 		options: []settingOption{
-			{label: "信号", value: "signal"},
-			{label: "モノクロ", value: "mono"},
-			{label: "シンプル", value: "safe"},
-			{label: "単色", value: "flat"},
+			{label: msg.OptSignal, value: "signal"},
+			{label: msg.OptMono, value: "mono"},
+			{label: msg.OptSafe, value: "safe"},
+			{label: msg.OptFlat, value: "flat"},
 		},
 		get: func(settings Settings) string { return settings.MeterPreset },
 		set: func(settings *Settings, value string) {
@@ -174,13 +176,13 @@ var settingItems = []settingItem{
 		},
 	},
 	{
-		label: "タイトル",
+		label: msg.LabelTitle,
 		options: []settingOption{
-			{label: "シアン", value: "cyan"},
-			{label: "白", value: "white"},
-			{label: "黄", value: "amber"},
-			{label: "紫", value: "violet"},
-			{label: "控えめ", value: "quiet"},
+			{label: msg.OptCyan, value: "cyan"},
+			{label: msg.OptWhite, value: "white"},
+			{label: msg.OptAmber, value: "amber"},
+			{label: msg.OptViolet, value: "violet"},
+			{label: msg.OptQuiet, value: "quiet"},
 		},
 		get: func(settings Settings) string { return settings.TitlePreset },
 		set: func(settings *Settings, value string) {
@@ -188,12 +190,12 @@ var settingItems = []settingItem{
 		},
 	},
 	{
-		label: "選択行",
+		label: msg.LabelSelection,
 		options: []settingOption{
-			{label: "黄", value: "amber"},
-			{label: "シアン", value: "cyan"},
-			{label: "紫", value: "violet"},
-			{label: "モノクロ", value: "mono"},
+			{label: msg.OptAmber, value: "amber"},
+			{label: msg.OptCyan, value: "cyan"},
+			{label: msg.OptViolet, value: "violet"},
+			{label: msg.OptMono, value: "mono"},
 		},
 		get: func(settings Settings) string { return settings.SelectionPreset },
 		set: func(settings *Settings, value string) {
@@ -319,7 +321,7 @@ func (model *Model) saveSettings() {
 		return
 	}
 	if err := model.save(model.settings); err != nil {
-		model.status = "設定の保存に失敗: " + err.Error()
+		model.status = msg.SaveSettingsFailed(err)
 	}
 }
 

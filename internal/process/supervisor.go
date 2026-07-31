@@ -23,7 +23,7 @@ func SupervisorCommand(args []string) (string, bool) {
 func RunSupervisor(command string) int {
 	control := os.NewFile(3, "hso-supervisor-control")
 	if control == nil {
-		fmt.Fprintln(os.Stderr, "hso supervisor: 制御パイプがありません")
+		fmt.Fprintln(os.Stderr, "hso supervisor: no control pipe")
 		return 1
 	}
 	defer control.Close()
@@ -45,7 +45,7 @@ func RunSupervisor(command string) int {
 	server.Env = os.Environ()
 	server.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := server.Start(); err != nil {
-		writeSupervisorError(control, fmt.Errorf("起動スクリプトを開始する: %w", err))
+		writeSupervisorError(control, fmt.Errorf("start the start script: %w", err))
 		return 1
 	}
 	serverPID := server.Process.Pid
@@ -71,7 +71,7 @@ func RunSupervisor(command string) int {
 			reapAdoptedChildren()
 			alive, err := managedProcessesAlive("/proc", os.Getpid(), serverPID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "hso supervisor: プロセス確認: %v\n", err)
+				fmt.Fprintf(os.Stderr, "hso supervisor: check process: %v\n", err)
 				return 1
 			}
 			if !alive {
@@ -115,7 +115,7 @@ func becomeSubreaper() error {
 		0,
 	)
 	if errno != 0 {
-		return fmt.Errorf("subreaperを有効化する: %w", errno)
+		return fmt.Errorf("enable subreaper: %w", errno)
 	}
 	return nil
 }
@@ -199,7 +199,7 @@ func commandExitCode(err error) int {
 		}
 		return exitErr.ExitCode()
 	}
-	fmt.Fprintf(os.Stderr, "hso supervisor: 起動スクリプトを待つ: %v\n", err)
+	fmt.Fprintf(os.Stderr, "hso supervisor: wait for the start script: %v\n", err)
 	return 1
 }
 

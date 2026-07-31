@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/setup"
 )
@@ -25,7 +26,7 @@ func main() {
 }
 
 func run() error {
-	configPath := flag.String("config", "hso.toml", "設定ファイルのパス")
+	configPath := flag.String("config", "hso.toml", msg.ConfigFlagUsage)
 	flag.Parse()
 
 	// 設定ファイルがない初回はセットアップへ回し、作成できたらそのまま
@@ -37,7 +38,7 @@ func run() error {
 			return err
 		}
 		if created == "" {
-			fmt.Fprintln(os.Stderr, "hso: 中止しました")
+			fmt.Fprintln(os.Stderr, "hso: "+msg.Aborted)
 			return nil
 		}
 	}

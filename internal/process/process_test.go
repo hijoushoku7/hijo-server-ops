@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,7 +79,8 @@ func TestProcessReportsStartError(t *testing.T) {
 		Command: filepath.Join(t.TempDir(), "missing"),
 		WorkDir: t.TempDir(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "起動スクリプトを確認する") {
+	// 起動スクリプトが見つからないことが呼び出し側まで伝わるかどうか。
+	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("err = %v", err)
 	}
 }

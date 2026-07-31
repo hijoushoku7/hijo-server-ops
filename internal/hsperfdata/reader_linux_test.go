@@ -64,7 +64,7 @@ func TestReaderPreservesCandidateError(t *testing.T) {
 	if err == nil || errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v", err)
 	}
-	if !strings.Contains(err.Error(), "種類、サイズ、所有者") {
+	if !strings.Contains(err.Error(), "type, size or owner") {
 		t.Fatalf("err = %v", err)
 	}
 }

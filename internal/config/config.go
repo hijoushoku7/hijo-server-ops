@@ -2,12 +2,13 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 type Config struct {
@@ -43,24 +44,20 @@ func Load(path string) (Config, error) {
 
 	metadata, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
-		return cfg, fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))
+		return cfg, msg.ReadConfigFailed(err, path)
 	}
 	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
-		return cfg, fmt.Errorf(
-			"不明な設定項目: %s%s",
-			joinKeys(undecoded),
-			reinitialize(path),
-		)
+		return cfg, msg.UnknownConfigKeys(joinKeys(undecoded), path)
 	}
 
 	cfg.Server.Command = strings.TrimSpace(cfg.Server.Command)
 	if cfg.Server.Command == "" {
-		return cfg, errors.New("server.command は必須です")
+		return cfg, errors.New(msg.CommandRequired)
 	}
 
 	configPath, err := filepath.Abs(path)
 	if err != nil {
-		return cfg, fmt.Errorf("設定ファイルの絶対パスを求める: %w", err)
+		return cfg, msg.ConfigAbsPathFailed(err)
 	}
 	configDir := filepath.Dir(configPath)
 
@@ -74,10 +71,10 @@ func Load(path string) (Config, error) {
 
 	info, err := os.Stat(cfg.Server.WorkDir)
 	if err != nil {
-		return cfg, fmt.Errorf("server.workdir を確認する: %w", err)
+		return cfg, msg.WorkDirCheckFailed(err)
 	}
 	if !info.IsDir() {
-		return cfg, fmt.Errorf("server.workdir はディレクトリではありません: %s", cfg.Server.WorkDir)
+		return cfg, msg.WorkDirNotDirectory(cfg.Server.WorkDir)
 	}
 
 	return cfg, nil
@@ -106,15 +103,15 @@ func Save(path string, cfg Config) error {
 	permission := permissionOf(path)
 	temporary := path + ".tmp"
 	if err := os.WriteFile(temporary, []byte(render(cfg)), permission); err != nil {
-		return fmt.Errorf("設定ファイルを書く: %w", err)
+		return msg.WriteConfigFailed(err)
 	}
 	if err := os.Chmod(temporary, permission); err != nil {
 		os.Remove(temporary)
-		return fmt.Errorf("設定ファイルの権限を合わせる: %w", err)
+		return msg.ConfigPermissionFailed(err)
 	}
 	if err := os.Rename(temporary, path); err != nil {
 		os.Remove(temporary)
-		return fmt.Errorf("設定ファイルを置き換える: %w", err)
+		return msg.ReplaceConfigFailed(err)
 	}
 	return nil
 }
@@ -174,17 +171,6 @@ func quote(value string) string {
 		"\t", `\t`,
 	)
 	return `"` + replacer.Replace(value) + `"`
-}
-
-// reinitialize は設定ファイルが読めないときの直し方を添える。古い形式の
-// 項目が残っているのが主な原因で、消して起動し直せばセットアップから
-// 作り直せる、というところまで書かないと何をすればいいか分からない。
-func reinitialize(path string) string {
-	return fmt.Sprintf(
-		"\nhso.toml を初期化してください: %s を削除して hso を起動すると"+
-			"セットアップから作り直せます",
-		path,
-	)
 }
 
 func joinKeys(keys []toml.Key) string {

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serveraddr"
@@ -34,14 +34,6 @@ const (
 	gracefulStopWait   = 60 * time.Second
 	actionQueueSize    = 4
 	initialGeneration  = 1
-)
-
-var errHeapCountersUnavailable = errors.New(
-	"hsperfdataにヒープ使用量カウンタがありません",
-)
-
-var errRSSUnavailable = errors.New(
-	"/procのstatusにVmRSSがありません",
 )
 
 type stoppableServer interface {
@@ -260,7 +252,7 @@ func (controller *serverController) sendCommand(action ui.Action) {
 	if runtime == nil {
 		controller.program.Send(ui.ActionResultMsg{
 			Action: action,
-			Err:    errors.New("サーバーは停止しています"),
+			Err:    msg.ErrServerStopped,
 		})
 		return
 	}
@@ -283,14 +275,14 @@ func (controller *serverController) restart() {
 	if runtime == nil {
 		controller.program.Send(ui.ActionResultMsg{
 			Action: ui.Action{Kind: ui.ActionRestart},
-			Err:    errors.New("サーバーは停止しています"),
+			Err:    msg.ErrServerStopped,
 		})
 		return
 	}
 	if !runtime.javaFound.Load() {
 		controller.program.Send(ui.ActionResultMsg{
 			Action: ui.Action{Kind: ui.ActionRestart},
-			Err:    errors.New("javaプロセスの起動完了後に再起動できます"),
+			Err:    msg.ErrRestartBeforeJava,
 		})
 		return
 	}
@@ -317,7 +309,7 @@ func (controller *serverController) restart() {
 	nextGeneration := runtime.generation + 1
 	if err := controller.start(nextGeneration, true); err != nil {
 		controller.program.Send(ui.FatalMsg{
-			Err: fmt.Errorf("サーバーを再起動する: %w", err),
+			Err: msg.RestartFailed(err),
 		})
 	}
 }
@@ -364,9 +356,9 @@ func serverExitError(waitErr error, javaFound, expected bool) error {
 		return waitErr
 	}
 	if !javaFound {
-		return errors.New("起動スクリプトがjavaプロセスを開始せずに終了しました")
+		return msg.ErrScriptExitedWithoutJava
 	}
-	return errors.New("Minecraftサーバーが予期せず終了しました")
+	return msg.ErrServerExited
 }
 
 func (controller *serverController) currentRuntime() *serverRuntime {
@@ -417,7 +409,7 @@ func stopServer(server stoppableServer, javaFound bool, wait time.Duration) erro
 		case <-server.Done():
 			return nil
 		default:
-			return fmt.Errorf("サーバーを停止する: %w", err)
+			return msg.StopFailed(err)
 		}
 	}
 	<-server.Done()
@@ -450,7 +442,7 @@ func findJava(
 		}
 		program.Send(ui.FatalMsg{
 			Generation: generation,
-			Err:        fmt.Errorf("javaプロセスの特定: %w", err),
+			Err:        msg.FindJavaFailed(err),
 		})
 		_ = server.Signal(syscall.SIGTERM)
 		return
@@ -500,14 +492,14 @@ func collectMetrics(
 				metrics = snapshot.Metrics()
 				if !metrics.Heap.Used.Available ||
 					!metrics.Heap.Committed.Available {
-					jvmErr = errHeapCountersUnavailable
+					jvmErr = msg.ErrHeapCountersUnavailable
 				}
 			}
 		}
 
 		memory, memoryErr := procstats.ReadMemory(pid)
 		if memoryErr == nil && !memory.RSS.Available {
-			memoryErr = errRSSUnavailable
+			memoryErr = msg.ErrRSSUnavailable
 		}
 		cpuTime, _ := procstats.ReadCPUTime(pid)
 		sampledAt := time.Now()

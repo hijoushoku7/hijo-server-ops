@@ -10,19 +10,30 @@ if command -v go >/dev/null 2>&1; then
 elif [ -x "$HOME/.local/share/go-$go_version/bin/go" ]; then
 	go_command="$HOME/.local/share/go-$go_version/bin/go"
 else
-	echo "Goが見つかりません。docs/build.mdの手順でGo $go_versionを導入してください。" >&2
+	echo "go not found. Install Go $go_version by following docs/build.md." >&2
 	exit 1
 fi
 
 cd "$project_dir"
 
 "$go_command" version
-echo "ビルド開始: $project_dir"
+echo "build started: $project_dir"
+
+# 日本語版はタグなし、英語版は -tags en。テストも両方のタグで回す。片方の
+# 言語ファイルでキーを書き忘れると、そちらのタグでだけコンパイルが落ちる。
 "$go_command" test ./...
+"$go_command" test -tags en ./...
+
 CGO_ENABLED=0 "$go_command" build \
 	-ldflags="-s -w" \
-	-o hso \
+	-o hso_ja \
 	./cmd/hso
-echo "依存関係のバージョン情報:"
-"$go_command" version -m ./hso
-echo "ビルド完了: $project_dir/hso"
+CGO_ENABLED=0 "$go_command" build \
+	-tags en \
+	-ldflags="-s -w" \
+	-o hso_en \
+	./cmd/hso
+
+echo "dependency versions:"
+"$go_command" version -m ./hso_ja
+echo "build finished: $project_dir/hso_ja, $project_dir/hso_en"

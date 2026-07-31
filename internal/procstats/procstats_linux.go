@@ -57,11 +57,11 @@ func ReadCPUTime(pid int) (Duration, error) {
 
 func readCPUTimeAt(procRoot string, pid int) (Duration, error) {
 	if pid <= 0 {
-		return Duration{}, fmt.Errorf("PIDが不正です: %d", pid)
+		return Duration{}, fmt.Errorf("invalid PID: %d", pid)
 	}
 	data, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "stat"))
 	if err != nil {
-		return Duration{}, fmt.Errorf("プロセスのstatを読む: %w", err)
+		return Duration{}, fmt.Errorf("read process stat: %w", err)
 	}
 	return parseCPUTime(data)
 }
@@ -70,29 +70,29 @@ func parseCPUTime(data []byte) (Duration, error) {
 	line := strings.TrimSpace(string(data))
 	close := strings.LastIndexByte(line, ')')
 	if close < 0 {
-		return Duration{}, errors.New("プロセスのstat形式が不正です")
+		return Duration{}, errors.New("malformed process stat")
 	}
 	fields := strings.Fields(line[close+1:])
 	if len(fields) < 13 {
-		return Duration{}, errors.New("プロセスのstatフィールドが不足しています")
+		return Duration{}, errors.New("process stat has too few fields")
 	}
 	user, err := strconv.ParseUint(fields[11], 10, 64)
 	if err != nil {
-		return Duration{}, fmt.Errorf("プロセスのuser CPU時間を読む: %w", err)
+		return Duration{}, fmt.Errorf("read process user CPU time: %w", err)
 	}
 	system, err := strconv.ParseUint(fields[12], 10, 64)
 	if err != nil {
-		return Duration{}, fmt.Errorf("プロセスのsystem CPU時間を読む: %w", err)
+		return Duration{}, fmt.Errorf("read process system CPU time: %w", err)
 	}
 	if user > ^uint64(0)-system {
-		return Duration{}, errors.New("プロセスのCPU時間が大きすぎます")
+		return Duration{}, errors.New("process CPU time is too large")
 	}
 	// Linuxのamd64/arm64では/procのCPU時間にUSER_HZ=100を使う。
 	const clockTicksPerSecond = uint64(100)
 	ticks := user + system
 	seconds := ticks / clockTicksPerSecond
 	if seconds > uint64((1<<63-1)/int64(time.Second)) {
-		return Duration{}, errors.New("プロセスのCPU時間が大きすぎます")
+		return Duration{}, errors.New("process CPU time is too large")
 	}
 	value := time.Duration(seconds)*time.Second +
 		time.Duration(ticks%clockTicksPerSecond)*time.Second/
@@ -102,12 +102,12 @@ func parseCPUTime(data []byte) (Duration, error) {
 
 func readMemoryAt(procRoot, mountInfoPath string, pid int) (Memory, error) {
 	if pid <= 0 {
-		return Memory{}, fmt.Errorf("PIDが不正です: %d", pid)
+		return Memory{}, fmt.Errorf("invalid PID: %d", pid)
 	}
 
 	status, err := os.Open(filepath.Join(procRoot, strconv.Itoa(pid), "status"))
 	if err != nil {
-		return Memory{}, fmt.Errorf("プロセスのstatusを開く: %w", err)
+		return Memory{}, fmt.Errorf("open process status: %w", err)
 	}
 	rss, err := parseRSS(status)
 	closeErr := status.Close()
@@ -115,7 +115,7 @@ func readMemoryAt(procRoot, mountInfoPath string, pid int) (Memory, error) {
 		return Memory{}, err
 	}
 	if closeErr != nil {
-		return Memory{}, fmt.Errorf("プロセスのstatusを閉じる: %w", closeErr)
+		return Memory{}, fmt.Errorf("close process status: %w", closeErr)
 	}
 
 	memory := Memory{
@@ -194,16 +194,16 @@ func parseRSS(status *os.File) (Number, error) {
 			continue
 		}
 		if len(fields) != 3 || fields[2] != "kB" {
-			return Number{}, fmt.Errorf("VmRSSの形式が不正です: %q", scanner.Text())
+			return Number{}, fmt.Errorf("malformed VmRSS: %q", scanner.Text())
 		}
 		kibibytes, err := strconv.ParseUint(fields[1], 10, 64)
 		if err != nil {
-			return Number{}, fmt.Errorf("VmRSSを読む: %w", err)
+			return Number{}, fmt.Errorf("read VmRSS: %w", err)
 		}
 		return Number{Value: kibibytes * 1024, Available: true}, nil
 	}
 	if err := scanner.Err(); err != nil {
-		return Number{}, fmt.Errorf("プロセスのstatusを読む: %w", err)
+		return Number{}, fmt.Errorf("read process status: %w", err)
 	}
 	return Number{}, nil
 }
@@ -233,7 +233,7 @@ func readCgroups(path string) ([]cgroupMembership, error) {
 		return nil, err
 	}
 	if len(memberships) == 0 {
-		return nil, errors.New("memory cgroupに所属していません")
+		return nil, errors.New("not a member of a memory cgroup")
 	}
 	return memberships, nil
 }
@@ -276,7 +276,7 @@ func readCgroupMounts(path string) ([]cgroupMount, error) {
 		return nil, err
 	}
 	if len(mounts) == 0 {
-		return nil, errors.New("memory cgroupのマウントがありません")
+		return nil, errors.New("no memory cgroup mount")
 	}
 	return mounts, nil
 }

@@ -14,8 +14,8 @@ const (
 )
 
 var (
-	ErrNotAccessible = errors.New("hsperfdataはまだ読み取り可能ではありません")
-	ErrUnsupported   = errors.New("未対応のhsperfdata形式です")
+	ErrNotAccessible = errors.New("hsperfdata is not readable yet")
+	ErrUnsupported   = errors.New("unsupported hsperfdata format")
 )
 
 type Counter struct {
@@ -55,7 +55,7 @@ func (s Snapshot) String(name string) (string, bool) {
 
 func Parse(data []byte) (Snapshot, error) {
 	if len(data) < prologueSize {
-		return Snapshot{}, errors.New("hsperfdataのプロローグが短すぎます")
+		return Snapshot{}, errors.New("hsperfdata prologue too short")
 	}
 
 	order, err := byteOrder(data[4])
@@ -63,10 +63,10 @@ func Parse(data []byte) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	if binary.BigEndian.Uint32(data[0:4]) != magic {
-		return Snapshot{}, errors.New("hsperfdataのマジック値が不正です")
+		return Snapshot{}, errors.New("invalid hsperfdata magic")
 	}
 	if data[5] != 2 {
-		return Snapshot{}, fmt.Errorf("%w: バージョン%d.%d", ErrUnsupported, data[5], data[6])
+		return Snapshot{}, fmt.Errorf("%w: version %d.%d", ErrUnsupported, data[5], data[6])
 	}
 	if data[7] == 0 {
 		return Snapshot{}, ErrNotAccessible
@@ -77,13 +77,13 @@ func Parse(data []byte) (Snapshot, error) {
 	entryOffset := int(order.Uint32(data[24:28]))
 	numEntries := int(order.Uint32(data[28:32]))
 	if used < prologueSize || used > len(data) {
-		return Snapshot{}, fmt.Errorf("hsperfdataの使用量が不正です: %d", used)
+		return Snapshot{}, fmt.Errorf("invalid hsperfdata used size: %d", used)
 	}
 	if entryOffset < prologueSize || entryOffset > used || entryOffset%4 != 0 {
-		return Snapshot{}, fmt.Errorf("hsperfdataのエントリ開始位置が不正です: %d", entryOffset)
+		return Snapshot{}, fmt.Errorf("invalid hsperfdata entry offset: %d", entryOffset)
 	}
 	if numEntries < 0 || numEntries > (used-entryOffset)/entrySize {
-		return Snapshot{}, fmt.Errorf("hsperfdataのエントリ数が不正です: %d", numEntries)
+		return Snapshot{}, fmt.Errorf("invalid hsperfdata entry count: %d", numEntries)
 	}
 
 	snapshot := Snapshot{
@@ -94,7 +94,7 @@ func Parse(data []byte) (Snapshot, error) {
 	for index := 0; index < numEntries; index++ {
 		name, counter, next, err := parseEntry(data[:used], offset, order)
 		if err != nil {
-			return Snapshot{}, fmt.Errorf("hsperfdataエントリ%d: %w", index, err)
+			return Snapshot{}, fmt.Errorf("hsperfdata entry %d: %w", index, err)
 		}
 		snapshot.Counters[name] = counter
 		offset = next
@@ -104,12 +104,12 @@ func Parse(data []byte) (Snapshot, error) {
 
 func parseEntry(data []byte, offset int, order binary.ByteOrder) (string, Counter, int, error) {
 	if offset < 0 || offset%4 != 0 || offset+entrySize > len(data) {
-		return "", Counter{}, 0, fmt.Errorf("開始位置が不正です: %d", offset)
+		return "", Counter{}, 0, fmt.Errorf("invalid offset: %d", offset)
 	}
 
 	entryLength := int(order.Uint32(data[offset : offset+4]))
 	if entryLength < entrySize || offset+entryLength > len(data) {
-		return "", Counter{}, 0, fmt.Errorf("長さが不正です: %d", entryLength)
+		return "", Counter{}, 0, fmt.Errorf("invalid entry length: %d", entryLength)
 	}
 
 	nameOffset := int(order.Uint32(data[offset+4 : offset+8]))
@@ -117,29 +117,29 @@ func parseEntry(data []byte, offset int, order binary.ByteOrder) (string, Counte
 	dataType := data[offset+12]
 	dataOffset := int(order.Uint32(data[offset+16 : offset+20]))
 	if nameOffset < entrySize || nameOffset >= entryLength {
-		return "", Counter{}, 0, fmt.Errorf("名前の位置が不正です: %d", nameOffset)
+		return "", Counter{}, 0, fmt.Errorf("invalid name offset: %d", nameOffset)
 	}
 	if dataOffset <= nameOffset || dataOffset >= entryLength {
-		return "", Counter{}, 0, fmt.Errorf("データの位置が不正です: %d", dataOffset)
+		return "", Counter{}, 0, fmt.Errorf("invalid data offset: %d", dataOffset)
 	}
 
 	nameBytes := data[offset+nameOffset : offset+dataOffset]
 	terminator := strings.IndexByte(string(nameBytes), 0)
 	if terminator <= 0 {
-		return "", Counter{}, 0, errors.New("名前がNUL終端されていません")
+		return "", Counter{}, 0, errors.New("name is not NUL terminated")
 	}
 	name := string(nameBytes[:terminator])
 
 	switch {
 	case vectorLength == 0 && dataType == 'J':
 		if dataOffset+8 > entryLength {
-			return "", Counter{}, 0, errors.New("long値がエントリ境界を越えています")
+			return "", Counter{}, 0, errors.New("long value crosses the entry boundary")
 		}
 		value := int64(order.Uint64(data[offset+dataOffset : offset+dataOffset+8]))
 		return name, Counter{long: value}, offset + entryLength, nil
 	case vectorLength > 0 && dataType == 'B':
 		if dataOffset+vectorLength > entryLength {
-			return "", Counter{}, 0, errors.New("文字列がエントリ境界を越えています")
+			return "", Counter{}, 0, errors.New("string crosses the entry boundary")
 		}
 		value := data[offset+dataOffset : offset+dataOffset+vectorLength]
 		if end := strings.IndexByte(string(value), 0); end >= 0 {
@@ -148,7 +148,7 @@ func parseEntry(data []byte, offset int, order binary.ByteOrder) (string, Counte
 		return name, Counter{text: string(value), isString: true}, offset + entryLength, nil
 	default:
 		return "", Counter{}, 0, fmt.Errorf(
-			"%w: 型=%q ベクタ長=%d",
+			"%w: type=%q vector length=%d",
 			ErrUnsupported,
 			dataType,
 			vectorLength,
@@ -163,6 +163,6 @@ func byteOrder(value byte) (binary.ByteOrder, error) {
 	case 1:
 		return binary.LittleEndian, nil
 	default:
-		return nil, fmt.Errorf("hsperfdataのバイトオーダーが不正です: %d", value)
+		return nil, fmt.Errorf("invalid hsperfdata byte order: %d", value)
 	}
 }
