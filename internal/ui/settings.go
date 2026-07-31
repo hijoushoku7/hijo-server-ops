@@ -4,23 +4,116 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Settings は設定モーダルで変更できる値。項目を増やすときは、ここへ
 // フィールドを 1 つ足して settingItems に 1 エントリ足すだけでよい。
 // モーダル側は項目の中身を知らない。
 type Settings struct {
-	FrameColor         string
-	SelectedFrameColor string
-	FocusedFrameColor  string
+	FramePreset     string
+	GraphPreset     string
+	MeterPreset     string
+	TitlePreset     string
+	SelectionPreset string
 }
 
 func DefaultSettings() Settings {
 	return Settings{
-		FrameColor:         "#777777",
-		SelectedFrameColor: "#8BE9FD",
-		FocusedFrameColor:  "#F1FA8C",
+		FramePreset:     "dracula",
+		GraphPreset:     "dracula",
+		MeterPreset:     "signal",
+		TitlePreset:     "cyan",
+		SelectionPreset: "amber",
 	}
+}
+
+// 色は 5 つのプリセットにまとめて選ばせる。1 色ずつ変えられるようにすると、
+// 反転表示の前景と背景が同色になったり、メーターの緑＝正常・赤＝危険という
+// 意味が壊れたりする組み合わせを作れてしまうため。
+
+// framePalette は枠と、枠まわりの地味な文字（Y 軸ラベル、[restart]、
+// メトリクスが取れない理由）の色。
+type framePalette struct {
+	plain    string
+	selected string
+	focused  string
+	dim      string
+}
+
+// graphPalette はグラフの線。overlap は heap と rss が同じセルに乗った色。
+type graphPalette struct {
+	heap    string
+	rss     string
+	overlap string
+}
+
+// meterPalette はメーターの棒。high は 75%、over は 90% から切り替わる。
+type meterPalette struct {
+	full  string
+	high  string
+	over  string
+	empty string
+}
+
+// selectionPalette は反転表示。選択行とキーバーで前景・背景の組を揃える。
+type selectionPalette struct {
+	foreground    string
+	background    string
+	keyForeground string
+	keyBackground string
+}
+
+var framePresets = map[string]framePalette{
+	"dracula": {plain: "#777777", selected: "#8BE9FD", focused: "#F1FA8C", dim: "#777777"},
+	"mono":    {plain: "#5A5A5A", selected: "#AAAAAA", focused: "#F8F8F2", dim: "#8A8A8A"},
+	"neon":    {plain: "#6272A4", selected: "#FF79C6", focused: "#8BE9FD", dim: "#6272A4"},
+	"ocean":   {plain: "#44506B", selected: "#6FB3D2", focused: "#A0E9FF", dim: "#5A6E8C"},
+	"forest":  {plain: "#4E6151", selected: "#8FBC8F", focused: "#D7E8A0", dim: "#6B7F6B"},
+}
+
+var graphPresets = map[string]graphPalette{
+	"dracula": {heap: "#50FA7B", rss: "#8BE9FD", overlap: "#F1FA8C"},
+	"mono":    {heap: "#F8F8F2", rss: "#909090", overlap: "#FFFFFF"},
+	"warm":    {heap: "#FFB86C", rss: "#FF79C6", overlap: "#F1FA8C"},
+	"cool":    {heap: "#8BE9FD", rss: "#BD93F9", overlap: "#F8F8F2"},
+	// Okabe-Ito の青と橙。色覚型によらず区別できる組み合わせ。
+	"safe": {heap: "#56B4E9", rss: "#E69F00", overlap: "#F0F0F0"},
+}
+
+var meterPresets = map[string]meterPalette{
+	"signal": {full: "#50FA7B", high: "#FFB86C", over: "#FF5555", empty: "#444444"},
+	"mono":   {full: "#8A8A8A", high: "#C8C8C8", over: "#F8F8F2", empty: "#333333"},
+	"safe":   {full: "#56B4E9", high: "#F0E442", over: "#D55E00", empty: "#333333"},
+	// 段階で色を変えず、長さだけで読ませる。
+	"flat": {full: "#8BE9FD", high: "#8BE9FD", over: "#8BE9FD", empty: "#333333"},
+}
+
+var titlePresets = map[string]string{
+	"cyan":   "#8BE9FD",
+	"white":  "#F8F8F2",
+	"amber":  "#F1FA8C",
+	"violet": "#BD93F9",
+	"quiet":  "#999999",
+}
+
+var selectionPresets = map[string]selectionPalette{
+	"amber": {
+		foreground: "#282A36", background: "#F1FA8C",
+		keyForeground: "#282A36", keyBackground: "#BBBBBB",
+	},
+	"cyan": {
+		foreground: "#282A36", background: "#8BE9FD",
+		keyForeground: "#282A36", keyBackground: "#8FA9B8",
+	},
+	"violet": {
+		foreground: "#F8F8F2", background: "#6272A4",
+		keyForeground: "#F8F8F2", keyBackground: "#44475A",
+	},
+	"mono": {
+		foreground: "#282A36", background: "#BBBBBB",
+		keyForeground: "#282A36", keyBackground: "#888888",
+	},
 }
 
 // settingOption は選択肢 1 つ。value がそのまま設定値になる。
@@ -38,47 +131,129 @@ type settingItem struct {
 	set     func(*Settings, string)
 }
 
-var colorOptions = []settingOption{
-	{label: "グレー", value: "#777777"},
-	{label: "白", value: "#F8F8F2"},
-	{label: "シアン", value: "#8BE9FD"},
-	{label: "緑", value: "#50FA7B"},
-	{label: "黄", value: "#F1FA8C"},
-	{label: "紫", value: "#BD93F9"},
-	{label: "桃", value: "#FF79C6"},
-	{label: "橙", value: "#FFB86C"},
-	{label: "赤", value: "#FF5555"},
-}
-
 var settingItems = []settingItem{
 	{
-		label:   "枠（通常）",
-		options: colorOptions,
-		get:     func(settings Settings) string { return settings.FrameColor },
+		label: "枠",
+		options: []settingOption{
+			{label: "既定", value: "dracula"},
+			{label: "モノクロ", value: "mono"},
+			{label: "ネオン", value: "neon"},
+			{label: "海", value: "ocean"},
+			{label: "森", value: "forest"},
+		},
+		get: func(settings Settings) string { return settings.FramePreset },
 		set: func(settings *Settings, value string) {
-			settings.FrameColor = value
+			settings.FramePreset = value
 		},
 	},
 	{
-		label:   "枠（選択中）",
-		options: colorOptions,
-		get: func(settings Settings) string {
-			return settings.SelectedFrameColor
+		label: "グラフの線",
+		options: []settingOption{
+			{label: "既定", value: "dracula"},
+			{label: "モノクロ", value: "mono"},
+			{label: "暖色", value: "warm"},
+			{label: "寒色", value: "cool"},
+			{label: "色覚配慮", value: "safe"},
 		},
+		get: func(settings Settings) string { return settings.GraphPreset },
 		set: func(settings *Settings, value string) {
-			settings.SelectedFrameColor = value
+			settings.GraphPreset = value
 		},
 	},
 	{
-		label:   "枠（フォーカス中）",
-		options: colorOptions,
-		get: func(settings Settings) string {
-			return settings.FocusedFrameColor
+		label: "メーターの棒",
+		options: []settingOption{
+			{label: "信号", value: "signal"},
+			{label: "モノクロ", value: "mono"},
+			{label: "色覚配慮", value: "safe"},
+			{label: "単色", value: "flat"},
 		},
+		get: func(settings Settings) string { return settings.MeterPreset },
 		set: func(settings *Settings, value string) {
-			settings.FocusedFrameColor = value
+			settings.MeterPreset = value
 		},
 	},
+	{
+		label: "タイトル",
+		options: []settingOption{
+			{label: "シアン", value: "cyan"},
+			{label: "白", value: "white"},
+			{label: "黄", value: "amber"},
+			{label: "紫", value: "violet"},
+			{label: "控えめ", value: "quiet"},
+		},
+		get: func(settings Settings) string { return settings.TitlePreset },
+		set: func(settings *Settings, value string) {
+			settings.TitlePreset = value
+		},
+	},
+	{
+		label: "選択行",
+		options: []settingOption{
+			{label: "黄", value: "amber"},
+			{label: "シアン", value: "cyan"},
+			{label: "紫", value: "violet"},
+			{label: "モノクロ", value: "mono"},
+		},
+		get: func(settings Settings) string { return settings.SelectionPreset },
+		set: func(settings *Settings, value string) {
+			settings.SelectionPreset = value
+		},
+	},
+}
+
+// applyTheme は選んだプリセットを実際のスタイルへ反映する。TUI はプロセスに
+// 1 つなので、描画側は設定を持ち回らずパッケージ変数を見るだけでよい。
+// 設定ファイルに知らない名前が書かれていたら既定へ落とす。
+func applyTheme(settings Settings) {
+	defaults := DefaultSettings()
+
+	frame, ok := framePresets[settings.FramePreset]
+	if !ok {
+		frame = framePresets[defaults.FramePreset]
+	}
+	plainFrame.style = color(frame.plain)
+	selectedFrame.style = color(frame.selected).Bold(true)
+	focusedFrame.style = color(frame.focused).Bold(true)
+	modalFrame.style = focusedFrame.style
+	dimStyle = color(frame.dim)
+
+	graph, ok := graphPresets[settings.GraphPreset]
+	if !ok {
+		graph = graphPresets[defaults.GraphPreset]
+	}
+	heapStyle = color(graph.heap)
+	rssStyle = color(graph.rss)
+	overlapStyle = color(graph.overlap)
+
+	meter, ok := meterPresets[settings.MeterPreset]
+	if !ok {
+		meter = meterPresets[defaults.MeterPreset]
+	}
+	meterFullStyle = color(meter.full)
+	meterHighStyle = color(meter.high)
+	meterOverStyle = color(meter.over)
+	meterEmptyStyle = color(meter.empty)
+
+	title, ok := titlePresets[settings.TitlePreset]
+	if !ok {
+		title = titlePresets[defaults.TitlePreset]
+	}
+	titleStyle = color(title).Bold(true)
+
+	selection, ok := selectionPresets[settings.SelectionPreset]
+	if !ok {
+		selection = selectionPresets[defaults.SelectionPreset]
+	}
+	selectedStyle = color(selection.foreground).
+		Background(lipgloss.Color(selection.background)).
+		Bold(true)
+	keyStyle = color(selection.keyForeground).
+		Background(lipgloss.Color(selection.keyBackground))
+}
+
+func color(value string) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(value))
 }
 
 // optionIndex は今の値が選択肢の何番目か。設定ファイルに選択肢外の値が
@@ -127,8 +302,10 @@ func (model *Model) handleSettingsKey(key tea.Key) (tea.Model, tea.Cmd) {
 		model.settingCursor = min(len(settingItems)-1, model.settingCursor+1)
 	case tea.KeyLeft:
 		settingItems[model.settingCursor].shift(&model.settings, -1)
+		applyTheme(model.settings)
 	case tea.KeyRight:
 		settingItems[model.settingCursor].shift(&model.settings, 1)
+		applyTheme(model.settings)
 	}
 	return model, nil
 }
@@ -176,13 +353,6 @@ func (model *Model) settingsModal() (string, int, int) {
 
 	x := max(0, (model.layout.width-width)/2)
 	y := max(0, (model.layout.height-height)/2)
-	box := renderPanel(
-		"Settings",
-		lines,
-		width,
-		height,
-		false,
-		model.styled(modalFrame, model.settings.FocusedFrameColor),
-	)
+	box := renderPanel("Settings", lines, width, height, false, modalFrame)
 	return box, x, y
 }

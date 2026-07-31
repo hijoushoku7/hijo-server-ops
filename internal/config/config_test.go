@@ -84,7 +84,7 @@ func TestSaveWritesReloadableConfig(t *testing.T) {
 	path := filepath.Join(dir, "hso.toml")
 	cfg := Config{
 		Server: Server{Command: "./run.sh", WorkDir: dir},
-		UI:     UI{Colors: Colors{Frame: "#BD93F9"}},
+		UI:     UI{Theme: Theme{Frame: "neon", Graph: "safe"}},
 	}
 
 	if err := Save(path, cfg); err != nil {
@@ -95,7 +95,7 @@ func TestSaveWritesReloadableConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if loaded.Server.Command != cfg.Server.Command ||
-		loaded.UI.Colors != cfg.UI.Colors {
+		loaded.UI.Theme != cfg.UI.Theme {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 	// 途中で失敗しても元の設定を壊さないよう一時ファイル経由で書くが、

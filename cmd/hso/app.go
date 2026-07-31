@@ -125,17 +125,24 @@ func newServerController(
 	}
 }
 
-// settingsFrom は設定ファイルの色を UI へ渡す。空欄は既定色のままにする。
+// settingsFrom は設定ファイルの配色プリセットを UI へ渡す。空欄は既定の
+// ままにする。
 func settingsFrom(cfg config.Config) ui.Settings {
 	settings := ui.DefaultSettings()
-	if value := cfg.UI.Colors.Frame; value != "" {
-		settings.FrameColor = value
+	if value := cfg.UI.Theme.Frame; value != "" {
+		settings.FramePreset = value
 	}
-	if value := cfg.UI.Colors.SelectedFrame; value != "" {
-		settings.SelectedFrameColor = value
+	if value := cfg.UI.Theme.Graph; value != "" {
+		settings.GraphPreset = value
 	}
-	if value := cfg.UI.Colors.FocusedFrame; value != "" {
-		settings.FocusedFrameColor = value
+	if value := cfg.UI.Theme.Meter; value != "" {
+		settings.MeterPreset = value
+	}
+	if value := cfg.UI.Theme.Title; value != "" {
+		settings.TitlePreset = value
+	}
+	if value := cfg.UI.Theme.Selection; value != "" {
+		settings.SelectionPreset = value
 	}
 	return settings
 }
@@ -224,10 +231,12 @@ func (controller *serverController) handleActions(actions <-chan ui.Action) {
 // 何も返さない（画面はすでに変更後の色で描かれている）。
 func (controller *serverController) saveSettings(action ui.Action) {
 	cfg := controller.cfg
-	cfg.UI.Colors = config.Colors{
-		Frame:         action.Settings.FrameColor,
-		SelectedFrame: action.Settings.SelectedFrameColor,
-		FocusedFrame:  action.Settings.FocusedFrameColor,
+	cfg.UI.Theme = config.Theme{
+		Frame:     action.Settings.FramePreset,
+		Graph:     action.Settings.GraphPreset,
+		Meter:     action.Settings.MeterPreset,
+		Title:     action.Settings.TitlePreset,
+		Selection: action.Settings.SelectionPreset,
 	}
 	if err := config.Save(controller.configPath, cfg); err != nil {
 		controller.program.Send(ui.ActionResultMsg{Action: action, Err: err})

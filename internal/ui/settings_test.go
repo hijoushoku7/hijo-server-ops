@@ -26,11 +26,16 @@ func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
 		t.Fatal("view does not contain the settings modal")
 	}
 
-	// 先頭の項目（枠の通常色）を 1 つ進める。
-	before := model.settings.FrameColor
+	// 先頭の項目（枠のプリセット）を 1 つ進める。
+	before := model.settings.FramePreset
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	if model.settings.FrameColor == before {
-		t.Fatalf("frame color unchanged: %q", model.settings.FrameColor)
+	if model.settings.FramePreset == before {
+		t.Fatalf("frame preset unchanged: %q", model.settings.FramePreset)
+	}
+	// 選んだプリセットは即座に描画へ反映する。
+	if plainFrame.style.GetForeground() !=
+		color(framePresets[model.settings.FramePreset].plain).GetForeground() {
+		t.Fatalf("theme was not applied: %#v", plainFrame.style)
 	}
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -39,23 +44,38 @@ func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
 	}
 	action := <-actions
 	if action.Kind != ActionSaveSettings ||
-		action.Settings.FrameColor != model.settings.FrameColor {
+		action.Settings.FramePreset != model.settings.FramePreset {
 		t.Fatalf("action = %#v", action)
 	}
 }
 
 func TestSettingItemsWrapAroundAndKeepUnknownValues(t *testing.T) {
 	item := settingItems[0]
-	settings := Settings{FrameColor: colorOptions[0].value}
+	settings := Settings{FramePreset: item.options[0].value}
 
 	item.shift(&settings, -1)
-	if settings.FrameColor != colorOptions[len(colorOptions)-1].value {
-		t.Fatalf("wrap = %q", settings.FrameColor)
+	if settings.FramePreset != item.options[len(item.options)-1].value {
+		t.Fatalf("wrap = %q", settings.FramePreset)
 	}
 
-	// 設定ファイルに選択肢外の色が書かれていても捨てず、そのまま表示する。
-	settings.FrameColor = "#123456"
-	if label := item.valueLabel(settings); label != "#123456" {
+	// 設定ファイルに知らないプリセット名が書かれていても捨てず表示はする。
+	settings.FramePreset = "unknown"
+	if label := item.valueLabel(settings); label != "unknown" {
 		t.Fatalf("label = %q", label)
+	}
+}
+
+func TestApplyThemeFallsBackToDefaultsForUnknownPresets(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	applyTheme(Settings{})
+
+	defaults := DefaultSettings()
+	want := framePresets[defaults.FramePreset].plain
+	if plainFrame.style.GetForeground() != color(want).GetForeground() {
+		t.Fatalf("frame = %#v, want %s", plainFrame.style, want)
+	}
+	if meterOverStyle.GetForeground() !=
+		color(meterPresets[defaults.MeterPreset].over).GetForeground() {
+		t.Fatalf("meter = %#v", meterOverStyle)
 	}
 }

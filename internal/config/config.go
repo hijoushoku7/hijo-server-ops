@@ -21,15 +21,17 @@ type Server struct {
 }
 
 type UI struct {
-	Panes  []string `toml:"panes"`
-	Colors Colors   `toml:"colors"`
+	Panes []string `toml:"panes"`
+	Theme Theme    `toml:"theme"`
 }
 
-// Colors は設定モーダルで変えられる色。空なら既定色を使う。
-type Colors struct {
-	Frame         string `toml:"frame"`
-	SelectedFrame string `toml:"selected_frame"`
-	FocusedFrame  string `toml:"focused_frame"`
+// Theme は設定モーダルで選んだ配色プリセットの名前。空なら既定を使う。
+type Theme struct {
+	Frame     string `toml:"frame"`
+	Graph     string `toml:"graph"`
+	Meter     string `toml:"meter"`
+	Title     string `toml:"title"`
+	Selection string `toml:"selection"`
 }
 
 func Load(path string) (Config, error) {
@@ -105,15 +107,17 @@ func render(cfg Config) string {
 		out.WriteString("panes = [" + strings.Join(names, ", ") + "]\n")
 	}
 
-	if cfg.UI.Colors != (Colors{}) {
-		out.WriteString("\n[ui.colors]\n")
-		for _, color := range [][2]string{
-			{"frame", cfg.UI.Colors.Frame},
-			{"selected_frame", cfg.UI.Colors.SelectedFrame},
-			{"focused_frame", cfg.UI.Colors.FocusedFrame},
+	if cfg.UI.Theme != (Theme{}) {
+		out.WriteString("\n[ui.theme]\n")
+		for _, preset := range [][2]string{
+			{"frame", cfg.UI.Theme.Frame},
+			{"graph", cfg.UI.Theme.Graph},
+			{"meter", cfg.UI.Theme.Meter},
+			{"title", cfg.UI.Theme.Title},
+			{"selection", cfg.UI.Theme.Selection},
 		} {
-			if color[1] != "" {
-				out.WriteString(color[0] + " = " + quote(color[1]) + "\n")
+			if preset[1] != "" {
+				out.WriteString(preset[0] + " = " + quote(preset[1]) + "\n")
 			}
 		}
 	}

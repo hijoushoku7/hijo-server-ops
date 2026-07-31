@@ -16,6 +16,8 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
 
+// スタイルはプリセットに応じて applyTheme が差し替える。初期値は既定の
+// プリセットと同じ色で、New を通らないテストでもそのまま描ける。
 var (
 	titleStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8BE9FD")).
@@ -133,6 +135,7 @@ type Model struct {
 }
 
 func New(actions chan<- Action, generation uint64, settings Settings) *Model {
+	applyTheme(settings)
 	// 起動直後からコマンドを打てるよう、Console にフォーカスした状態で始める。
 	return &Model{
 		status:     "starting",
@@ -244,7 +247,7 @@ func (model *Model) View() tea.View {
 			model.layout.statsWidth,
 			statsHeight,
 			false,
-			model.displayFrame(),
+			plainFrame,
 		)
 		top := joinColumns(
 			joinColumns(stats, model.renderMetersPanel()),
@@ -781,7 +784,7 @@ func (model *Model) renderGraphPanel() string {
 		model.layout.leftWidth,
 		model.layout.graphHeight,
 		false,
-		model.displayFrame(),
+		plainFrame,
 	)
 }
 
@@ -846,7 +849,7 @@ func (model *Model) renderMetersPanel() string {
 		model.layout.metersWidth,
 		statsHeight,
 		false,
-		model.displayFrame(),
+		plainFrame,
 	)
 }
 
@@ -911,14 +914,7 @@ func (model *Model) commandModal() (string, int, int) {
 	x = clamp(x, 0, max(0, model.layout.width-width))
 	y = clamp(y, 0, max(0, model.layout.height-height))
 
-	box := renderPanel(
-		model.playerTarget,
-		lines,
-		width,
-		height,
-		false,
-		model.styled(modalFrame, model.settings.FocusedFrameColor),
-	)
+	box := renderPanel(model.playerTarget, lines, width, height, false, modalFrame)
 	return box, x, y
 }
 

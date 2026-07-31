@@ -63,27 +63,14 @@ func (box frame) render(value string) string {
 	return box.style.Render(value)
 }
 
-// styled は枠に設定の色を当てる。罫線の太さは状態ごとに固定で、
-// 設定で変わるのは色だけ。
-func (model *Model) styled(box frame, color string) frame {
-	if color == "" {
-		return box
-	}
-	box.style = box.style.Foreground(lipgloss.Color(color))
-	return box
-}
-
-// displayFrame は選択対象でないパネル（Stats / Meters / Graph）の枠。
-func (model *Model) displayFrame() frame {
-	return model.styled(plainFrame, model.settings.FrameColor)
-}
-
+// 枠の色は applyTheme がプリセットから差し替える。罫線の太さは状態ごとに
+// 固定で、設定で変わるのは色だけ。
 func (model *Model) frameFor(target panel) frame {
 	if model.panel != target {
-		return model.displayFrame()
+		return plainFrame
 	}
 	if model.mode == modeFocus {
-		return model.styled(focusedFrame, model.settings.FocusedFrameColor)
+		return focusedFrame
 	}
-	return model.styled(selectedFrame, model.settings.SelectedFrameColor)
+	return selectedFrame
 }
