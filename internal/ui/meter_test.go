@@ -99,15 +99,25 @@ func TestMeterLinesFitTheGivenWidth(t *testing.T) {
 		{label: "RSS", text: "n/a"},
 	}, 20)
 
-	if len(lines) != 3 {
+	// メーター 3 本 × 2 行 + 間の空行 2 本。
+	if len(lines) != 8 {
 		t.Fatalf("lines = %d", len(lines))
 	}
 	for index, line := range lines {
+		// 空行（メーター間の区切りと n/a のバー）は幅を持たない。
+		if line == "" {
+			continue
+		}
 		if width := stringWidth(line); width != 20 {
 			t.Fatalf("line %d width = %d: %q", index, width, stripANSI(line))
 		}
 	}
-	if !strings.Contains(stripANSI(lines[2]), "n/a") {
-		t.Fatalf("unavailable meter = %q", stripANSI(lines[2]))
+	if label := stripANSI(lines[0]); !strings.HasPrefix(label, "CPU") ||
+		!strings.HasSuffix(label, "125%") {
+		t.Fatalf("label line = %q", label)
+	}
+	// 値の取れない RSS はバーを描かない。
+	if !strings.Contains(stripANSI(lines[6]), "n/a") || lines[7] != "" {
+		t.Fatalf("unavailable meter = %q / %q", stripANSI(lines[6]), lines[7])
 	}
 }

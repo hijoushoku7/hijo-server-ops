@@ -10,8 +10,9 @@ const (
 	// 画面外へ流れた行まで遡れる。
 	historyLines = 500
 	// 上段 3 列のうち Meters と Players に確保する最小幅。
-	// Meters は "CPU ███░ 100%"、Players は Minecraft のユーザー名上限
-	// である 16 文字がそのまま入る幅（枠の 2 列を足して 18）。
+	// Meters は "CPU   100%" の下にバーを敷く 2 行構成。Players は
+	// Minecraft のユーザー名上限である 16 文字がそのまま入る幅
+	// （枠の 2 列を足して 18）。
 	minimumMetersWidth  = 20
 	minimumPlayersWidth = 18
 )
