@@ -180,6 +180,61 @@ func TestModelReportsMetricFailureOnceAndRecovery(t *testing.T) {
 	}
 }
 
+func TestModelDisplaysServerAddressAndReportsFailure(t *testing.T) {
+	model := newTestModel()
+	model.generation = 2
+	model.resize(minimumWidth, minimumHeight)
+
+	_, _ = model.Update(ServerAddressMsg{
+		Generation: 2,
+		IP:         "203.0.113.10",
+		Port:       25565,
+	})
+	if got := model.serverAddressLine(); got != "Server 203.0.113.10:25565" {
+		t.Fatalf("address = %q", got)
+	}
+	if width := stringWidth(model.serverAddressLine()); width > model.layout.statsWidth-2 {
+		t.Fatalf("address width = %d", width)
+	}
+
+	// 前の世代から遅れて届いた結果で、再起動後の表示を上書きしない。
+	_, _ = model.Update(ServerAddressMsg{
+		Generation: 1,
+		IP:         "198.51.100.1",
+		Port:       25566,
+	})
+	if got := model.serverAddressLine(); got != "Server 203.0.113.10:25565" {
+		t.Fatalf("stale address was accepted: %q", got)
+	}
+
+	_, _ = model.Update(ServerAddressMsg{
+		Generation: 2,
+		IP:         "invalid IP",
+		Port:       25565,
+		IPErr:      "request failed",
+	})
+	if got := model.serverAddressLine(); got != "Server n/a" {
+		t.Fatalf("failed address = %q", got)
+	}
+	if model.logs.Len() != 1 || !strings.Contains(
+		model.logs.At(0), "public IPv4 unavailable",
+	) {
+		t.Fatalf("logs = %q", model.logs.At(0))
+	}
+}
+
+func TestModelClearsServerAddressOnRestart(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(ServerAddressMsg{
+		IP:   "203.0.113.10",
+		Port: 25565,
+	})
+	_, _ = model.Update(ServerStartedMsg{Generation: 2})
+	if got := model.serverAddressLine(); got != "Server n/a" {
+		t.Fatalf("address = %q", got)
+	}
+}
+
 func TestModelBoundsCurrentMetricError(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(MetricsMsg{

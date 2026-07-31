@@ -39,6 +39,7 @@
 | メモリ | **ヒープ（hsperfdata）と RSS（/proc）を両方取得して並べて表示** |
 | TPS | v1 は対象外（ラグイベント検知のみ）。v2 で Fabric mod により対応 |
 | プレイヤー一覧 | ログの `joined the game` / `left the game` を追跡 |
+| サーバーアドレス | `api.ipify.org` の公開 IPv4 と `server.properties` の `server-port` を Stats に表示 |
 | 操作 | ほぼ表示専用。**矢印でパネル選択 / Enter でフォーカス**、restart / stop、コマンド送信 |
 | ログ | **チャット / その他** に分類して別ペインに表示（コマンド使用履歴は Log に混ぜる） |
 | 将来 | 表示要素・レイアウトのカスタマイズ |
@@ -80,6 +81,22 @@ OS側(1s)     : /proc/<pid>/status の VmRSS、/proc/<pid>/stat の CPU
                ＋ cgroup memory.current / memory.max（Docker/systemd 下）
 フォールバック: hsperfdata が読めない場合は RSS のみ表示し、heap: n/a と正直に出す
 ```
+
+### サーバーアドレス取得
+
+サーバーの起動・再起動ごとに、`https://api.ipify.org` から公開 IPv4 を
+非同期で一度取得し、`server.workdir/server.properties` の `server-port` と
+組み合わせて Stats の先頭へ `Server 203.0.113.10:25565` の形で表示する。
+HTTP は 3 秒でタイムアウトし、応答は長さを制限して IPv4 として検証する。
+
+`server.properties` は読み取り専用とし、通常の `server-port=<10進整数>`
+形式だけを扱う。ポートは 1..65535 を許可する。ファイル、キー、公開 IPv4 の
+どれかを取得できない場合は `Server n/a` とし、理由を Log へ出す。アドレス
+取得の失敗は Minecraft の起動や監視を止めない。再起動前の非同期結果は
+generation 番号で破棄する。
+
+表示値は疎通確認済みの接続先ではない。NAT の外部ポート、CGNAT、HTTP
+プロキシ、起動引数によるポート上書きがある環境では実際の接続先と異なりうる。
 
 ### ログ処理
 
@@ -390,6 +407,7 @@ mod が開ける扉は TPS だけではなく、MSPT 分布（p95/最大）・�
 - [x] パネル選択 / フォーカスとスクロール、キー説明行
 - [x] CPU / Heap / RSS のメーター表示、プレイヤー一覧パネル
 - [x] プレイヤー選択からのコマンド組み立て（モーダル）
+- [x] 公開 IPv4 と `server-port` の表示
 - [x] GitHub Actions で amd64 / arm64 リリース
 
 **v2**

@@ -18,12 +18,11 @@ Minecraft サーバー用のラッパー型 TUI コンソール。**Linux 専用
 
 ```
 ┌─ hijo-server-ops · uptime 3d 04:12:33 ─┐┌─ Meters · RSS/cgroup ─┐┌─ Players 3 ──┐
-│ Heap 2.1G / 3.2G committed (max 4.0G)  ││ CPU  ███░░░░░░░  82%  ││ alice        │
-│ RSS  5.4G / 8.0G limit  Δ +3.3G        ││ Heap █████▏░░░░  52%  ││ bob          │
-│ GC   142 collections  last 12.3ms      ││ RSS  ███████░░░  67%  ││ carol        │
+│ Server 203.0.113.10:25565               ││ CPU  ███░░░░░░░  82%  ││ alice        │
+│ Heap 2.1G / 3.2G committed (max 4.0G)  ││ Heap █████▏░░░░  52%  ││ bob          │
+│ RSS  5.4G / 8.0G limit  Δ +3.3G        ││ RSS  ███████░░░  67%  ││ carol        │
+│ GC   142 collections  last 12.3ms      ││                       ││              │
 │ Players 3  Lag events: 2  CPU 82%      ││                       ││              │
-│ Heap ⡀⡠⡴⡿⠋⢀⡠⡴⡿⠋                        ││                       ││              │
-│ RSS  ⣀⣀⣤⣤⣶⣶⣿⣿                          ││                       ││              │
 └────────────────────────────────────────┘└───────────────────────┘└──────────────┘
 ┌─ Chat ─────────────────┐┌─ Log ─────────────────────────────────┐
 │                        ││                                       │
@@ -54,10 +53,20 @@ hso
      ├─ hsperfdata を mmap 直読み        → ヒープ / 世代別 / GC 統計
      ├─ /proc/<pid>/status + cgroup      → RSS / メモリ上限
      ├─ GC ログを tail                   → GC 後の谷の値、停止時間
+     ├─ api.ipify.org + server.properties → 公開IPv4とポート
      └─ stdout をパース                  → チャット / コマンド / 参加退出 / ラグ
 ```
 
 サーバー側にプラグインも MOD も不要（TPS 表示のみ将来 Fabric mod を使用）。JVM 引数は管理せず、ユーザーの `user_jvm_args.txt` / 起動スクリプトの記述をそのまま尊重する。
+
+Stats の `Server` 行は、`api.ipify.org` から取得した公開 IPv4 と、
+`server.workdir/server.properties` の `server-port` を組み合わせて表示する。
+取得はサーバー起動・再起動ごとに非同期で一度だけ行い、ネットワーク障害、
+設定ファイルなし、不正なポートでは `Server n/a` と表示する。取得失敗で
+Minecraft サーバーを停止することはない。
+
+この値は外部からの疎通を確認したものではない。NAT の外部ポートが異なる、
+CGNAT、HTTP プロキシ経由などの環境では、実際の接続先と異なる場合がある。
 
 ## 設定
 

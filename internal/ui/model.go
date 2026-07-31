@@ -95,6 +95,14 @@ type ServerStartedMsg struct {
 	Generation uint64
 }
 
+type ServerAddressMsg struct {
+	Generation uint64
+	IP         string
+	Port       uint16
+	IPErr      string
+	PortErr    string
+}
+
 type ActionResultMsg struct {
 	Action Action
 	Err    error
@@ -118,6 +126,8 @@ type Model struct {
 	cpuAvailable      bool
 	jvmMetricError    string
 	memoryMetricError string
+	serverIP          string
+	serverPort        uint16
 	gcStats           gclog.Stats
 	tracker           serverlog.Tracker
 	playerList        []string
@@ -202,6 +212,35 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.resetServerState()
 		model.status = "starting"
 		model.busy = false
+	case ServerAddressMsg:
+		if !model.accepts(message.Generation) {
+			break
+		}
+		model.serverIP = message.IP
+		model.serverPort = message.Port
+		if message.IPErr != "" {
+			model.serverIP = ""
+		}
+		if message.PortErr != "" {
+			model.serverPort = 0
+		}
+		for _, failure := range []struct {
+			source string
+			err    string
+		}{
+			{"public IPv4", message.IPErr},
+			{"server-port", message.PortErr},
+		} {
+			if failure.err == "" {
+				continue
+			}
+			model.addLog(serverlog.Entry{
+				Kind: serverlog.KindOther,
+				Message: "server address: " + failure.source +
+					" unavailable: " + truncateRunes(
+					failure.err, maxMetricErrorRunes),
+			})
+		}
 	case ActionResultMsg:
 		model.busy = false
 		if message.Err != nil {
@@ -539,6 +578,8 @@ func (model *Model) resetServerState() {
 	model.cpuAvailable = false
 	model.jvmMetricError = ""
 	model.memoryMetricError = ""
+	model.serverIP = ""
+	model.serverPort = 0
 	model.gcStats = gclog.Stats{}
 	model.tracker = serverlog.Tracker{}
 	model.playerList = nil
@@ -708,8 +749,10 @@ func (model *Model) statsLines() []string {
 		threads = fmt.Sprintf("%d", model.metrics.Threads.Value)
 	}
 
-	// グラフは Graph パネルへ移したので、ここは数値だけ。行間を空けて読む。
+	// グラフは Graph パネルへ移したので、ここは数値だけ。Server と Heap は
+	// 続けて置き、その後は行間を空けると既存の高さ 8 行に収まる。
 	rows := []string{
+		model.serverAddressLine(),
 		fmt.Sprintf(
 			"Heap %s / %s committed (max %s)  post-GC %s",
 			formatJVMBytes(model.metrics.Heap.Used),
@@ -745,14 +788,21 @@ func (model *Model) statsLines() []string {
 		),
 	}
 
-	lines := make([]string, 0, len(rows)*2-1)
+	lines := make([]string, 0, len(rows)*2-2)
 	for index, row := range rows {
-		if index > 0 {
+		if index > 1 {
 			lines = append(lines, "")
 		}
 		lines = append(lines, row)
 	}
 	return lines
+}
+
+func (model *Model) serverAddressLine() string {
+	if model.serverIP == "" || model.serverPort == 0 {
+		return "Server n/a"
+	}
+	return fmt.Sprintf("Server %s:%d", model.serverIP, model.serverPort)
 }
 
 // rssLine は Stats の RSS 行。パーセントは必ず使った分母の隣に置く。

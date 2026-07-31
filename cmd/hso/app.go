@@ -21,6 +21,7 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
+	"github.com/hijoushoku7/hijo-server-ops/internal/serveraddr"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/ui"
 )
@@ -206,6 +207,12 @@ func (controller *serverController) start(
 	go streamGC(
 		runtimeCtx,
 		server.GCLogPath(),
+		controller.program,
+		generation,
+	)
+	go resolveServerAddress(
+		runtimeCtx,
+		controller.cfg.Server.WorkDir,
 		controller.program,
 		generation,
 	)
@@ -547,6 +554,29 @@ func errorText(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+func resolveServerAddress(
+	ctx context.Context,
+	workDir string,
+	program *tea.Program,
+	generation uint64,
+) {
+	result := serveraddr.Resolve(ctx, workDir)
+	if ctx.Err() != nil {
+		return
+	}
+	ip := ""
+	if result.IP.IsValid() {
+		ip = result.IP.String()
+	}
+	program.Send(ui.ServerAddressMsg{
+		Generation: generation,
+		IP:         ip,
+		Port:       result.Port,
+		IPErr:      errorText(result.IPErr),
+		PortErr:    errorText(result.PortErr),
+	})
 }
 
 func streamGC(
