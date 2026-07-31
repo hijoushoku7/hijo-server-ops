@@ -94,7 +94,8 @@ func TestModelViewContainsBrailleGraphs(t *testing.T) {
 	content := model.View().Content
 	if !strings.Contains(content, "Heap") ||
 		!strings.Contains(content, "RSS") ||
-		!strings.Contains(content, "CPU 125%") {
+		// CPU 表示はコア数で割るのでマシン依存。期待値も同じ式で作る。
+		!strings.Contains(content, "CPU "+formatCPU(125, true)) {
 		t.Fatalf("view does not contain metrics:\n%s", content)
 	}
 	if !containsBraille(content) {

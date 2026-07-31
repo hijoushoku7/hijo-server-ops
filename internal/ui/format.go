@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"strings"
 	"time"
 
@@ -106,11 +107,33 @@ func formatFrequency(value float64, available bool) string {
 	return fmt.Sprintf("%.2f/min", value)
 }
 
+// formatCPU は全コア合計で数えた使用率を、分母 100% に直して出す。
 func formatCPU(value float64, available bool) string {
 	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return "n/a"
 	}
-	return fmt.Sprintf("%.0f%%", value)
+	return fmt.Sprintf("%.0f%%", normalizeCPU(value))
+}
+
+// normalizeCPU は「コア数 × 100%」を満目とする値を 0..100% に直す。
+// 収集側は従来どおりコア数ぶんを合計しており、ここで割るだけ。
+func normalizeCPU(value float64) float64 {
+	cores := float64(runtime.NumCPU())
+	if cores <= 0 {
+		return value
+	}
+	return value / cores
+}
+
+// formatRSSPercent は RSS が分母に占める割合。分母は rssDenominator と同じで、
+// cgroup 制限があればそれ、なければ OS の総メモリ。
+func formatRSSPercent(memory procstats.Memory) string {
+	limit, _ := rssDenominator(memory)
+	if !memory.RSS.Available || limit == 0 ||
+		memory.RSS.Value > math.MaxInt64 || limit > math.MaxInt64 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.0f%%", percent(int64(memory.RSS.Value), int64(limit)))
 }
 
 func fitLine(value string, width int) string {

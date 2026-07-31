@@ -109,7 +109,7 @@ stdout を1行ずつパースし、分類してペインに振り分ける。バ
 ```
 ┌─ hijo-server-ops ──────────────────────── uptime 3d 04:12:33 ─┐
 │ Heap ██████░░░░ 2.1G / 3.2G committed (max 4.0G)  post-GC 512M │
-│ RSS  ████████░░ 5.4G / 8.0G limit                 Δ +3.3G      │
+│ RSS  5.4G / 15.6G total (68%)  limit 8.0G         Δ +3.3G      │
 │ GC   young 142 (1.8s, 0.9%)  last 12.3ms   CPU 82%            │
 │ Players 3/20  [alice bob carol]            Lag events: 2       │
 ├────────────────────────┬───────────────────────────────────────┤
@@ -159,11 +159,17 @@ End で最新行へ戻る。Esc でフォーカスを外すときも最新行の
 テキストを持つため。72 列端末では Stats の行末が切れるが、Braille グラフと
 Δ の表示は残る。全体が読める幅の目安は 94 列。
 
-Meters は CPU / Heap / RSS を横棒で出す。満目は CPU がコア数 × 100%、
-Heap が heap max、RSS が cgroup 制限。cgroup 制限がない・`unlimited` の
+Meters は CPU / Heap / RSS を横棒で出す。満目は CPU がマシン全体（全コア）、
+Heap が heap max、RSS が cgroup 制限。CPU の収集はコア数ぶんを合計した値
+（8 コアなら最大 800%）だが、表示は常にコア数で割って 0..100% に直す。
+Stats 行の CPU も同じ値を使う。cgroup 制限がない・`unlimited` の
 環境では `/proc/meminfo` の MemTotal に落とし、どちらを使ったかをタイトルへ
 `RSS/cgroup` `RSS/host` と明示する。どちらも取れなければメーターを描かず
 `n/a` と出す（原則4）。パーセントの数値表示はメーターと併記して残す。
+
+Stats の RSS 行には OS の総メモリ（`/proc/meminfo` の MemTotal）と RSS の
+割合を併記する。割合の分母は Meters と同じ規則（cgroup 制限があればそれ、
+なければ総メモリ）で、取れなければ `n/a`。
 
 Players はオンラインのプレイヤー一覧専用のパネル。Stats 行からは名前の
 列挙を外し、人数だけを他の指標と並べて残す。幅は Minecraft のユーザー名

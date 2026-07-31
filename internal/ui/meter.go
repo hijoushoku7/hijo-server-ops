@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"math"
-	"runtime"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -102,17 +101,16 @@ func meterLines(meters []meter, width int) []string {
 	return lines
 }
 
-// cpuMeter は コア数 × 100% を満目とする。Minecraft の主要処理は単スレッド
+// cpuMeter はマシン全体を 100% とする。Minecraft の主要処理は単スレッド
 // なので満目には届きにくいが、マシン全体に対する使用量として読める。
 func cpuMeter(value float64, available bool) meter {
 	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return meter{label: "CPU", text: "n/a"}
 	}
-	full := float64(runtime.NumCPU()) * 100
 	return meter{
 		label:     "CPU",
-		ratio:     value / full,
-		text:      fmt.Sprintf("%.0f%%", value),
+		ratio:     normalizeCPU(value) / 100,
+		text:      formatCPU(value, true),
 		available: true,
 	}
 }
@@ -135,30 +133,29 @@ func heapMeter(heap hsperfdata.Memory) meter {
 // rssMeter は cgroup 制限を分母にし、制限がなければホスト総メモリに落とす。
 // どちらも取れなければ n/a。使った分母は second の戻り値で示す。
 func rssMeter(memory procstats.Memory) (meter, string) {
-	if !memory.RSS.Available {
-		return meter{label: "RSS", text: "n/a"}, ""
-	}
-
-	limit := uint64(0)
-	source := ""
-	if memory.CgroupLimit.Available && !memory.CgroupLimit.Unlimited &&
-		memory.CgroupLimit.Value > 0 {
-		limit = memory.CgroupLimit.Value
-		source = "cgroup"
-	} else if memory.HostTotal.Available && memory.HostTotal.Value > 0 {
-		limit = memory.HostTotal.Value
-		source = "host"
-	}
-	if limit == 0 {
+	limit, source := rssDenominator(memory)
+	if !memory.RSS.Available || limit == 0 {
 		return meter{label: "RSS", text: "n/a"}, ""
 	}
 
 	return meter{
 		label:     "RSS",
 		ratio:     float64(memory.RSS.Value) / float64(limit),
-		text:      fmt.Sprintf("%.0f%%", percent(int64(memory.RSS.Value), int64(limit))),
+		text:      formatRSSPercent(memory),
 		available: true,
 	}, source
+}
+
+// rssDenominator は RSS の割合に使う分母と、その出所を返す。
+func rssDenominator(memory procstats.Memory) (uint64, string) {
+	if memory.CgroupLimit.Available && !memory.CgroupLimit.Unlimited &&
+		memory.CgroupLimit.Value > 0 {
+		return memory.CgroupLimit.Value, "cgroup"
+	}
+	if memory.HostTotal.Available && memory.HostTotal.Value > 0 {
+		return memory.HostTotal.Value, "host"
+	}
+	return 0, ""
 }
 
 func percent(value, limit int64) float64 {

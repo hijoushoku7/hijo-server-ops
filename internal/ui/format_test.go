@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -17,6 +18,39 @@ func TestFormatBytesAndUnavailableValues(t *testing.T) {
 	}
 	if got := formatProcBytes(procstats.Number{}); got != "n/a" {
 		t.Fatalf("formatProcBytes = %q", got)
+	}
+}
+
+func TestFormatCPUDividesByCoreCount(t *testing.T) {
+	// コア数はマシン依存なので、期待値もコア数から作る。
+	cores := float64(runtime.NumCPU())
+	if got := formatCPU(cores*100, true); got != "100%" {
+		t.Fatalf("formatCPU = %q", got)
+	}
+	if got := formatCPU(cores*50, true); got != "50%" {
+		t.Fatalf("formatCPU = %q", got)
+	}
+	if got := formatCPU(0, false); got != "n/a" {
+		t.Fatalf("formatCPU = %q", got)
+	}
+}
+
+func TestFormatRSSPercent(t *testing.T) {
+	memory := procstats.Memory{
+		RSS:       procstats.Number{Value: 4 << 30, Available: true},
+		HostTotal: procstats.Number{Value: 16 << 30, Available: true},
+	}
+	if got := formatRSSPercent(memory); got != "25%" {
+		t.Fatalf("formatRSSPercent = %q", got)
+	}
+
+	memory.CgroupLimit = procstats.Limit{Value: 8 << 30, Available: true}
+	if got := formatRSSPercent(memory); got != "50%" {
+		t.Fatalf("formatRSSPercent = %q", got)
+	}
+
+	if got := formatRSSPercent(procstats.Memory{}); got != "n/a" {
+		t.Fatalf("formatRSSPercent = %q", got)
 	}
 }
 

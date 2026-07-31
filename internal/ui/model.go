@@ -694,8 +694,10 @@ func (model *Model) statsLines() []string {
 			postGC,
 		),
 		fmt.Sprintf(
-			"RSS  %s / %s limit  Δ %s",
+			"RSS  %s / %s total (%s)  limit %s  Δ %s",
 			formatProcBytes(model.memory.RSS),
+			formatProcBytes(model.memory.HostTotal),
+			formatRSSPercent(model.memory),
 			formatLimit(model.memory.CgroupLimit),
 			formatDelta(model.memory.RSS, model.metrics.Heap.Committed),
 		),
