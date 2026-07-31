@@ -45,11 +45,13 @@ type ActionKind uint8
 const (
 	ActionSendCommand ActionKind = iota
 	ActionRestart
+	ActionSaveSettings
 )
 
 type Action struct {
-	Kind    ActionKind
-	Command string
+	Kind     ActionKind
+	Command  string
+	Settings Settings
 }
 
 type LogMsg struct {
@@ -125,9 +127,12 @@ type Model struct {
 	chat              lineBuffer
 	logs              lineBuffer
 	samples           sampleBuffer
+	settings          Settings
+	settingsOpen      bool
+	settingCursor     int
 }
 
-func New(actions chan<- Action, generation uint64) *Model {
+func New(actions chan<- Action, generation uint64, settings Settings) *Model {
 	// 起動直後からコマンドを打てるよう、Console にフォーカスした状態で始める。
 	return &Model{
 		status:     "starting",
@@ -135,6 +140,7 @@ func New(actions chan<- Action, generation uint64) *Model {
 		generation: generation,
 		mode:       modeFocus,
 		panel:      panelConsole,
+		settings:   settings,
 	}
 }
 
@@ -238,7 +244,7 @@ func (model *Model) View() tea.View {
 			model.layout.statsWidth,
 			statsHeight,
 			false,
-			plainFrame,
+			model.displayFrame(),
 		)
 		top := joinColumns(
 			joinColumns(stats, model.renderMetersPanel()),
@@ -267,8 +273,12 @@ func (model *Model) View() tea.View {
 			model.frameFor(panelConsole),
 		)
 		content = top + "\n" + body + "\n" + footer + "\n" + model.keybar()
-		if model.mode == modeFocus && model.panel == panelPlayers &&
-			model.playerStage == playerStageCommands {
+		switch {
+		case model.settingsOpen:
+			box, x, y := model.settingsModal()
+			content = overlay(content, box, x, y)
+		case model.mode == modeFocus && model.panel == panelPlayers &&
+			model.playerStage == playerStageCommands:
 			box, x, y := model.commandModal()
 			content = overlay(content, box, x, y)
 		}
@@ -288,6 +298,16 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := message.Key()
 	if message.String() == "ctrl+c" {
 		return model, tea.Quit
+	}
+	if model.settingsOpen {
+		return model.handleSettingsKey(key)
+	}
+	// 設定は G で開く。Console 入力中だけは文字として打ちたいので通さない。
+	if (message.String() == "g" || message.String() == "G") &&
+		!(model.mode == modeFocus && model.panel == panelConsole) {
+		model.settingsOpen = true
+		model.settingCursor = 0
+		return model, nil
 	}
 	if model.mode == modeSelect {
 		return model.handleSelectKey(key)
@@ -761,7 +781,7 @@ func (model *Model) renderGraphPanel() string {
 		model.layout.leftWidth,
 		model.layout.graphHeight,
 		false,
-		plainFrame,
+		model.displayFrame(),
 	)
 }
 
@@ -826,7 +846,7 @@ func (model *Model) renderMetersPanel() string {
 		model.layout.metersWidth,
 		statsHeight,
 		false,
-		plainFrame,
+		model.displayFrame(),
 	)
 }
 
@@ -891,7 +911,14 @@ func (model *Model) commandModal() (string, int, int) {
 	x = clamp(x, 0, max(0, model.layout.width-width))
 	y = clamp(y, 0, max(0, model.layout.height-height))
 
-	box := renderPanel(model.playerTarget, lines, width, height, false, modalFrame)
+	box := renderPanel(
+		model.playerTarget,
+		lines,
+		width,
+		height,
+		false,
+		model.styled(modalFrame, model.settings.FocusedFrameColor),
+	)
 	return box, x, y
 }
 
@@ -975,10 +1002,18 @@ func renderPanel(
 func (model *Model) keybar() string {
 	var keys [][2]string
 	switch {
+	case model.settingsOpen:
+		keys = [][2]string{
+			{"↑↓", "item"},
+			{"←→", "value"},
+			{"Enter/Esc", "close"},
+			{"^C", "exit"},
+		}
 	case model.mode == modeSelect:
 		keys = [][2]string{
 			{"←↑↓→", "select"},
 			{"Enter", "focus"},
+			{"G", "settings"},
 			{"^C", "exit"},
 		}
 	case model.panel == panelConsole:

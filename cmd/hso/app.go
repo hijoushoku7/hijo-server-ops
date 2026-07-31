@@ -49,15 +49,15 @@ type stoppableServer interface {
 	Signal(os.Signal) error
 }
 
-func runTUI(cfg config.Config) error {
+func runTUI(configPath string, cfg config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	actions := make(chan ui.Action, actionQueueSize)
-	model := ui.New(actions, initialGeneration)
+	model := ui.New(actions, initialGeneration, settingsFrom(cfg))
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 
-	controller := newServerController(ctx, cfg, program)
+	controller := newServerController(ctx, configPath, cfg, program)
 	if err := controller.start(initialGeneration, false); err != nil {
 		return err
 	}
@@ -101,9 +101,10 @@ func (runtime *serverRuntime) close() {
 }
 
 type serverController struct {
-	ctx     context.Context
-	cfg     config.Config
-	program *tea.Program
+	ctx        context.Context
+	configPath string
+	cfg        config.Config
+	program    *tea.Program
 
 	operation sync.Mutex
 	currentMu sync.Mutex
@@ -112,14 +113,31 @@ type serverController struct {
 
 func newServerController(
 	ctx context.Context,
+	configPath string,
 	cfg config.Config,
 	program *tea.Program,
 ) *serverController {
 	return &serverController{
-		ctx:     ctx,
-		cfg:     cfg,
-		program: program,
+		ctx:        ctx,
+		configPath: configPath,
+		cfg:        cfg,
+		program:    program,
 	}
+}
+
+// settingsFrom は設定ファイルの色を UI へ渡す。空欄は既定色のままにする。
+func settingsFrom(cfg config.Config) ui.Settings {
+	settings := ui.DefaultSettings()
+	if value := cfg.UI.Colors.Frame; value != "" {
+		settings.FrameColor = value
+	}
+	if value := cfg.UI.Colors.SelectedFrame; value != "" {
+		settings.SelectedFrameColor = value
+	}
+	if value := cfg.UI.Colors.FocusedFrame; value != "" {
+		settings.FocusedFrameColor = value
+	}
+	return settings
 }
 
 func (controller *serverController) start(
@@ -195,8 +213,24 @@ func (controller *serverController) handleActions(actions <-chan ui.Action) {
 				controller.restart()
 			case ui.ActionSendCommand:
 				controller.sendCommand(action)
+			case ui.ActionSaveSettings:
+				controller.saveSettings(action)
 			}
 		}
+	}
+}
+
+// saveSettings は設定モーダルの変更を設定ファイルへ書き戻す。成功時は
+// 何も返さない（画面はすでに変更後の色で描かれている）。
+func (controller *serverController) saveSettings(action ui.Action) {
+	cfg := controller.cfg
+	cfg.UI.Colors = config.Colors{
+		Frame:         action.Settings.FrameColor,
+		SelectedFrame: action.Settings.SelectedFrameColor,
+		FocusedFrame:  action.Settings.FocusedFrameColor,
+	}
+	if err := config.Save(controller.configPath, cfg); err != nil {
+		controller.program.Send(ui.ActionResultMsg{Action: action, Err: err})
 	}
 }
 

@@ -178,14 +178,14 @@ func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	actions := make(chan ui.Action, actionQueueSize)
-	model := ui.New(actions, initialGeneration)
+	model := ui.New(actions, initialGeneration, ui.DefaultSettings())
 	program := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),
 		tea.WithInput(nil),
 		tea.WithoutRenderer(),
 	)
-	controller := newServerController(ctx, config.Config{
+	controller := newServerController(ctx, filepath.Join(dir, "hso.toml"), config.Config{
 		Server: config.Server{
 			Command: script,
 			WorkDir: dir,

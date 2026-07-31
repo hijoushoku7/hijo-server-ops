@@ -21,7 +21,15 @@ type Server struct {
 }
 
 type UI struct {
-	Panes []string `toml:"panes"`
+	Panes  []string `toml:"panes"`
+	Colors Colors   `toml:"colors"`
+}
+
+// Colors は設定モーダルで変えられる色。空なら既定色を使う。
+type Colors struct {
+	Frame         string `toml:"frame"`
+	SelectedFrame string `toml:"selected_frame"`
+	FocusedFrame  string `toml:"focused_frame"`
 }
 
 func Load(path string) (Config, error) {
@@ -62,6 +70,67 @@ func Load(path string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Save は設定ファイルを書き直す。設定モーダルで変えた値を次の起動へ
+// 残すため。書き出すのは hso が解釈する項目だけなので、ユーザーが書いた
+// コメントは残らない。書き込みは一時ファイル経由にして、途中で失敗しても
+// 元の設定ファイルを壊さないようにする。
+func Save(path string, cfg Config) error {
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, []byte(render(cfg)), 0o644); err != nil {
+		return fmt.Errorf("設定ファイルを書く: %w", err)
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		os.Remove(temporary)
+		return fmt.Errorf("設定ファイルを置き換える: %w", err)
+	}
+	return nil
+}
+
+func render(cfg Config) string {
+	var out strings.Builder
+	out.WriteString("[server]\n")
+	out.WriteString("command = " + quote(cfg.Server.Command) + "\n")
+	if cfg.Server.WorkDir != "" {
+		out.WriteString("workdir = " + quote(cfg.Server.WorkDir) + "\n")
+	}
+
+	if len(cfg.UI.Panes) > 0 {
+		names := make([]string, 0, len(cfg.UI.Panes))
+		for _, pane := range cfg.UI.Panes {
+			names = append(names, quote(pane))
+		}
+		out.WriteString("\n[ui]\n")
+		out.WriteString("panes = [" + strings.Join(names, ", ") + "]\n")
+	}
+
+	if cfg.UI.Colors != (Colors{}) {
+		out.WriteString("\n[ui.colors]\n")
+		for _, color := range [][2]string{
+			{"frame", cfg.UI.Colors.Frame},
+			{"selected_frame", cfg.UI.Colors.SelectedFrame},
+			{"focused_frame", cfg.UI.Colors.FocusedFrame},
+		} {
+			if color[1] != "" {
+				out.WriteString(color[0] + " = " + quote(color[1]) + "\n")
+			}
+		}
+	}
+	return out.String()
+}
+
+// quote は TOML の基本文字列にする。次の起動で読めない設定ファイルを
+// 作らないよう、制御文字も含めてエスケープする。
+func quote(value string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+		"\r", `\r`,
+		"\t", `\t`,
+	)
+	return `"` + replacer.Replace(value) + `"`
 }
 
 func joinKeys(keys []toml.Key) string {

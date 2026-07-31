@@ -78,3 +78,29 @@ func writeConfig(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestSaveWritesReloadableConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	cfg := Config{
+		Server: Server{Command: "./run.sh", WorkDir: dir},
+		UI:     UI{Colors: Colors{Frame: "#BD93F9"}},
+	}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Server.Command != cfg.Server.Command ||
+		loaded.UI.Colors != cfg.UI.Colors {
+		t.Fatalf("loaded = %#v", loaded)
+	}
+	// 途中で失敗しても元の設定を壊さないよう一時ファイル経由で書くが、
+	// 成功した後に残っていてはいけない。
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("temporary file was left: %v", err)
+	}
+}
