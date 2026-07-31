@@ -51,7 +51,9 @@ type model struct {
 	cursor     int
 	command    string // 設定に書く形の起動スクリプト
 	commandAbs string // 権限確認と chmod に使う絶対パス
-	needsChmod bool
+	fromInput  bool   // 起動スクリプトを一覧ではなく手入力で決めたか
+	needsChmod bool   // 起動スクリプトに実行権限がないか
+	grantChmod bool   // 実行権限を付けてよいという同意
 	message    string
 	created    bool
 	err        error
@@ -132,7 +134,7 @@ func (m *model) updateCommand(key tea.Key) (tea.Model, tea.Cmd) {
 			m.input = []rune("./")
 			return m, nil
 		}
-		m.selectCommand(m.candidates[m.cursor].name)
+		m.selectCommand(m.candidates[m.cursor].name, false)
 	default:
 		m.cursor = moveCursor(key, m.cursor, count)
 	}
@@ -149,14 +151,14 @@ func (m *model) updateCommandInput(key tea.Key) (tea.Model, tea.Cmd) {
 		}
 		m.step = stepCommand
 	case tea.KeyEnter, tea.KeyKpEnter:
-		m.selectCommand(string(m.input))
+		m.selectCommand(string(m.input), true)
 	default:
 		m.editInput(key)
 	}
 	return m, nil
 }
 
-func (m *model) selectCommand(input string) {
+func (m *model) selectCommand(input string, fromInput bool) {
 	command, path, err := resolveCommand(input, m.workDir)
 	if err != nil {
 		m.message = err.Error()
@@ -169,19 +171,29 @@ func (m *model) selectCommand(input string) {
 	}
 	m.command = command
 	m.commandAbs = path
+	m.fromInput = fromInput
 	m.needsChmod = info.Mode().Perm()&0o111 == 0
+	// 実行権限がなければ hso は起動できないので、付ける側を初期値にする。
+	// c で断れる。
+	m.grantChmod = m.needsChmod
 	m.step = stepConfirm
 }
 
 func (m *model) updateConfirm(key tea.Key) (tea.Model, tea.Cmd) {
+	if m.needsChmod && key.Text == "c" {
+		m.grantChmod = !m.grantChmod
+		return m, nil
+	}
 	switch key.Code {
 	case tea.KeyEscape:
-		m.step = stepCommand
-		if len(m.candidates) == 0 {
+		// 直前にいた画面へ戻す。
+		if m.fromInput {
 			m.step = stepCommandInput
+			break
 		}
+		m.step = stepCommand
 	case tea.KeyEnter, tea.KeyKpEnter:
-		if m.needsChmod {
+		if m.needsChmod && m.grantChmod {
 			if err := grantExecute(m.commandAbs); err != nil {
 				m.message = err.Error()
 				return m, nil
@@ -277,12 +289,21 @@ func (m *model) body() []string {
 			lines = append(lines, "  "+line)
 		}
 		if m.needsChmod {
-			lines = append(lines, "", dimStyle.Render(
-				"  作成時に chmod +x する: "+m.commandAbs,
+			lines = append(lines, "", "  "+m.chmodLine(), dimStyle.Render(
+				"  "+m.commandAbs,
 			))
 		}
 		return lines
 	}
+}
+
+// chmodLine は実行権限を付けるかどうかの表示。付けないままだと hso が
+// 起動できないので、断ったときはその結果も出す。
+func (m *model) chmodLine() string {
+	if m.grantChmod {
+		return "[x] 実行権限を付ける（読める相手にだけ実行を許す）"
+	}
+	return errorStyle.Render("[ ] 実行権限を付けない（このままでは hso は起動できない）")
 }
 
 func (m *model) candidateLines() []string {
@@ -327,7 +348,11 @@ func (m *model) keybar() string {
 	keys := [][2]string{}
 	switch m.step {
 	case stepWorkDir:
-		keys = append(keys, [2]string{"Enter", "次へ"})
+		// 最初の画面には戻り先がないので、Esc は Ctrl+C と同じく中止。
+		return renderKeys([][2]string{
+			{"Enter", "次へ"},
+			{"Esc / Ctrl+C", "中止"},
+		})
 	case stepCommand:
 		keys = append(keys,
 			[2]string{"↑↓", "選ぶ"},
@@ -340,13 +365,17 @@ func (m *model) keybar() string {
 			[2]string{"Esc", "戻る"},
 		)
 	default:
-		keys = append(keys,
-			[2]string{"Enter", "作成"},
-			[2]string{"Esc", "戻る"},
-		)
+		keys = append(keys, [2]string{"Enter", "作成"})
+		if m.needsChmod {
+			keys = append(keys, [2]string{"c", "実行権限の付与を切替"})
+		}
+		keys = append(keys, [2]string{"Esc", "戻る"})
 	}
 	keys = append(keys, [2]string{"Ctrl+C", "中止"})
+	return renderKeys(keys)
+}
 
+func renderKeys(keys [][2]string) string {
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
 		parts = append(parts, keyStyle.Render(" "+key[0]+" ")+" "+key[1])

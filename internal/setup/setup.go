@@ -50,8 +50,20 @@ func (item candidate) label() string {
 	return item.name + "  (実行権限なし)"
 }
 
-// scanCommands は起動スクリプトになりうるファイルを列挙する。
-// 実行可能ファイルと .sh が対象で、実行可能なものを先に並べる。
+// isCandidate は起動スクリプトになりうるファイルかどうか。.sh は権限に
+// 関わらず候補にする。それ以外は実行可能かつ拡張子なしのものだけを拾い、
+// 実行ビットの付いた jar や画像がノイズとして並ぶのを防ぐ。
+func isCandidate(name string, executable bool) bool {
+	if name == "hso" {
+		return false
+	}
+	if strings.HasSuffix(name, ".sh") {
+		return true
+	}
+	return executable && filepath.Ext(name) == ""
+}
+
+// scanCommands は起動スクリプトの候補を列挙する。実行可能なものを先に並べる。
 func scanCommands(dir string) []candidate {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -68,7 +80,7 @@ func scanCommands(dir string) []candidate {
 			continue
 		}
 		executable := info.Mode().Perm()&0o111 != 0
-		if !executable && !strings.HasSuffix(entry.Name(), ".sh") {
+		if !isCandidate(entry.Name(), executable) {
 			continue
 		}
 		candidates = append(candidates, candidate{
@@ -159,10 +171,17 @@ func render(command, workDir, configDir string) string {
 	return out.String()
 }
 
+// quote は TOML の基本文字列にする。改行を含むパスは滅多にないが、
+// そのまま書くと次の起動で読めない設定ファイルができるのでエスケープする。
 func quote(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	value = strings.ReplaceAll(value, `"`, `\"`)
-	return `"` + value + `"`
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+		"\r", `\r`,
+		"\t", `\t`,
+	)
+	return `"` + replacer.Replace(value) + `"`
 }
 
 func writeConfig(path, content string) error {

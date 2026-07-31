@@ -20,7 +20,8 @@ func TestScanCommands(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "start.sh"), 0o644)
 	writeFile(t, filepath.Join(dir, "run.sh"), 0o755)
-	writeFile(t, filepath.Join(dir, "server.jar"), 0o644)
+	writeFile(t, filepath.Join(dir, "server.jar"), 0o755)
+	writeFile(t, filepath.Join(dir, "hso"), 0o755)
 	if err := os.Mkdir(filepath.Join(dir, "world"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -103,8 +104,22 @@ func TestRender(t *testing.T) {
 	}
 }
 
+func TestScanCommandsKeepsExtensionlessExecutable(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "start"), 0o755)
+	writeFile(t, filepath.Join(dir, "notes.txt"), 0o755)
+
+	candidates := scanCommands(dir)
+	if len(candidates) != 1 || candidates[0].name != "start" {
+		t.Fatalf("candidates = %#v", candidates)
+	}
+}
+
 func TestQuote(t *testing.T) {
 	if got := quote(`a"b\c`); got != `"a\"b\\c"` {
+		t.Fatalf("quote = %s", got)
+	}
+	if got := quote("a\nb\tc"); got != `"a\nb\tc"` {
 		t.Fatalf("quote = %s", got)
 	}
 }
@@ -225,6 +240,57 @@ func TestModelRejectsMissingDirectory(t *testing.T) {
 	press(t, model, typeText("/no-such-directory"), enter)
 	if model.step != stepWorkDir || model.message == "" {
 		t.Fatalf("step = %d, message = %q", model.step, model.message)
+	}
+}
+
+// 手入力から進んだ確認画面の Esc は、一覧ではなく入力画面へ戻る。
+func TestModelEscapeReturnsToManualEntry(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "run.sh"), 0o755)
+
+	model := newModel(filepath.Join(dir, "hso.toml"))
+	press(t, model, enter)
+	press(t, model, tea.KeyPressMsg{Code: tea.KeyEnd}, enter)
+	press(t, model, typeText("run.sh"), enter)
+	if model.step != stepConfirm {
+		t.Fatalf("step = %d (%s)", model.step, model.message)
+	}
+	press(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.step != stepCommandInput {
+		t.Fatalf("step = %d", model.step)
+	}
+}
+
+// c で実行権限の付与を断ると、chmod せずに設定だけ作る。
+func TestModelDeclineChmod(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "run.sh")
+	writeFile(t, script, 0o644)
+	path := filepath.Join(dir, "hso.toml")
+
+	model := newModel(path)
+	press(t, model, enter, enter)
+	if !model.grantChmod {
+		t.Fatal("既定では実行権限を付ける")
+	}
+	press(t, model, typeText("c"))
+	if model.grantChmod {
+		t.Fatal("c で切り替わるべき")
+	}
+	press(t, model, enter)
+
+	if !model.created {
+		t.Fatalf("created = %v, err = %v", model.created, model.err)
+	}
+	info, err := os.Stat(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o111 != 0 {
+		t.Fatalf("実行権限を付けてはいけない: %o", info.Mode().Perm())
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
 	}
 }
 
