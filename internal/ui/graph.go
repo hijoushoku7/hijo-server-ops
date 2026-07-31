@@ -3,7 +3,12 @@ package ui
 import (
 	"math"
 	"strings"
+
+	"charm.land/lipgloss/v2"
 )
+
+// overlapStyle は heap と rss が同じセルに乗ったときの色。
+var overlapStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C"))
 
 type memorySample struct {
 	heap      uint64
@@ -69,17 +74,62 @@ func (buffer *sampleBuffer) Len() int {
 
 type sampleValue func(memorySample) (uint64, bool)
 
-func renderBraille(
+func heapValue(sample memorySample) (uint64, bool) {
+	return sample.heap, sample.heapKnown
+}
+
+func rssValue(sample memorySample) (uint64, bool) {
+	return sample.rss, sample.rssKnown
+}
+
+// chartSeries は 1 本の折れ線。
+type chartSeries struct {
+	value sampleValue
+	style lipgloss.Style
+}
+
+// renderChart は複数の系列を 1 枚の braille グラフに重ね、左端に Y 軸
+// ラベルを付ける。縦軸は low..high で、0 起点にはしない。ヒープの増減は
+// 総量に対して小さく、0 起点だと GC のノコギリ波が 1 ドットに潰れるため。
+// 系列が重なったセルは overlapStyle で描き、どちらの線か分からない箇所を
+// 塗り分けたように見せない。
+func renderChart(
+	samples sampleBuffer,
+	series []chartSeries,
+	width int,
+	height int,
+	low uint64,
+	high uint64,
+) []string {
+	plotWidth := width - axisWidth
+	if plotWidth <= 0 || height <= 0 || high <= low {
+		return nil
+	}
+
+	grids := make([][]byte, len(series))
+	for index, item := range series {
+		grids[index] = plotSeries(samples, item.value, plotWidth, height, low, high)
+	}
+
+	lines := make([]string, height)
+	for row := 0; row < height; row++ {
+		var line strings.Builder
+		line.WriteString(axisLabel(row, height, low, high))
+		writeChartRow(&line, grids, series, row, plotWidth)
+		lines[row] = line.String()
+	}
+	return lines
+}
+
+// plotSeries は 1 系列を braille のセル配列（1 セル 8 ドット）に描く。
+func plotSeries(
 	samples sampleBuffer,
 	value sampleValue,
 	width int,
 	height int,
-	maximum uint64,
-) []string {
-	if width <= 0 || height <= 0 {
-		return nil
-	}
-
+	low uint64,
+	high uint64,
+) []byte {
 	cells := make([]byte, width*height)
 	dotWidth := width * 2
 	dotHeight := height * 4
@@ -94,13 +144,16 @@ func renderBraille(
 	for index := 0; index < count; index++ {
 		sample := samples.At(samples.Len() - count + index)
 		number, available := value(sample)
-		if !available || maximum == 0 {
+		if !available {
 			hasPoint = false
 			continue
 		}
 
 		x := firstX + index
-		ratio := math.Min(1, float64(number)/float64(maximum))
+		if number < low {
+			number = low
+		}
+		ratio := math.Min(1, float64(number-low)/float64(high-low))
 		y := dotHeight - 1 - int(math.Round(ratio*float64(dotHeight-1)))
 		if hasPoint {
 			drawLine(cells, width, height, previousX, previousY, x, y)
@@ -111,22 +164,82 @@ func renderBraille(
 		previousY = y
 		hasPoint = true
 	}
+	return cells
+}
 
-	lines := make([]string, height)
-	for row := 0; row < height; row++ {
-		var line strings.Builder
-		line.Grow(width * 3)
-		for column := 0; column < width; column++ {
-			bits := cells[row*width+column]
-			if bits == 0 {
-				line.WriteByte(' ')
+// writeChartRow は 1 行ぶんのセルを書く。同じ色が続く間はまとめて着色する。
+func writeChartRow(
+	line *strings.Builder,
+	grids [][]byte,
+	series []chartSeries,
+	row int,
+	width int,
+) {
+	var run strings.Builder
+	runStyle := -1
+	flush := func() {
+		if run.Len() == 0 {
+			return
+		}
+		text := run.String()
+		run.Reset()
+		switch {
+		case runStyle < 0:
+			line.WriteString(text)
+		case runStyle < len(series):
+			line.WriteString(series[runStyle].style.Render(text))
+		default:
+			line.WriteString(overlapStyle.Render(text))
+		}
+	}
+
+	for column := 0; column < width; column++ {
+		bits := byte(0)
+		style := -1
+		for index, cells := range grids {
+			if cells[row*width+column] == 0 {
 				continue
 			}
-			line.WriteRune(rune(0x2800 + int(bits)))
+			bits |= cells[row*width+column]
+			if style < 0 {
+				style = index
+			} else {
+				style = len(series)
+			}
 		}
-		lines[row] = line.String()
+		if style != runStyle {
+			flush()
+			runStyle = style
+		}
+		if bits == 0 {
+			run.WriteByte(' ')
+			continue
+		}
+		run.WriteRune(rune(0x2800 + int(bits)))
 	}
-	return lines
+	flush()
+}
+
+// axisLabel は行の左に置く Y 軸ラベル。上端と下端、真ん中だけに値を出す。
+func axisLabel(row, height int, low, high uint64) string {
+	value := uint64(0)
+	switch row {
+	case 0:
+		value = high
+	case height - 1:
+		value = low
+	case height / 2:
+		value = low + (high-low)/2
+	default:
+		return dimStyle.Render(strings.Repeat(" ", axisWidth-1) + "│")
+	}
+	label := formatAxisBytes(value)
+	if stringWidth(label) > axisWidth-1 {
+		label = truncate(label, axisWidth-1)
+	}
+	return dimStyle.Render(
+		strings.Repeat(" ", axisWidth-1-stringWidth(label)) + label + "┤",
+	)
 }
 
 func drawLine(

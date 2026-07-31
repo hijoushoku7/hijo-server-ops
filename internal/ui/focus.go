@@ -16,7 +16,6 @@ type panel uint8
 const (
 	panelPlayers panel = iota
 	panelChat
-	panelCommands
 	panelLog
 	panelConsole
 )
@@ -75,12 +74,13 @@ var playerCommands = []playerCommand{
 //
 //	┌─ Stats ─┐┌─ Meters ─┐┌─ Players ─┐
 //	└─────────┘└──────────┘└───────────┘
-//	┌─ Chat ─────┐┌───────────────┐
-//	┌─ Commands ─┐│      Log      │
-//	└────────────┘└───────────────┘
+//	┌─ Graph ─┐┌──────────────────┐
+//	┌─ Chat ──┐│       Log        │
+//	└─────────┘└──────────────────┘
 //	┌─────────── Console ───────────┐
 //
-// Stats と Meters は選択対象でないため、上へ抜けると Players に着く。
+// Stats / Meters / Graph は表示専用で選択対象でないため、Chat から上へ
+// 抜けると Graph を飛ばして Players に着く。
 type neighbor struct {
 	up    panel
 	down  panel
@@ -97,14 +97,8 @@ var neighbors = map[panel]neighbor{
 	},
 	panelChat: {
 		up:    panelPlayers,
-		down:  panelCommands,
-		left:  panelChat,
-		right: panelLog,
-	},
-	panelCommands: {
-		up:    panelChat,
 		down:  panelConsole,
-		left:  panelCommands,
+		left:  panelChat,
 		right: panelLog,
 	},
 	panelLog: {
@@ -114,7 +108,7 @@ var neighbors = map[panel]neighbor{
 		right: panelLog,
 	},
 	panelConsole: {
-		up:    panelCommands,
+		up:    panelChat,
 		down:  panelConsole,
 		left:  panelConsole,
 		right: panelConsole,
@@ -127,8 +121,6 @@ func (current panel) title() string {
 		return "Players"
 	case panelChat:
 		return "Chat"
-	case panelCommands:
-		return "Commands"
 	case panelLog:
 		return "Log"
 	default:

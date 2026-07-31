@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"math"
-	"runtime"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -78,41 +77,40 @@ func renderMeter(ratio float64, width int) string {
 		meterEmptyStyle.Render(strings.Repeat("░", max(0, width-full)))
 }
 
-// meterLines は 1 行を "ラベル バー パーセント" に組む。
+// meterLines は 1 本を 2 行に組む。上が "ラベル … パーセント"、
+// 下が幅いっぱいのバー。Meters 列は狭いので、バーに全幅を使う。
+// 値が取れないメーターはバーを描かず、パーセント欄に n/a と出す（原則4）。
 func meterLines(meters []meter, width int) []string {
-	labelWidth := 0
-	textWidth := 0
-	for _, item := range meters {
-		labelWidth = max(labelWidth, stringWidth(item.label))
-		textWidth = max(textWidth, stringWidth(item.text))
-	}
-	barWidth := max(0, width-labelWidth-textWidth-2)
-
-	lines := make([]string, 0, len(meters))
-	for _, item := range meters {
-		label := fitLine(item.label, labelWidth)
-		text := strings.Repeat(" ", max(0, textWidth-stringWidth(item.text))) +
-			item.text
-		bar := renderMeter(item.ratio, barWidth)
-		if !item.available {
-			bar = dimStyle.Render(fitLine("n/a", barWidth))
+	lines := make([]string, 0, len(meters)*3)
+	for index, item := range meters {
+		// メーター同士が地続きに見えないよう 1 行空ける。
+		if index > 0 {
+			lines = append(lines, "")
 		}
-		lines = append(lines, label+" "+bar+" "+text)
+		gap := max(1, width-stringWidth(item.label)-stringWidth(item.text))
+		lines = append(lines, fitLine(
+			item.label+strings.Repeat(" ", gap)+item.text,
+			width,
+		))
+		if !item.available {
+			lines = append(lines, "")
+			continue
+		}
+		lines = append(lines, renderMeter(item.ratio, width))
 	}
 	return lines
 }
 
-// cpuMeter は コア数 × 100% を満目とする。Minecraft の主要処理は単スレッド
+// cpuMeter はマシン全体を 100% とする。Minecraft の主要処理は単スレッド
 // なので満目には届きにくいが、マシン全体に対する使用量として読める。
 func cpuMeter(value float64, available bool) meter {
 	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return meter{label: "CPU", text: "n/a"}
 	}
-	full := float64(runtime.NumCPU()) * 100
 	return meter{
 		label:     "CPU",
-		ratio:     value / full,
-		text:      fmt.Sprintf("%.0f%%", value),
+		ratio:     normalizeCPU(value) / 100,
+		text:      formatCPU(value, true),
 		available: true,
 	}
 }
@@ -135,30 +133,29 @@ func heapMeter(heap hsperfdata.Memory) meter {
 // rssMeter は cgroup 制限を分母にし、制限がなければホスト総メモリに落とす。
 // どちらも取れなければ n/a。使った分母は second の戻り値で示す。
 func rssMeter(memory procstats.Memory) (meter, string) {
-	if !memory.RSS.Available {
-		return meter{label: "RSS", text: "n/a"}, ""
-	}
-
-	limit := uint64(0)
-	source := ""
-	if memory.CgroupLimit.Available && !memory.CgroupLimit.Unlimited &&
-		memory.CgroupLimit.Value > 0 {
-		limit = memory.CgroupLimit.Value
-		source = "cgroup"
-	} else if memory.HostTotal.Available && memory.HostTotal.Value > 0 {
-		limit = memory.HostTotal.Value
-		source = "host"
-	}
-	if limit == 0 {
+	limit, source := rssDenominator(memory)
+	if !memory.RSS.Available || limit == 0 {
 		return meter{label: "RSS", text: "n/a"}, ""
 	}
 
 	return meter{
 		label:     "RSS",
 		ratio:     float64(memory.RSS.Value) / float64(limit),
-		text:      fmt.Sprintf("%.0f%%", percent(int64(memory.RSS.Value), int64(limit))),
+		text:      formatRSSPercent(memory),
 		available: true,
 	}, source
+}
+
+// rssDenominator は RSS の割合に使う分母と、その出所を返す。
+func rssDenominator(memory procstats.Memory) (uint64, string) {
+	if memory.CgroupLimit.Available && !memory.CgroupLimit.Unlimited &&
+		memory.CgroupLimit.Value > 0 {
+		return memory.CgroupLimit.Value, "cgroup"
+	}
+	if memory.HostTotal.Available && memory.HostTotal.Value > 0 {
+		return memory.HostTotal.Value, "host"
+	}
+	return 0, ""
 }
 
 func percent(value, limit int64) float64 {

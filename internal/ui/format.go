@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"strings"
 	"time"
 
@@ -52,6 +53,35 @@ func formatBytes(value uint64) string {
 		float64(value)/float64(divisor),
 		"KMGTPE"[exponent],
 	)
+}
+
+// formatAxisBytes は Y 軸ラベル用に桁を詰めた表記。10 以上は小数を落とし、
+// 1000 を超えたら 1 つ上の単位へ繰り上げて、"512M" "1.0G" "16G" のように
+// 常に 4 桁以内へ収める。軸の欄は 4 桁しかなく、あふれると単位が切られて
+// ただの数字になってしまうため。
+func formatAxisBytes(value uint64) string {
+	const unit = uint64(1024)
+	const units = "KMGTPE"
+	if value < unit {
+		return fmt.Sprintf("%dB", value)
+	}
+
+	divisor := unit
+	exponent := 0
+	for value/divisor >= unit && exponent < len(units)-1 {
+		divisor *= unit
+		exponent++
+	}
+	scaled := float64(value) / float64(divisor)
+	// 999.95 以上は丸めると 4 桁になるので、1 つ上の単位で出す。
+	if scaled >= 999.95 && exponent < len(units)-1 {
+		scaled /= float64(unit)
+		exponent++
+	}
+	if scaled >= 10 {
+		return fmt.Sprintf("%.0f%c", scaled, units[exponent])
+	}
+	return fmt.Sprintf("%.1f%c", scaled, units[exponent])
 }
 
 func formatDelta(rss procstats.Number, committed hsperfdata.Number) string {
@@ -106,11 +136,66 @@ func formatFrequency(value float64, available bool) string {
 	return fmt.Sprintf("%.2f/min", value)
 }
 
+// formatCPU は全コア合計で数えた使用率を、分母 100% に直して出す。
 func formatCPU(value float64, available bool) string {
 	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return "n/a"
 	}
-	return fmt.Sprintf("%.0f%%", value)
+	return fmt.Sprintf("%.0f%%", normalizeCPU(value))
+}
+
+// normalizeCPU は「コア数 × 100%」を満目とする値を 0..100% に直す。
+// 収集側は従来どおりコア数ぶんを合計しており、ここで割るだけ。
+func normalizeCPU(value float64) float64 {
+	cores := float64(runtime.NumCPU())
+	if cores <= 0 {
+		return value
+	}
+	return value / cores
+}
+
+// formatRSSPercent は RSS が分母に占める割合。分母は rssDenominator と同じで、
+// cgroup 制限があればそれ、なければ OS の総メモリ。
+func formatRSSPercent(memory procstats.Memory) string {
+	limit, _ := rssDenominator(memory)
+	if !memory.RSS.Available || limit == 0 ||
+		memory.RSS.Value > math.MaxInt64 || limit > math.MaxInt64 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.0f%%", percent(int64(memory.RSS.Value), int64(limit)))
+}
+
+// rssRatio は RSS が分母に占める割合の 0..1 表現。取れなければ NaN。
+func rssRatio(memory procstats.Memory) float64 {
+	limit, _ := rssDenominator(memory)
+	if !memory.RSS.Available || limit == 0 {
+		return math.NaN()
+	}
+	return float64(memory.RSS.Value) / float64(limit)
+}
+
+// cpuRatio は CPU 使用率の 0..1 表現。取れなければ NaN。
+func cpuRatio(value float64, available bool) float64 {
+	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return math.NaN()
+	}
+	return normalizeCPU(value) / 100
+}
+
+// highlight は割合が高いときだけ数値に色を付ける。平常時は素のままにする
+// ことで、色が付いていること自体が警告になる。閾値は Meters の棒と同じ
+// 75% / 90% で、色もメーターのプリセットから引く。
+func highlight(text string, ratio float64) string {
+	switch {
+	case math.IsNaN(ratio):
+		return text
+	case ratio >= meterOverRatio:
+		return meterOverStyle.Bold(true).Render(text)
+	case ratio >= meterHighRatio:
+		return meterHighStyle.Render(text)
+	default:
+		return text
+	}
 }
 
 func fitLine(value string, width int) string {

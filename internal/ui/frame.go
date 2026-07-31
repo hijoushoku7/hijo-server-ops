@@ -63,6 +63,8 @@ func (box frame) render(value string) string {
 	return box.style.Render(value)
 }
 
+// 枠の色は applyTheme がプリセットから差し替える。罫線の太さは状態ごとに
+// 固定で、設定で変わるのは色だけ。
 func (model *Model) frameFor(target panel) frame {
 	if model.panel != target {
 		return plainFrame

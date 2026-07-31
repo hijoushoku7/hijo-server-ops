@@ -46,7 +46,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return runTUI(cfg)
+	return runTUI(*configPath, cfg)
 }
 
 func missingConfig(path string) bool {

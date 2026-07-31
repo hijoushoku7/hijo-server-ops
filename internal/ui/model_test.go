@@ -64,8 +64,9 @@ func TestModelRoutesLogsAndTracksPlayers(t *testing.T) {
 	if model.chat.At(0) != "<alice> hello" {
 		t.Fatalf("chat = %q", model.chat.At(0))
 	}
-	if model.commands.At(0) != "alice: /time set day" {
-		t.Fatalf("command = %q", model.commands.At(0))
+	// コマンドは専用ペインをやめて Log に流している。
+	if model.logs.At(0) != "alice: /time set day" {
+		t.Fatalf("command = %q", model.logs.At(0))
 	}
 	if model.tracker.PlayerCount() != 1 || model.tracker.LagEvents() != 1 {
 		t.Fatalf(
@@ -94,7 +95,8 @@ func TestModelViewContainsBrailleGraphs(t *testing.T) {
 	content := model.View().Content
 	if !strings.Contains(content, "Heap") ||
 		!strings.Contains(content, "RSS") ||
-		!strings.Contains(content, "CPU 125%") {
+		// CPU 表示はコア数で割るのでマシン依存。期待値も同じ式で作る。
+		!strings.Contains(content, "CPU "+formatCPU(125, true)) {
 		t.Fatalf("view does not contain metrics:\n%s", content)
 	}
 	if !containsBraille(content) {
@@ -125,7 +127,7 @@ func TestModelReleasesDisplayCachesWhenTerminalBecomesTooSmall(t *testing.T) {
 	})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 20, Height: 5})
 
-	if model.chat.lines != nil || model.commands.lines != nil ||
+	if model.chat.lines != nil ||
 		model.logs.lines != nil || model.samples.samples != nil {
 		t.Fatalf("display caches were retained: %#v", model)
 	}
@@ -159,8 +161,13 @@ func TestModelReportsMetricFailureOnceAndRecovery(t *testing.T) {
 	if !strings.Contains(model.statsTitle(), "metrics degraded") {
 		t.Fatalf("title = %q", model.statsTitle())
 	}
-	if !strings.Contains(strings.Join(model.statsLines(), "\n"), failure.JVMError) {
-		t.Fatalf("stats = %q", model.statsLines())
+	// 取れない理由はグラフの代わりに Graph パネルへ出す。パネル幅で切られる
+	// ので、頭が出ていることだけを見る。
+	if !strings.Contains(
+		stripANSI(model.renderGraphPanel()),
+		"heap unavailable: hsperfdata",
+	) {
+		t.Fatalf("graph = %q", stripANSI(model.renderGraphPanel()))
 	}
 
 	_, _ = model.Update(MetricsMsg{})
@@ -199,7 +206,7 @@ func TestModelReturnsProcessError(t *testing.T) {
 
 func TestModelSendsBoundedCommandInput(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, 0)
+	model := New(actions, nil, 0, DefaultSettings())
 
 	_, _ = model.Update(tea.KeyPressMsg{Text: strings.Repeat("a", maxInputRunes+10)})
 	if len(model.input) != maxInputRunes {
@@ -219,7 +226,7 @@ func TestModelSendsBoundedCommandInput(t *testing.T) {
 
 func TestModelSelectsRestartAndStopWithTab(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, 0)
+	model := New(actions, nil, 0, DefaultSettings())
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	if model.consoleFocus != consoleRestart {
@@ -260,11 +267,10 @@ func TestModelMovesBetweenPanelsInSelectMode(t *testing.T) {
 		code rune
 		want panel
 	}{
-		{tea.KeyUp, panelCommands},
 		{tea.KeyUp, panelChat},
-		{tea.KeyRight, panelLog},
+		{tea.KeyUp, panelPlayers},
+		{tea.KeyDown, panelLog},
 		{tea.KeyLeft, panelChat},
-		{tea.KeyDown, panelCommands},
 		{tea.KeyDown, panelConsole},
 	}
 	for _, move := range moves {
@@ -412,12 +418,12 @@ func TestModelRecordsOnlySuccessfullySentCommands(t *testing.T) {
 	action := Action{Kind: ActionSendCommand, Command: "say hello"}
 
 	_, _ = model.Update(ActionResultMsg{Action: action, Err: errors.New("failed")})
-	if model.commands.Len() != 0 {
+	if model.logs.Len() != 0 {
 		t.Fatalf("failed command was recorded")
 	}
 	_, _ = model.Update(ActionResultMsg{Action: action})
-	if model.commands.Len() != 1 || model.commands.At(0) != "say hello" {
-		t.Fatalf("commands = %q", model.commands.At(0))
+	if model.logs.Len() != 1 || model.logs.At(0) != "say hello" {
+		t.Fatalf("logs = %q", model.logs.At(0))
 	}
 }
 
@@ -441,7 +447,7 @@ func TestModelClearsServerMetricsOnRestart(t *testing.T) {
 }
 
 func TestModelIgnoresMessagesFromPreviousServer(t *testing.T) {
-	model := New(make(chan Action, 1), 2)
+	model := New(make(chan Action, 1), nil, 2, DefaultSettings())
 	_, _ = model.Update(MetricsMsg{
 		Generation: 1,
 		Memory: procstats.Memory{
@@ -532,7 +538,7 @@ func TestModelScrollsPlayersFromTheTop(t *testing.T) {
 
 func TestModelPutsPlayerCommandIntoTheConsole(t *testing.T) {
 	actions := make(chan Action, 4)
-	model := New(actions, 0)
+	model := New(actions, nil, 0, DefaultSettings())
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	for _, name := range []string{"alice", "bob"} {
 		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
@@ -752,7 +758,7 @@ func TestModelViewKeepsRectangularWithThreeTopPanels(t *testing.T) {
 }
 
 func newTestModel() *Model {
-	return New(make(chan Action, 8), 0)
+	return New(make(chan Action, 8), nil, 0, DefaultSettings())
 }
 
 func stripANSI(value string) string {
@@ -766,4 +772,63 @@ func containsBraille(value string) bool {
 		}
 	}
 	return false
+}
+
+func TestStatsRSSLineKeepsDeltaOnNarrowTerminals(t *testing.T) {
+	model := newTestModel()
+	model.memory = procstats.Memory{
+		RSS:       procstats.Number{Value: 5400 << 20, Available: true},
+		HostTotal: procstats.Number{Value: 16 << 30, Available: true},
+	}
+	model.metrics = hsperfdata.Metrics{Heap: hsperfdata.Memory{
+		Committed: hsperfdata.Number{Value: 2100 << 20, Available: true},
+	}}
+
+	// 最小幅では分母を落としてでも Δ を残す。Δ はこのツールの核心。
+	model.resize(minimumWidth, minimumHeight)
+	narrow := model.rssLine()
+	if stringWidth(narrow) > model.layout.statsWidth-2 {
+		t.Fatalf("narrow line = %q (%d 桁)", narrow, stringWidth(narrow))
+	}
+	if !strings.Contains(narrow, "Δ +3.2G") {
+		t.Fatalf("narrow line = %q", narrow)
+	}
+
+	// 広ければ分母も出す。
+	model.resize(110, 30)
+	wide := stripANSI(model.rssLine())
+	if !strings.Contains(wide, "16.0G total") ||
+		!strings.Contains(wide, "Δ +3.2G") {
+		t.Fatalf("wide line = %q", wide)
+	}
+
+	// cgroup 制限があるときは、割合の分母をそちらに切り替えて隣に置く。
+	model.memory.CgroupLimit = procstats.Limit{Value: 8 << 30, Available: true}
+	limited := stripANSI(model.rssLine())
+	if !strings.Contains(limited, "8.0G limit (66%)") {
+		t.Fatalf("limited line = %q", limited)
+	}
+}
+
+func TestGraphRangeAddsMarginAndReportsUnavailable(t *testing.T) {
+	model := newTestModel()
+	model.resize(110, 30)
+	if _, _, ok := model.graphRange(); ok {
+		t.Fatal("range is available without samples")
+	}
+
+	// 1 点しかなくても高さ 0 の範囲は返さない。
+	model.samples.Add(memorySample{heap: 1 << 30, heapKnown: true})
+	low, high, ok := model.graphRange()
+	if !ok || low >= high {
+		t.Fatalf("low = %d, high = %d, ok = %t", low, high, ok)
+	}
+
+	// 余白が値より大きくても下限は 0 で飽和する。
+	model.samples.SetLimit(0)
+	model.samples.SetLimit(4)
+	model.samples.Add(memorySample{heap: 1, heapKnown: true})
+	if low, _, ok := model.graphRange(); !ok || low != 0 {
+		t.Fatalf("low = %d, ok = %t", low, ok)
+	}
 }

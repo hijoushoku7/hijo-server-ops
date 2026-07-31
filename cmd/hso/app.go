@@ -49,15 +49,18 @@ type stoppableServer interface {
 	Signal(os.Signal) error
 }
 
-func runTUI(cfg config.Config) error {
+func runTUI(configPath string, cfg config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	actions := make(chan ui.Action, actionQueueSize)
-	model := ui.New(actions, initialGeneration)
+	save := func(settings ui.Settings) error {
+		return saveSettings(configPath, cfg, settings)
+	}
+	model := ui.New(actions, save, initialGeneration, settingsFrom(cfg))
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 
-	controller := newServerController(ctx, cfg, program)
+	controller := newServerController(ctx, configPath, cfg, program)
 	if err := controller.start(initialGeneration, false); err != nil {
 		return err
 	}
@@ -101,9 +104,10 @@ func (runtime *serverRuntime) close() {
 }
 
 type serverController struct {
-	ctx     context.Context
-	cfg     config.Config
-	program *tea.Program
+	ctx        context.Context
+	configPath string
+	cfg        config.Config
+	program    *tea.Program
 
 	operation sync.Mutex
 	currentMu sync.Mutex
@@ -112,14 +116,38 @@ type serverController struct {
 
 func newServerController(
 	ctx context.Context,
+	configPath string,
 	cfg config.Config,
 	program *tea.Program,
 ) *serverController {
 	return &serverController{
-		ctx:     ctx,
-		cfg:     cfg,
-		program: program,
+		ctx:        ctx,
+		configPath: configPath,
+		cfg:        cfg,
+		program:    program,
 	}
+}
+
+// settingsFrom は設定ファイルの配色プリセットを UI へ渡す。空欄は既定の
+// ままにする。
+func settingsFrom(cfg config.Config) ui.Settings {
+	settings := ui.DefaultSettings()
+	if value := cfg.UI.Theme.Frame; value != "" {
+		settings.FramePreset = value
+	}
+	if value := cfg.UI.Theme.Graph; value != "" {
+		settings.GraphPreset = value
+	}
+	if value := cfg.UI.Theme.Meter; value != "" {
+		settings.MeterPreset = value
+	}
+	if value := cfg.UI.Theme.Title; value != "" {
+		settings.TitlePreset = value
+	}
+	if value := cfg.UI.Theme.Selection; value != "" {
+		settings.SelectionPreset = value
+	}
+	return settings
 }
 
 func (controller *serverController) start(
@@ -198,6 +226,23 @@ func (controller *serverController) handleActions(actions <-chan ui.Action) {
 			}
 		}
 	}
+}
+
+// saveSettings は設定モーダルの変更を設定ファイルへ書き戻す。画面を描く
+// goroutine から直接呼ばれるので、ここではファイルを書くだけにする。
+func saveSettings(
+	configPath string,
+	cfg config.Config,
+	settings ui.Settings,
+) error {
+	cfg.UI.Theme = config.Theme{
+		Frame:     settings.FramePreset,
+		Graph:     settings.GraphPreset,
+		Meter:     settings.MeterPreset,
+		Title:     settings.TitlePreset,
+		Selection: settings.SelectionPreset,
+	}
+	return config.Save(configPath, cfg)
 }
 
 func (controller *serverController) sendCommand(action ui.Action) {

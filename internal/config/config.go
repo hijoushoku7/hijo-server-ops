@@ -13,6 +13,10 @@ import (
 type Config struct {
 	Server Server `toml:"server"`
 	UI     UI     `toml:"ui"`
+
+	// rawWorkDir は設定ファイルに書かれていたままの workdir。Server.WorkDir
+	// は Load で絶対パスにするので、書き戻すときの元の表現をここに残す。
+	rawWorkDir string
 }
 
 type Server struct {
@@ -22,6 +26,16 @@ type Server struct {
 
 type UI struct {
 	Panes []string `toml:"panes"`
+	Theme Theme    `toml:"theme"`
+}
+
+// Theme は設定モーダルで選んだ配色プリセットの名前。空なら既定を使う。
+type Theme struct {
+	Frame     string `toml:"frame"`
+	Graph     string `toml:"graph"`
+	Meter     string `toml:"meter"`
+	Title     string `toml:"title"`
+	Selection string `toml:"selection"`
 }
 
 func Load(path string) (Config, error) {
@@ -29,10 +43,14 @@ func Load(path string) (Config, error) {
 
 	metadata, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
-		return cfg, fmt.Errorf("設定ファイルを読む: %w", err)
+		return cfg, fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))
 	}
 	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
-		return cfg, fmt.Errorf("不明な設定項目: %s", joinKeys(undecoded))
+		return cfg, fmt.Errorf(
+			"不明な設定項目: %s%s",
+			joinKeys(undecoded),
+			reinitialize(path),
+		)
 	}
 
 	cfg.Server.Command = strings.TrimSpace(cfg.Server.Command)
@@ -46,6 +64,7 @@ func Load(path string) (Config, error) {
 	}
 	configDir := filepath.Dir(configPath)
 
+	cfg.rawWorkDir = cfg.Server.WorkDir
 	if cfg.Server.WorkDir == "" {
 		cfg.Server.WorkDir = configDir
 	} else if !filepath.IsAbs(cfg.Server.WorkDir) {
@@ -62,6 +81,110 @@ func Load(path string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Save は設定ファイルを書き直す。設定モーダルで変えた値を次の起動へ
+// 残すため。書き出すのは hso が解釈する項目だけなので、ユーザーが書いた
+// コメントは残らない。書き込みは一時ファイル経由にして、途中で失敗しても
+// 元の設定ファイルを壊さないようにする。
+func Save(path string, cfg Config) error {
+	// 設定ファイルに書かれていた workdir は、その表現のまま書き戻す。
+	// Load が絶対化した値を書くと、相対指定がディレクトリごとの移動に
+	// 追従しなくなる。書かれていなかったなら、Load が既定値として入れた
+	// 設定ファイルと同じ場所を省いて、書いていない状態を保つ。
+	workDir := cfg.rawWorkDir
+	if workDir == "" {
+		if directory, err := filepath.Abs(filepath.Dir(path)); err != nil ||
+			cfg.Server.WorkDir != directory {
+			workDir = cfg.Server.WorkDir
+		}
+	}
+	cfg.Server.WorkDir = workDir
+
+	// 一時ファイルは新規作成なので、rename しても元の権限が残るよう
+	// 既存ファイルの mode に合わせる。
+	permission := permissionOf(path)
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, []byte(render(cfg)), permission); err != nil {
+		return fmt.Errorf("設定ファイルを書く: %w", err)
+	}
+	if err := os.Chmod(temporary, permission); err != nil {
+		os.Remove(temporary)
+		return fmt.Errorf("設定ファイルの権限を合わせる: %w", err)
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		os.Remove(temporary)
+		return fmt.Errorf("設定ファイルを置き換える: %w", err)
+	}
+	return nil
+}
+
+// permissionOf は既存の設定ファイルの権限を返す。まだ無ければセットアップ
+// が作るときと同じ 0644 にする。
+func permissionOf(path string) os.FileMode {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0o644
+	}
+	return info.Mode().Perm()
+}
+
+func render(cfg Config) string {
+	var out strings.Builder
+	out.WriteString("[server]\n")
+	out.WriteString("command = " + quote(cfg.Server.Command) + "\n")
+	if cfg.Server.WorkDir != "" {
+		out.WriteString("workdir = " + quote(cfg.Server.WorkDir) + "\n")
+	}
+
+	if len(cfg.UI.Panes) > 0 {
+		names := make([]string, 0, len(cfg.UI.Panes))
+		for _, pane := range cfg.UI.Panes {
+			names = append(names, quote(pane))
+		}
+		out.WriteString("\n[ui]\n")
+		out.WriteString("panes = [" + strings.Join(names, ", ") + "]\n")
+	}
+
+	if cfg.UI.Theme != (Theme{}) {
+		out.WriteString("\n[ui.theme]\n")
+		for _, preset := range [][2]string{
+			{"frame", cfg.UI.Theme.Frame},
+			{"graph", cfg.UI.Theme.Graph},
+			{"meter", cfg.UI.Theme.Meter},
+			{"title", cfg.UI.Theme.Title},
+			{"selection", cfg.UI.Theme.Selection},
+		} {
+			if preset[1] != "" {
+				out.WriteString(preset[0] + " = " + quote(preset[1]) + "\n")
+			}
+		}
+	}
+	return out.String()
+}
+
+// quote は TOML の基本文字列にする。次の起動で読めない設定ファイルを
+// 作らないよう、制御文字も含めてエスケープする。
+func quote(value string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+		"\r", `\r`,
+		"\t", `\t`,
+	)
+	return `"` + replacer.Replace(value) + `"`
+}
+
+// reinitialize は設定ファイルが読めないときの直し方を添える。古い形式の
+// 項目が残っているのが主な原因で、消して起動し直せばセットアップから
+// 作り直せる、というところまで書かないと何をすればいいか分からない。
+func reinitialize(path string) string {
+	return fmt.Sprintf(
+		"\nhso.toml を初期化してください: %s を削除して hso を起動すると"+
+			"セットアップから作り直せます",
+		path,
+	)
 }
 
 func joinKeys(keys []toml.Key) string {
