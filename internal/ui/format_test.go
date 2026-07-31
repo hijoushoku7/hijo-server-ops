@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"runtime"
 	"testing"
 	"time"
@@ -71,5 +72,41 @@ func TestFormatUptime(t *testing.T) {
 	})
 	if got != "1d 04:12:03" {
 		t.Fatalf("uptime = %q", got)
+	}
+}
+
+func TestHighlightColorsOnlyAboveThresholds(t *testing.T) {
+	// 平常時は素のまま。色が付いていること自体を警告として使うため。
+	if got := highlight("68%", 0.68); got != "68%" {
+		t.Fatalf("normal = %q", stripANSI(got))
+	}
+	if got := highlight("n/a", math.NaN()); got != "n/a" {
+		t.Fatalf("unavailable = %q", stripANSI(got))
+	}
+
+	high := highlight("81%", 0.81)
+	over := highlight("94%", 0.94)
+	if high == "81%" || over == "94%" || high == over {
+		t.Fatalf("high = %q, over = %q", stripANSI(high), stripANSI(over))
+	}
+	// 色を落としても数値そのものは変わらない。
+	if stripANSI(high) != "81%" || stripANSI(over) != "94%" {
+		t.Fatalf("text = %q, %q", stripANSI(high), stripANSI(over))
+	}
+}
+
+func TestRatiosReportUnavailableAsNaN(t *testing.T) {
+	if !math.IsNaN(rssRatio(procstats.Memory{})) {
+		t.Fatal("rssRatio is not NaN")
+	}
+	if !math.IsNaN(cpuRatio(0, false)) {
+		t.Fatal("cpuRatio is not NaN")
+	}
+	memory := procstats.Memory{
+		RSS:       procstats.Number{Value: 4 << 30, Available: true},
+		HostTotal: procstats.Number{Value: 16 << 30, Available: true},
+	}
+	if ratio := rssRatio(memory); ratio != 0.25 {
+		t.Fatalf("rssRatio = %f", ratio)
 	}
 }

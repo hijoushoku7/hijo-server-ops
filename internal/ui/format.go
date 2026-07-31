@@ -148,6 +148,39 @@ func formatRSSPercent(memory procstats.Memory) string {
 	return fmt.Sprintf("%.0f%%", percent(int64(memory.RSS.Value), int64(limit)))
 }
 
+// rssRatio は RSS が分母に占める割合の 0..1 表現。取れなければ NaN。
+func rssRatio(memory procstats.Memory) float64 {
+	limit, _ := rssDenominator(memory)
+	if !memory.RSS.Available || limit == 0 {
+		return math.NaN()
+	}
+	return float64(memory.RSS.Value) / float64(limit)
+}
+
+// cpuRatio は CPU 使用率の 0..1 表現。取れなければ NaN。
+func cpuRatio(value float64, available bool) float64 {
+	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return math.NaN()
+	}
+	return normalizeCPU(value) / 100
+}
+
+// highlight は割合が高いときだけ数値に色を付ける。平常時は素のままにする
+// ことで、色が付いていること自体が警告になる。閾値は Meters の棒と同じ
+// 75% / 90% で、色もメーターのプリセットから引く。
+func highlight(text string, ratio float64) string {
+	switch {
+	case math.IsNaN(ratio):
+		return text
+	case ratio >= meterOverRatio:
+		return meterOverStyle.Bold(true).Render(text)
+	case ratio >= meterHighRatio:
+		return meterHighStyle.Render(text)
+	default:
+		return text
+	}
+}
+
 func fitLine(value string, width int) string {
 	value = truncate(value, width)
 	visible := stringWidth(value)

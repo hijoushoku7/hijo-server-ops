@@ -712,7 +712,10 @@ func (model *Model) statsLines() []string {
 			"RSS  %s / %s total (%s)  limit %s  Δ %s",
 			formatProcBytes(model.memory.RSS),
 			formatProcBytes(model.memory.HostTotal),
-			formatRSSPercent(model.memory),
+			highlight(
+				formatRSSPercent(model.memory),
+				rssRatio(model.memory),
+			),
 			formatLimit(model.memory.CgroupLimit),
 			formatDelta(model.memory.RSS, model.metrics.Heap.Committed),
 		),
@@ -735,7 +738,10 @@ func (model *Model) statsLines() []string {
 			"Players %d  Lag events: %d  CPU %s  threads %s",
 			model.tracker.PlayerCount(),
 			model.tracker.LagEvents(),
-			formatCPU(model.cpu, model.cpuAvailable),
+			highlight(
+				formatCPU(model.cpu, model.cpuAvailable),
+				cpuRatio(model.cpu, model.cpuAvailable),
+			),
 			threads,
 		),
 	}
