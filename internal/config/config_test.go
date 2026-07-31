@@ -109,3 +109,78 @@ func TestSaveWritesReloadableConfig(t *testing.T) {
 		t.Fatalf("temporary file was left: %v", err)
 	}
 }
+
+// 配色を変えただけで、ユーザーが絞っていた権限が広がってはいけない。
+func TestSaveKeepsExistingPermission(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	writeConfig(t, path, "[server]\ncommand = \"./run.sh\"\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.UI.Theme.Frame = "neon"
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("permission = %o", info.Mode().Perm())
+	}
+}
+
+// 配色を変えただけで、相対指定の workdir が絶対パスに化けてはいけない。
+func TestSaveKeepsRelativeWorkDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	writeConfig(t, path, "[server]\ncommand = \"./run.sh\"\nworkdir = \"server\"\n")
+	if err := os.Mkdir(filepath.Join(dir, "server"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.UI.Theme.Frame = "neon"
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `workdir = "server"`) {
+		t.Fatalf("saved = %s", saved)
+	}
+}
+
+// workdir を書いていなかった設定ファイルには、Load が入れた既定値を
+// 書き足さない。
+func TestSaveOmitsDefaultedWorkDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	writeConfig(t, path, "[server]\ncommand = \"./run.sh\"\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(saved), "workdir") {
+		t.Fatalf("saved = %s", saved)
+	}
+}

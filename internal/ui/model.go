@@ -47,13 +47,11 @@ type ActionKind uint8
 const (
 	ActionSendCommand ActionKind = iota
 	ActionRestart
-	ActionSaveSettings
 )
 
 type Action struct {
-	Kind     ActionKind
-	Command  string
-	Settings Settings
+	Kind    ActionKind
+	Command string
 }
 
 type LogMsg struct {
@@ -107,6 +105,7 @@ type Model struct {
 	status            string
 	runErr            error
 	actions           chan<- Action
+	save              func(Settings) error
 	input             []rune
 	mode              mode
 	panel             panel
@@ -134,12 +133,20 @@ type Model struct {
 	settingCursor     int
 }
 
-func New(actions chan<- Action, generation uint64, settings Settings) *Model {
+// New は画面を作る。save は設定モーダルを閉じたときに呼ぶ保存処理で、
+// 取りこぼしが起きないよう Update の中で同期的に実行する。
+func New(
+	actions chan<- Action,
+	save func(Settings) error,
+	generation uint64,
+	settings Settings,
+) *Model {
 	applyTheme(settings)
 	// 起動直後からコマンドを打てるよう、Console にフォーカスした状態で始める。
 	return &Model{
 		status:     "starting",
 		actions:    actions,
+		save:       save,
 		generation: generation,
 		mode:       modeFocus,
 		panel:      panelConsole,
@@ -196,11 +203,7 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.status = "starting"
 		model.busy = false
 	case ActionResultMsg:
-		// 設定の保存はサーバー操作ではないので、進行中の操作の busy を
-		// 巻き込まない。
-		if message.Action.Kind != ActionSaveSettings {
-			model.busy = false
-		}
+		model.busy = false
 		if message.Err != nil {
 			model.status = "操作失敗: " + message.Err.Error()
 			break
@@ -309,9 +312,11 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if model.settingsOpen {
 		return model.handleSettingsKey(key)
 	}
-	// 設定は G で開く。Console 入力中だけは文字として打ちたいので通さない。
+	// 設定は G で開く。Console の入力欄にいるときだけは文字として打ちたい
+	// ので通さない。
 	if (message.String() == "g" || message.String() == "G") &&
-		!(model.mode == modeFocus && model.panel == panelConsole) {
+		!(model.mode == modeFocus && model.panel == panelConsole &&
+			model.consoleFocus == consoleInput) {
 		model.settingsOpen = true
 		model.settingCursor = 0
 		return model, nil

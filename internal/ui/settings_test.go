@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -10,8 +11,12 @@ import (
 func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
 	// スタイルはパッケージ変数なので、後続のテストへ持ち越さない。
 	t.Cleanup(func() { applyTheme(DefaultSettings()) })
-	actions := make(chan Action, 1)
-	model := New(actions, 0, DefaultSettings())
+	var saved []Settings
+	save := func(settings Settings) error {
+		saved = append(saved, settings)
+		return nil
+	}
+	model := New(make(chan Action, 1), save, 0, DefaultSettings())
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	// Console フォーカス中の g は文字入力。
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
@@ -44,10 +49,53 @@ func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
 	if model.settingsOpen {
 		t.Fatal("settings did not close")
 	}
-	action := <-actions
-	if action.Kind != ActionSaveSettings ||
-		action.Settings.FramePreset != model.settings.FramePreset {
-		t.Fatalf("action = %#v", action)
+	if len(saved) != 1 || saved[0].FramePreset != model.settings.FramePreset {
+		t.Fatalf("saved = %#v", saved)
+	}
+}
+
+// 保存はサーバー操作のキューを通さないので、操作待ちでも取りこぼさない。
+func TestSettingsAreSavedEveryTimeTheModalCloses(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	var saved []Settings
+	save := func(settings Settings) error {
+		saved = append(saved, settings)
+		return nil
+	}
+	// 容量 0 の相当として、詰まったままのキューを渡す。
+	actions := make(chan Action, 1)
+	actions <- Action{Kind: ActionRestart}
+	model := New(actions, save, 0, DefaultSettings())
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	model.busy = true
+	// Console の入力欄から離れないと G は文字入力になる。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	for i := 0; i < 3; i++ {
+		_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	}
+	if len(saved) != 3 {
+		t.Fatalf("saved = %#v", saved)
+	}
+	if saved[2].FramePreset != model.settings.FramePreset {
+		t.Fatalf("last save = %q", saved[2].FramePreset)
+	}
+}
+
+// 保存に失敗したら気付けるよう、ステータス行に理由を出す。
+func TestSettingsSaveFailureShowsStatus(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	save := func(Settings) error { return errors.New("書けません") }
+	model := New(make(chan Action, 1), save, 0, DefaultSettings())
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !strings.Contains(model.status, "書けません") {
+		t.Fatalf("status = %q", model.status)
 	}
 }
 

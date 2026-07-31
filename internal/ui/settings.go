@@ -310,18 +310,16 @@ func (model *Model) handleSettingsKey(key tea.Key) (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
-// saveSettings は保存をアプリ層へ渡す。サーバー操作ではないので busy には
-// せず、キューが詰まっていれば諦める（次に閉じたときに再送される）。
+// saveSettings は設定ファイルへの書き戻しをその場で済ませる。キュー越しに
+// 頼むと、サーバー操作で詰まっている間に要求を落としたり、直後に終了して
+// 書かれないまま終わったりする。設定ファイル 1 枚の書き込みなので、画面を
+// 止めてでも確実に終わらせる。
 func (model *Model) saveSettings() {
-	if model.actions == nil {
+	if model.save == nil {
 		return
 	}
-	select {
-	case model.actions <- Action{
-		Kind:     ActionSaveSettings,
-		Settings: model.settings,
-	}:
-	default:
+	if err := model.save(model.settings); err != nil {
+		model.status = "設定の保存に失敗: " + err.Error()
 	}
 }
 

@@ -206,7 +206,7 @@ func TestModelReturnsProcessError(t *testing.T) {
 
 func TestModelSendsBoundedCommandInput(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, 0, DefaultSettings())
+	model := New(actions, nil, 0, DefaultSettings())
 
 	_, _ = model.Update(tea.KeyPressMsg{Text: strings.Repeat("a", maxInputRunes+10)})
 	if len(model.input) != maxInputRunes {
@@ -226,7 +226,7 @@ func TestModelSendsBoundedCommandInput(t *testing.T) {
 
 func TestModelSelectsRestartAndStopWithTab(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, 0, DefaultSettings())
+	model := New(actions, nil, 0, DefaultSettings())
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	if model.consoleFocus != consoleRestart {
@@ -447,7 +447,7 @@ func TestModelClearsServerMetricsOnRestart(t *testing.T) {
 }
 
 func TestModelIgnoresMessagesFromPreviousServer(t *testing.T) {
-	model := New(make(chan Action, 1), 2, DefaultSettings())
+	model := New(make(chan Action, 1), nil, 2, DefaultSettings())
 	_, _ = model.Update(MetricsMsg{
 		Generation: 1,
 		Memory: procstats.Memory{
@@ -538,7 +538,7 @@ func TestModelScrollsPlayersFromTheTop(t *testing.T) {
 
 func TestModelPutsPlayerCommandIntoTheConsole(t *testing.T) {
 	actions := make(chan Action, 4)
-	model := New(actions, 0, DefaultSettings())
+	model := New(actions, nil, 0, DefaultSettings())
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	for _, name := range []string{"alice", "bob"} {
 		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
@@ -758,7 +758,7 @@ func TestModelViewKeepsRectangularWithThreeTopPanels(t *testing.T) {
 }
 
 func newTestModel() *Model {
-	return New(make(chan Action, 8), 0, DefaultSettings())
+	return New(make(chan Action, 8), nil, 0, DefaultSettings())
 }
 
 func stripANSI(value string) string {

@@ -54,7 +54,10 @@ func runTUI(configPath string, cfg config.Config) error {
 	defer cancel()
 
 	actions := make(chan ui.Action, actionQueueSize)
-	model := ui.New(actions, initialGeneration, settingsFrom(cfg))
+	save := func(settings ui.Settings) error {
+		return saveSettings(configPath, cfg, settings)
+	}
+	model := ui.New(actions, save, initialGeneration, settingsFrom(cfg))
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 
 	controller := newServerController(ctx, configPath, cfg, program)
@@ -220,27 +223,26 @@ func (controller *serverController) handleActions(actions <-chan ui.Action) {
 				controller.restart()
 			case ui.ActionSendCommand:
 				controller.sendCommand(action)
-			case ui.ActionSaveSettings:
-				controller.saveSettings(action)
 			}
 		}
 	}
 }
 
-// saveSettings は設定モーダルの変更を設定ファイルへ書き戻す。成功時は
-// 何も返さない（画面はすでに変更後の色で描かれている）。
-func (controller *serverController) saveSettings(action ui.Action) {
-	cfg := controller.cfg
+// saveSettings は設定モーダルの変更を設定ファイルへ書き戻す。画面を描く
+// goroutine から直接呼ばれるので、ここではファイルを書くだけにする。
+func saveSettings(
+	configPath string,
+	cfg config.Config,
+	settings ui.Settings,
+) error {
 	cfg.UI.Theme = config.Theme{
-		Frame:     action.Settings.FramePreset,
-		Graph:     action.Settings.GraphPreset,
-		Meter:     action.Settings.MeterPreset,
-		Title:     action.Settings.TitlePreset,
-		Selection: action.Settings.SelectionPreset,
+		Frame:     settings.FramePreset,
+		Graph:     settings.GraphPreset,
+		Meter:     settings.MeterPreset,
+		Title:     settings.TitlePreset,
+		Selection: settings.SelectionPreset,
 	}
-	if err := config.Save(controller.configPath, cfg); err != nil {
-		controller.program.Send(ui.ActionResultMsg{Action: action, Err: err})
-	}
+	return config.Save(configPath, cfg)
 }
 
 func (controller *serverController) sendCommand(action ui.Action) {

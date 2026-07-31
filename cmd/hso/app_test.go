@@ -178,7 +178,7 @@ func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	actions := make(chan ui.Action, actionQueueSize)
-	model := ui.New(actions, initialGeneration, ui.DefaultSettings())
+	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings())
 	program := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),

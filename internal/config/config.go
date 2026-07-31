@@ -13,6 +13,10 @@ import (
 type Config struct {
 	Server Server `toml:"server"`
 	UI     UI     `toml:"ui"`
+
+	// rawWorkDir は設定ファイルに書かれていたままの workdir。Server.WorkDir
+	// は Load で絶対パスにするので、書き戻すときの元の表現をここに残す。
+	rawWorkDir string
 }
 
 type Server struct {
@@ -60,6 +64,7 @@ func Load(path string) (Config, error) {
 	}
 	configDir := filepath.Dir(configPath)
 
+	cfg.rawWorkDir = cfg.Server.WorkDir
 	if cfg.Server.WorkDir == "" {
 		cfg.Server.WorkDir = configDir
 	} else if !filepath.IsAbs(cfg.Server.WorkDir) {
@@ -83,23 +88,45 @@ func Load(path string) (Config, error) {
 // コメントは残らない。書き込みは一時ファイル経由にして、途中で失敗しても
 // 元の設定ファイルを壊さないようにする。
 func Save(path string, cfg Config) error {
-	// Load が既定値として入れた workdir をそのまま書き戻すと、書いていな
-	// かったユーザーの設定に絶対パスが増える。設定ファイルと同じ場所なら
-	// 省いて、ディレクトリごと移動しても壊れないままにする。
-	if directory, err := filepath.Abs(filepath.Dir(path)); err == nil &&
-		cfg.Server.WorkDir == directory {
-		cfg.Server.WorkDir = ""
+	// 設定ファイルに書かれていた workdir は、その表現のまま書き戻す。
+	// Load が絶対化した値を書くと、相対指定がディレクトリごとの移動に
+	// 追従しなくなる。書かれていなかったなら、Load が既定値として入れた
+	// 設定ファイルと同じ場所を省いて、書いていない状態を保つ。
+	workDir := cfg.rawWorkDir
+	if workDir == "" {
+		if directory, err := filepath.Abs(filepath.Dir(path)); err != nil ||
+			cfg.Server.WorkDir != directory {
+			workDir = cfg.Server.WorkDir
+		}
 	}
+	cfg.Server.WorkDir = workDir
 
+	// 一時ファイルは新規作成なので、rename しても元の権限が残るよう
+	// 既存ファイルの mode に合わせる。
+	permission := permissionOf(path)
 	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, []byte(render(cfg)), 0o644); err != nil {
+	if err := os.WriteFile(temporary, []byte(render(cfg)), permission); err != nil {
 		return fmt.Errorf("設定ファイルを書く: %w", err)
+	}
+	if err := os.Chmod(temporary, permission); err != nil {
+		os.Remove(temporary)
+		return fmt.Errorf("設定ファイルの権限を合わせる: %w", err)
 	}
 	if err := os.Rename(temporary, path); err != nil {
 		os.Remove(temporary)
 		return fmt.Errorf("設定ファイルを置き換える: %w", err)
 	}
 	return nil
+}
+
+// permissionOf は既存の設定ファイルの権限を返す。まだ無ければセットアップ
+// が作るときと同じ 0644 にする。
+func permissionOf(path string) os.FileMode {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0o644
+	}
+	return info.Mode().Perm()
 }
 
 func render(cfg Config) string {
