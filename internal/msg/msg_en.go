@@ -93,10 +93,13 @@ const (
 )
 
 // Setup input validation.
-const (
-	EnterCommand   = "enter a start script"
-	EnterDirectory = "enter a directory"
-)
+func EnterCommand() error {
+	return errors.New("enter a start script")
+}
+
+func EnterDirectory() error {
+	return errors.New("enter a directory")
+}
 
 func FileNotFound(path string) error {
 	return fmt.Errorf("no such file: %s", path)
@@ -119,7 +122,9 @@ func AbsPathFailed(err error) error {
 }
 
 // Reading and writing the config file.
-const CommandRequired = "server.command is required"
+func CommandRequired() error {
+	return errors.New("server.command is required")
+}
 
 func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("read config file: %w%s", err, reinitialize(path))

@@ -316,17 +316,28 @@ JVM 引数はここには書かせない。責務はユーザーの `user_jvm_ar
 
 ---
 
-## 配布
+## 表示言語
+
+**日本語版と英語版は別バイナリにする。単一バイナリに 2 言語を同居させない。**
 
 ```bash
-CGO_ENABLED=0 go build -ldflags="-s -w" -o hso ./cmd/hso
+CGO_ENABLED=0 go build -ldflags="-s -w" -o hso_ja          ./cmd/hso
+CGO_ENABLED=0 go build -ldflags="-s -w" -tags en -o hso_en ./cmd/hso
 ```
+
+- ユーザーに見せる文字列は `internal/msg` に集約する。`msg_ja.go`（`//go:build !en`、既定）と `msg_en.go`（`//go:build en`）が**同じ識別子を宣言する**ので、片方で書き忘れるとそのタグでコンパイルが落ちる。これが訳抜けの唯一の検出手段なので、map や実行時 fallback には**しない**
+- 値を埋め込むものは const の書式文字列ではなく関数にする。const にすると ja と en で verb がずれても気付けない。`%w` で包むものは `error` を返す
+- **実行時のロケール判定・言語フラグ・カタログ探索は持たない**。`-ldflags -X` での切り替えもしない（両言語の文字列が同じバイナリに入るため）
+- `internal/msg` に入れるのは設定モーダル・セットアップウィザード・設定ファイルの検証エラー・サーバー操作の結果など、**普通のユーザーが読む文字列だけ**。hsperfdata や `/proc` のパースエラーのような開発者向けの診断は、両言語で英語リテラルのまま各パッケージに置く（`scripts/build.sh` の出力も英語）
+- 設定ファイルの名前は両言語とも `hso.toml`。実行ファイル名もアーカイブ内では両言語とも `hso` にして、インストール手順を言語で分岐させない
+
+## 配布
 
 - **実行時依存ゼロ**。Go のインストールも不要。バイナリ1個を置いて実行するだけ
 - `CGO_ENABLED=0` で完全静的リンク。glibc に依存しないので Alpine（musl）でもそのまま動く。**リリースビルドでは必須**
 - サイズは 8〜15MB 程度
 - **`linux/amd64` と `linux/arm64` の両方を出す**（Oracle Cloud Ampere / Raspberry Pi でのホストが多いため）
-- 配布は GitHub Releases。`v*` タグの push で `.github/workflows/release.yml` が amd64 / arm64 の tar.gz を作って添付する（goreleaser は使わない）
+- 配布は GitHub Releases。`v*` タグの push で `.github/workflows/release.yml` が arch × lang の 4 本（amd64 / arm64 × ja / en）の tar.gz を作って添付する（goreleaser は使わない）。アーカイブ内の実行ファイル名はどれも `hso`
 - v2 の Fabric mod jar は `//go:embed` でバイナリに埋め込み、`hso install-mod` で `mods/` に書き出す。**ユーザーから見える成果物はバイナリ1個**に保つ
 
 ---

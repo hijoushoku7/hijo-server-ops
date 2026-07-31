@@ -66,20 +66,29 @@ cd /path/to/hijo-server-ops
 スクリプトは次の処理を順番に実行する。
 
 1. PATHまたは`$HOME/.local/share/go-1.25.12/bin/go`からGoを検出
-2. `go test ./...`で全テストを実行
-3. `CGO_ENABLED=0`でLinux向けの静的バイナリをビルド
-4. `go version -m ./hso`でビルド情報を表示
+2. `go test ./...`と`go test -tags en ./...`で両言語のテストを実行
+3. `CGO_ENABLED=0`でLinux向けの静的バイナリを2本ビルド
+4. `go version -m ./hso_ja`でビルド情報を表示
+
+表示言語ごとにバイナリを分けているので、成果物は`hso_ja`（日本語版）と
+`hso_en`（英語版）の2本になる。詳細は[spec.md](spec.md)の配布節を参照。
 
 スクリプトを使わず、ビルドだけを直接実行する場合は次のコマンドを使う。
 
 ```bash
 CGO_ENABLED=0 go build \
   -ldflags="-s -w" \
-  -o hso \
+  -o hso_ja \
+  ./cmd/hso
+
+CGO_ENABLED=0 go build \
+  -tags en \
+  -ldflags="-s -w" \
+  -o hso_en \
   ./cmd/hso
 ```
 
-どちらの方法も、リポジトリ直下の既存`hso`を最新ソースからビルドした
+どちらの方法も、リポジトリ直下の既存バイナリを最新ソースからビルドした
 バイナリで置き換える。
 
 ## 起動
@@ -87,11 +96,14 @@ CGO_ENABLED=0 go build \
 設定ファイルを指定して起動する。
 
 ```bash
-./hso -config /path/to/hso.toml
+./hso_ja -config /path/to/hso.toml
 ```
 
 リポジトリ内の検証用Minecraftサーバーを使用する場合は、次のように起動する。
 
 ```bash
-./hso -config mc-server-test/hso.toml
+./hso_ja -config mc-server-test/hso.toml
 ```
+
+英語版を確認する場合は`./hso_en`に読み替える。設定ファイルの名前と中身は
+どちらの言語でも同じ`hso.toml`。

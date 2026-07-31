@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +51,7 @@ func Load(path string) (Config, error) {
 
 	cfg.Server.Command = strings.TrimSpace(cfg.Server.Command)
 	if cfg.Server.Command == "" {
-		return cfg, errors.New(msg.CommandRequired)
+		return cfg, msg.CommandRequired()
 	}
 
 	configPath, err := filepath.Abs(path)

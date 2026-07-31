@@ -91,10 +91,13 @@ const (
 )
 
 // セットアップの入力検証。
-const (
-	EnterCommand   = "起動スクリプトを入力してください"
-	EnterDirectory = "ディレクトリを入力してください"
-)
+func EnterCommand() error {
+	return errors.New("起動スクリプトを入力してください")
+}
+
+func EnterDirectory() error {
+	return errors.New("ディレクトリを入力してください")
+}
 
 func FileNotFound(path string) error {
 	return fmt.Errorf("ファイルがありません: %s", path)
@@ -117,7 +120,9 @@ func AbsPathFailed(err error) error {
 }
 
 // 設定ファイルの読み書き。
-const CommandRequired = "server.command は必須です"
+func CommandRequired() error {
+	return errors.New("server.command は必須です")
+}
 
 func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))

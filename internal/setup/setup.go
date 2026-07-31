@@ -2,7 +2,6 @@
 package setup
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -106,7 +105,7 @@ func scanCommands(dir string) []candidate {
 func resolveCommand(input, workDir string) (command string, path string, err error) {
 	input = strings.TrimSpace(expandHome(input))
 	if input == "" {
-		return "", "", errors.New(msg.EnterCommand)
+		return "", "", msg.EnterCommand()
 	}
 
 	path = input
@@ -134,7 +133,7 @@ func resolveCommand(input, workDir string) (command string, path string, err err
 func resolveWorkDir(input string) (string, error) {
 	input = strings.TrimSpace(expandHome(input))
 	if input == "" {
-		return "", errors.New(msg.EnterDirectory)
+		return "", msg.EnterDirectory()
 	}
 	path, err := filepath.Abs(input)
 	if err != nil {
