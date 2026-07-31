@@ -1,0 +1,212 @@
+// Package setup は hso.toml を対話的に生成する。
+package setup
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+)
+
+// Run は設定ファイルを対話的に作る。作成したら作成先のパスを返す。
+// ユーザーが中止したときは空文字列を返す。
+func Run(configPath string) (string, error) {
+	path, err := filepath.Abs(configPath)
+	if err != nil {
+		return "", fmt.Errorf("設定ファイルの絶対パスを求める: %w", err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		return "", fmt.Errorf("設定ファイルは既にあります: %s", path)
+	}
+
+	model := newModel(path)
+	if _, err := tea.NewProgram(model).Run(); err != nil {
+		return "", err
+	}
+	if model.err != nil {
+		return "", model.err
+	}
+	if !model.created {
+		return "", nil
+	}
+	return path, nil
+}
+
+// candidate は起動スクリプトの候補。実行権限がないファイルも候補に出す。
+// 権限を落としたまま置かれている run.sh は珍しくなく、除外すると
+// 一覧が空になって選ばせる意味がなくなる。
+type candidate struct {
+	name       string
+	executable bool
+}
+
+func (item candidate) label() string {
+	if item.executable {
+		return item.name
+	}
+	return item.name + "  (実行権限なし)"
+}
+
+// isCandidate は起動スクリプトになりうるファイルかどうか。.sh は権限に
+// 関わらず候補にする。それ以外は実行可能かつ拡張子なしのものだけを拾い、
+// 実行ビットの付いた jar や画像がノイズとして並ぶのを防ぐ。
+func isCandidate(name string, executable bool) bool {
+	if name == "hso" {
+		return false
+	}
+	if strings.HasSuffix(name, ".sh") {
+		return true
+	}
+	return executable && filepath.Ext(name) == ""
+}
+
+// scanCommands は起動スクリプトの候補を列挙する。実行可能なものを先に並べる。
+func scanCommands(dir string) []candidate {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	var candidates []candidate
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		executable := info.Mode().Perm()&0o111 != 0
+		if !isCandidate(entry.Name(), executable) {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			name:       entry.Name(),
+			executable: executable,
+		})
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].executable != candidates[j].executable {
+			return candidates[i].executable
+		}
+		return candidates[i].name < candidates[j].name
+	})
+	return candidates
+}
+
+// resolveCommand は入力されたパスを検証し、設定に書く形へ整える。
+// workDir の下にあるファイルは相対パスにして、ディレクトリごと
+// 移動しても設定が壊れないようにする。
+func resolveCommand(input, workDir string) (command string, path string, err error) {
+	input = strings.TrimSpace(expandHome(input))
+	if input == "" {
+		return "", "", fmt.Errorf("起動スクリプトを入力してください")
+	}
+
+	path = input
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(workDir, path)
+	}
+	path = filepath.Clean(path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", "", fmt.Errorf("ファイルがありません: %s", path)
+	}
+	if !info.Mode().IsRegular() {
+		return "", "", fmt.Errorf("通常のファイルではありません: %s", path)
+	}
+
+	command = path
+	if relative, err := filepath.Rel(workDir, path); err == nil &&
+		!strings.HasPrefix(relative, "..") {
+		command = "./" + relative
+	}
+	return command, path, nil
+}
+
+func resolveWorkDir(input string) (string, error) {
+	input = strings.TrimSpace(expandHome(input))
+	if input == "" {
+		return "", fmt.Errorf("ディレクトリを入力してください")
+	}
+	path, err := filepath.Abs(input)
+	if err != nil {
+		return "", fmt.Errorf("絶対パスを求める: %w", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("ディレクトリがありません: %s", path)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("ディレクトリではありません: %s", path)
+	}
+	return path, nil
+}
+
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, strings.TrimPrefix(path, "~"))
+}
+
+// render は書き出す TOML を組み立てる。workdir は設定ファイルと同じ
+// ディレクトリなら省略する（config.Load の既定値と同じになる）。
+func render(command, workDir, configDir string) string {
+	var out strings.Builder
+	out.WriteString("[server]\n")
+	out.WriteString("command = " + quote(command) + "\n")
+	if workDir != configDir {
+		out.WriteString("workdir = " + quote(workDir) + "\n")
+	}
+	return out.String()
+}
+
+// quote は TOML の基本文字列にする。改行を含むパスは滅多にないが、
+// そのまま書くと次の起動で読めない設定ファイルができるのでエスケープする。
+func quote(value string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+		"\r", `\r`,
+		"\t", `\t`,
+	)
+	return `"` + replacer.Replace(value) + `"`
+}
+
+func writeConfig(path, content string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("設定ファイルを作る: %w", err)
+	}
+	if _, err := file.WriteString(content); err != nil {
+		file.Close()
+		return fmt.Errorf("設定ファイルを書く: %w", err)
+	}
+	return file.Close()
+}
+
+// grantExecute は起動スクリプトに実行権限を付ける。読める相手にだけ
+// 実行を許し、他人に新しく読み書きを許すことはしない。
+func grantExecute(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("起動スクリプトを確認する: %w", err)
+	}
+	mode := info.Mode().Perm()
+	mode |= (mode & 0o444) >> 2
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("実行権限を付ける: %w", err)
+	}
+	return nil
+}
