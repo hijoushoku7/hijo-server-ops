@@ -153,7 +153,7 @@ var settingItems = []settingItem{
 			{label: "モノクロ", value: "mono"},
 			{label: "暖色", value: "warm"},
 			{label: "寒色", value: "cool"},
-			{label: "色覚配慮", value: "safe"},
+			{label: "シンプル", value: "safe"},
 		},
 		get: func(settings Settings) string { return settings.GraphPreset },
 		set: func(settings *Settings, value string) {
@@ -165,7 +165,7 @@ var settingItems = []settingItem{
 		options: []settingOption{
 			{label: "信号", value: "signal"},
 			{label: "モノクロ", value: "mono"},
-			{label: "色覚配慮", value: "safe"},
+			{label: "シンプル", value: "safe"},
 			{label: "単色", value: "flat"},
 		},
 		get: func(settings Settings) string { return settings.MeterPreset },
