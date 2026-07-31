@@ -44,6 +44,7 @@ func calculateLayout(width, height int) layout {
 	result.bodyHeight = height - statsHeight - footerHeight - keybarHeight
 	result.leftWidth = width * 2 / 5
 	result.rightWidth = width - result.leftWidth
+	// 左列は上が Graph、下が Chat。奇数行の余りはグラフへ回す。
 	result.chatHeight = result.bodyHeight / 2
 	result.graphHeight = result.bodyHeight - result.chatHeight
 

@@ -74,13 +74,13 @@ var playerCommands = []playerCommand{
 //
 //	┌─ Stats ─┐┌─ Meters ─┐┌─ Players ─┐
 //	└─────────┘└──────────┘└───────────┘
-//	┌─ Chat ──┐┌──────────────────┐
-//	┌─ Graph ─┐│       Log        │
+//	┌─ Graph ─┐┌──────────────────┐
+//	┌─ Chat ──┐│       Log        │
 //	└─────────┘└──────────────────┘
 //	┌─────────── Console ───────────┐
 //
-// Stats / Meters / Graph は表示専用で選択対象でないため、Chat から下へ
-// 抜けると Graph を飛ばして Console に着く。
+// Stats / Meters / Graph は表示専用で選択対象でないため、Chat から上へ
+// 抜けると Graph を飛ばして Players に着く。
 type neighbor struct {
 	up    panel
 	down  panel

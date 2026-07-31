@@ -250,7 +250,7 @@ func (model *Model) View() tea.View {
 			model.layout.leftWidth,
 			model.layout.chatHeight,
 		)
-		left := chat + "\n" + model.renderGraphPanel()
+		left := model.renderGraphPanel() + "\n" + chat
 		logs := model.renderBufferPanel(
 			panelLog,
 			&model.logs,
