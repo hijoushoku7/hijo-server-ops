@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-var ErrNotFound = errors.New("hsperfdataが見つかりません")
+var ErrNotFound = errors.New("hsperfdata not found")
 
 const hotSpotTempDir = "/tmp"
 
@@ -28,7 +28,7 @@ func openAt(tempDir string, pid int) (*Reader, error) {
 
 func openAtUID(tempDir string, pid int, uid uint32) (*Reader, error) {
 	if pid <= 0 {
-		return nil, fmt.Errorf("PIDが不正です: %d", pid)
+		return nil, fmt.Errorf("invalid PID: %d", pid)
 	}
 	matches, err := filepath.Glob(filepath.Join(
 		tempDir,
@@ -36,7 +36,7 @@ func openAtUID(tempDir string, pid int, uid uint32) (*Reader, error) {
 		strconv.Itoa(pid),
 	))
 	if err != nil {
-		return nil, fmt.Errorf("hsperfdataを探す: %w", err)
+		return nil, fmt.Errorf("look for hsperfdata: %w", err)
 	}
 	var candidateErr error
 	for _, path := range matches {
@@ -60,16 +60,16 @@ func openAtUID(tempDir string, pid int, uid uint32) (*Reader, error) {
 func openPath(path string, uid uint32) (*Reader, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("hsperfdataを開く: %w", err)
+		return nil, fmt.Errorf("open hsperfdata: %w", err)
 	}
 	info, err := file.Stat()
 	if err != nil {
 		_ = file.Close()
-		return nil, fmt.Errorf("hsperfdataのサイズを読む: %w", err)
+		return nil, fmt.Errorf("read hsperfdata size: %w", err)
 	}
 	if !info.Mode().IsRegular() || info.Size() < prologueSize || !fileInfoOwnedBy(info, uid) {
 		_ = file.Close()
-		return nil, errors.New("hsperfdataの種類、サイズ、所有者が不正です")
+		return nil, errors.New("unexpected hsperfdata type, size or owner")
 	}
 
 	data, err := syscall.Mmap(
@@ -81,14 +81,14 @@ func openPath(path string, uid uint32) (*Reader, error) {
 	)
 	if err != nil {
 		_ = file.Close()
-		return nil, fmt.Errorf("hsperfdataをmmapする: %w", err)
+		return nil, fmt.Errorf("mmap hsperfdata: %w", err)
 	}
 	return &Reader{file: file, data: data}, nil
 }
 
 func (r *Reader) Sample() (Snapshot, error) {
 	if r == nil || r.data == nil {
-		return Snapshot{}, errors.New("hsperfdataリーダーは閉じられています")
+		return Snapshot{}, errors.New("hsperfdata reader is closed")
 	}
 	return Parse(r.data)
 }

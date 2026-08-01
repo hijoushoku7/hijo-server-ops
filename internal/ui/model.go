@@ -12,6 +12,7 @@ import (
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
@@ -244,7 +245,7 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ActionResultMsg:
 		model.busy = false
 		if message.Err != nil {
-			model.status = "操作失敗: " + message.Err.Error()
+			model.status = msg.ActionFailed(message.Err)
 			break
 		}
 		if message.Action.Kind == ActionSendCommand {
@@ -566,7 +567,7 @@ func (model *Model) offer(action Action) bool {
 		}
 		return true
 	default:
-		model.status = "操作待ち"
+		model.status = msg.StatusIdle
 		return false
 	}
 }

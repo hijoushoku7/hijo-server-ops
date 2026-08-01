@@ -71,8 +71,7 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	// 何をすればいいか分かるよう、直し方とファイルの場所も添える。
-	if !strings.Contains(err.Error(), "hso.toml を初期化してください") ||
-		!strings.Contains(err.Error(), path) {
+	if !strings.Contains(err.Error(), path) {
 		t.Fatalf("err = %v", err)
 	}
 }

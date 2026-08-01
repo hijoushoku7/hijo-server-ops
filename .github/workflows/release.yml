@@ -20,7 +20,10 @@ jobs:
           go-version-file: go.mod
 
       - name: go test
-        run: go test ./...
+        run: |
+          set -eu
+          go test ./...
+          go test -tags en ./...
 
       - name: バイナリのビルド
         env:
@@ -29,14 +32,22 @@ jobs:
           set -eu
           mkdir -p dist
           for arch in amd64 arm64; do
-            name="hso_${VERSION}_linux_${arch}"
-            mkdir -p "dist/$name"
-            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
-              -trimpath -ldflags="-s -w" -o "dist/$name/hso" ./cmd/hso
-            cp hso.toml.example "dist/$name/hso.toml"
-            cp README.md "dist/$name/README.md"
-            tar -czf "dist/$name.tar.gz" -C dist "$name"
-            rm -rf "dist/$name"
+            for lang in ja en; do
+              # 日本語版はタグなし、英語版は -tags en。$tags は空になることが
+              # あるので意図的にクォートしない。
+              tags=""
+              if [ "$lang" = "en" ]; then
+                tags="-tags en"
+              fi
+              name="hso_${VERSION}_linux_${arch}_${lang}"
+              mkdir -p "dist/$name"
+              CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
+                $tags -trimpath -ldflags="-s -w" -o "dist/$name/hso" ./cmd/hso
+              cp hso.toml.example "dist/$name/hso.toml"
+              cp README.md "dist/$name/README.md"
+              tar -czf "dist/$name.tar.gz" -C dist "$name"
+              rm -rf "dist/$name"
+            done
           done
           (cd dist && sha256sum *.tar.gz > checksums.txt)
           ls -la dist
@@ -52,11 +63,16 @@ jobs:
 
           Linux のみ（\`/proc\`・cgroup に依存）。
 
+          ## 言語
+
+          表示言語ごとに別のバイナリを配布する。\`_ja\` が日本語版、\`_en\` が
+          英語版。中身は表示文字列だけが違い、実行ファイル名はどちらも \`hso\`。
+
           ## インストール
 
           \`\`\`sh
-          tar xzf hso_${VERSION}_linux_amd64.tar.gz
-          cd hso_${VERSION}_linux_amd64
+          tar xzf hso_${VERSION}_linux_amd64_ja.tar.gz
+          cd hso_${VERSION}_linux_amd64_ja
           # hso.toml の command を起動スクリプトのパスに書き換える
           ./hso
           \`\`\`
@@ -68,8 +84,10 @@ jobs:
 
           | ファイル | 対象 |
           | --- | --- |
-          | \`hso_${VERSION}_linux_amd64.tar.gz\` | Linux x86_64 |
-          | \`hso_${VERSION}_linux_arm64.tar.gz\` | Linux arm64 |
+          | \`hso_${VERSION}_linux_amd64_ja.tar.gz\` | Linux x86_64 / 日本語 |
+          | \`hso_${VERSION}_linux_amd64_en.tar.gz\` | Linux x86_64 / 英語 |
+          | \`hso_${VERSION}_linux_arm64_ja.tar.gz\` | Linux arm64 / 日本語 |
+          | \`hso_${VERSION}_linux_arm64_en.tar.gz\` | Linux arm64 / 英語 |
           | \`checksums.txt\` | SHA-256 チェックサム |
 
           \`CGO_ENABLED=0\` / \`-trimpath -ldflags="-s -w"\` でビルド。
@@ -81,7 +99,13 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -eu
-          assets="dist/hso_${VERSION}_linux_amd64.tar.gz dist/hso_${VERSION}_linux_arm64.tar.gz dist/checksums.txt"
+          assets=""
+          for arch in amd64 arm64; do
+            for lang in ja en; do
+              assets="$assets dist/hso_${VERSION}_linux_${arch}_${lang}.tar.gz"
+            done
+          done
+          assets="$assets dist/checksums.txt"
           # v1.0.0-rc1 のようなハイフン付きタグはプレリリース扱いにする。
           case "$VERSION" in
             *-*) prerelease=true ;;

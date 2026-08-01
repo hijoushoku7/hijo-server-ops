@@ -5,6 +5,7 @@ package serveraddr
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,31 +50,31 @@ func fetchPublicIPv4(
 ) (netip.Addr, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("公開IPv4のリクエストを作る: %w", err)
+		return netip.Addr{}, fmt.Errorf("build public IPv4 request: %w", err)
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("公開IPv4を取得する: %w", err)
+		return netip.Addr{}, fmt.Errorf("fetch public IPv4: %w", err)
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
 		return netip.Addr{}, fmt.Errorf(
-			"公開IPv4の取得に失敗しました: HTTP %d",
+			"failed to fetch public IPv4: HTTP %d",
 			response.StatusCode,
 		)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxIPAddressBytes+1))
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("公開IPv4の応答を読む: %w", err)
+		return netip.Addr{}, fmt.Errorf("read public IPv4 response: %w", err)
 	}
 	if len(body) > maxIPAddressBytes {
-		return netip.Addr{}, fmt.Errorf("公開IPv4の応答が長すぎます")
+		return netip.Addr{}, errors.New("public IPv4 response is too long")
 	}
 
 	ip, err := netip.ParseAddr(strings.TrimSpace(string(body)))
 	if err != nil || !ip.Is4() {
-		return netip.Addr{}, fmt.Errorf("公開IPv4の応答がIPv4アドレスではありません")
+		return netip.Addr{}, errors.New("public IPv4 response is not an IPv4 address")
 	}
 	return ip, nil
 }
@@ -83,7 +84,7 @@ func fetchPublicIPv4(
 func ReadPort(path string) (uint16, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return 0, fmt.Errorf("server.propertiesを開く: %w", err)
+		return 0, fmt.Errorf("open server.properties: %w", err)
 	}
 	defer file.Close()
 
@@ -104,15 +105,15 @@ func ReadPort(path string) (uint16, error) {
 		found = true
 	}
 	if err := scanner.Err(); err != nil {
-		return 0, fmt.Errorf("server.propertiesを読む: %w", err)
+		return 0, fmt.Errorf("read server.properties: %w", err)
 	}
 	if !found {
-		return 0, fmt.Errorf("server.propertiesにserver-portがありません")
+		return 0, errors.New("server.properties has no server-port")
 	}
 
 	parsed, err := strconv.ParseUint(value, 10, 16)
 	if err != nil || parsed == 0 {
-		return 0, fmt.Errorf("server-portが不正です: %q", value)
+		return 0, fmt.Errorf("invalid server-port: %q", value)
 	}
 	return uint16(parsed), nil
 }

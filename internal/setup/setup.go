@@ -2,13 +2,14 @@
 package setup
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 // Run は設定ファイルを対話的に作る。作成したら作成先のパスを返す。
@@ -16,10 +17,10 @@ import (
 func Run(configPath string) (string, error) {
 	path, err := filepath.Abs(configPath)
 	if err != nil {
-		return "", fmt.Errorf("設定ファイルの絶対パスを求める: %w", err)
+		return "", msg.ConfigAbsPathFailed(err)
 	}
 	if _, err := os.Stat(path); err == nil {
-		return "", fmt.Errorf("設定ファイルは既にあります: %s", path)
+		return "", msg.ConfigAlreadyExists(path)
 	}
 
 	model := newModel(path)
@@ -47,7 +48,7 @@ func (item candidate) label() string {
 	if item.executable {
 		return item.name
 	}
-	return item.name + "  (実行権限なし)"
+	return item.name + "  " + msg.SetupNotExecutable
 }
 
 // isCandidate は起動スクリプトになりうるファイルかどうか。.sh は権限に
@@ -104,7 +105,7 @@ func scanCommands(dir string) []candidate {
 func resolveCommand(input, workDir string) (command string, path string, err error) {
 	input = strings.TrimSpace(expandHome(input))
 	if input == "" {
-		return "", "", fmt.Errorf("起動スクリプトを入力してください")
+		return "", "", msg.EnterCommand()
 	}
 
 	path = input
@@ -115,10 +116,10 @@ func resolveCommand(input, workDir string) (command string, path string, err err
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", "", fmt.Errorf("ファイルがありません: %s", path)
+		return "", "", msg.FileNotFound(path)
 	}
 	if !info.Mode().IsRegular() {
-		return "", "", fmt.Errorf("通常のファイルではありません: %s", path)
+		return "", "", msg.NotRegularFile(path)
 	}
 
 	command = path
@@ -132,18 +133,18 @@ func resolveCommand(input, workDir string) (command string, path string, err err
 func resolveWorkDir(input string) (string, error) {
 	input = strings.TrimSpace(expandHome(input))
 	if input == "" {
-		return "", fmt.Errorf("ディレクトリを入力してください")
+		return "", msg.EnterDirectory()
 	}
 	path, err := filepath.Abs(input)
 	if err != nil {
-		return "", fmt.Errorf("絶対パスを求める: %w", err)
+		return "", msg.AbsPathFailed(err)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", fmt.Errorf("ディレクトリがありません: %s", path)
+		return "", msg.DirectoryNotFound(path)
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("ディレクトリではありません: %s", path)
+		return "", msg.NotDirectory(path)
 	}
 	return path, nil
 }
@@ -187,11 +188,11 @@ func quote(value string) string {
 func writeConfig(path, content string) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("設定ファイルを作る: %w", err)
+		return msg.CreateConfigFailed(err)
 	}
 	if _, err := file.WriteString(content); err != nil {
 		file.Close()
-		return fmt.Errorf("設定ファイルを書く: %w", err)
+		return msg.WriteConfigFailed(err)
 	}
 	return file.Close()
 }
@@ -201,12 +202,12 @@ func writeConfig(path, content string) error {
 func grantExecute(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("起動スクリプトを確認する: %w", err)
+		return msg.ScriptStatFailed(err)
 	}
 	mode := info.Mode().Perm()
 	mode |= (mode & 0o444) >> 2
 	if err := os.Chmod(path, mode); err != nil {
-		return fmt.Errorf("実行権限を付ける: %w", err)
+		return msg.ChmodFailed(err)
 	}
 	return nil
 }

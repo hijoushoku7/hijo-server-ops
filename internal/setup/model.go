@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 var (
@@ -29,7 +31,6 @@ var (
 const (
 	maxInputRunes = 512
 	listViewport  = 10
-	manualEntry   = "パスを直接入力する"
 )
 
 type step uint8
@@ -112,7 +113,7 @@ func (m *model) updateWorkDir(key tea.Key) (tea.Model, tea.Cmd) {
 		m.step = stepCommand
 		if len(m.candidates) == 0 {
 			// 候補がないなら選ばせる画面に意味がないので入力へ送る。
-			m.message = "起動スクリプトの候補が見つかりません"
+			m.message = msg.SetupNoCandidates
 			m.input = []rune("./run.sh")
 			m.step = stepCommandInput
 		}
@@ -250,8 +251,8 @@ func (m *model) preview() string {
 
 func (m *model) View() tea.View {
 	lines := []string{
-		titleStyle.Render("hijo-server-ops セットアップ"),
-		dimStyle.Render("作成先: " + m.configPath),
+		titleStyle.Render(msg.SetupTitle),
+		dimStyle.Render(msg.SetupTarget(m.configPath)),
 		"",
 	}
 	lines = append(lines, m.body()...)
@@ -266,25 +267,25 @@ func (m *model) body() []string {
 	switch m.step {
 	case stepWorkDir:
 		return []string{
-			"1/3 Minecraft サーバーのディレクトリ",
+			msg.SetupStepWorkDir,
 			"",
 			"  " + string(m.input) + "█",
 		}
 	case stepCommand:
 		lines := []string{
-			"2/3 起動スクリプトを選ぶ",
+			msg.SetupStepCommand,
 			"",
 		}
 		return append(lines, m.candidateLines()...)
 	case stepCommandInput:
 		return []string{
-			"2/3 起動スクリプトのパス",
-			dimStyle.Render("  " + m.workDir + " からの相対パスも書ける"),
+			msg.SetupStepCommandInput,
+			dimStyle.Render("  " + msg.SetupRelativeHint(m.workDir)),
 			"",
 			"  " + string(m.input) + "█",
 		}
 	default:
-		lines := []string{"3/3 この内容で作成する", ""}
+		lines := []string{msg.SetupStepConfirm, ""}
 		for _, line := range strings.Split(strings.TrimRight(m.preview(), "\n"), "\n") {
 			lines = append(lines, "  "+line)
 		}
@@ -301,9 +302,9 @@ func (m *model) body() []string {
 // 起動できないので、断ったときはその結果も出す。
 func (m *model) chmodLine() string {
 	if m.grantChmod {
-		return "[x] 実行権限を付ける（読める相手にだけ実行を許す）"
+		return msg.SetupChmodGrant
 	}
-	return errorStyle.Render("[ ] 実行権限を付けない（このままでは hso は起動できない）")
+	return errorStyle.Render(msg.SetupChmodDeny)
 }
 
 func (m *model) candidateLines() []string {
@@ -311,7 +312,7 @@ func (m *model) candidateLines() []string {
 	for _, item := range m.candidates {
 		labels = append(labels, item.label())
 	}
-	labels = append(labels, manualEntry)
+	labels = append(labels, msg.SetupManualEntry)
 
 	start := windowStart(m.cursor, len(labels), listViewport)
 	end := min(start+listViewport, len(labels))
@@ -350,28 +351,28 @@ func (m *model) keybar() string {
 	case stepWorkDir:
 		// 最初の画面には戻り先がないので、Esc は Ctrl+C と同じく中止。
 		return renderKeys([][2]string{
-			{"Enter", "次へ"},
-			{"Esc / Ctrl+C", "中止"},
+			{"Enter", msg.KeyNext},
+			{"Esc / Ctrl+C", msg.KeyAbort},
 		})
 	case stepCommand:
 		keys = append(keys,
-			[2]string{"↑↓", "選ぶ"},
-			[2]string{"Enter", "決定"},
-			[2]string{"Esc", "戻る"},
+			[2]string{"↑↓", msg.KeySelect},
+			[2]string{"Enter", msg.KeyConfirm},
+			[2]string{"Esc", msg.KeyBack},
 		)
 	case stepCommandInput:
 		keys = append(keys,
-			[2]string{"Enter", "次へ"},
-			[2]string{"Esc", "戻る"},
+			[2]string{"Enter", msg.KeyNext},
+			[2]string{"Esc", msg.KeyBack},
 		)
 	default:
-		keys = append(keys, [2]string{"Enter", "作成"})
+		keys = append(keys, [2]string{"Enter", msg.KeyCreate})
 		if m.needsChmod {
-			keys = append(keys, [2]string{"c", "実行権限の付与を切替"})
+			keys = append(keys, [2]string{"c", msg.KeyToggleChmod})
 		}
-		keys = append(keys, [2]string{"Esc", "戻る"})
+		keys = append(keys, [2]string{"Esc", msg.KeyBack})
 	}
-	keys = append(keys, [2]string{"Ctrl+C", "中止"})
+	keys = append(keys, [2]string{"Ctrl+C", msg.KeyAbort})
 	return renderKeys(keys)
 }
 

@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	ErrJavaNotFound     = errors.New("javaプロセスがまだ見つかりません")
-	ErrDetachedTerminal = errors.New("screen/tmuxを使う起動スクリプトには対応していません")
-	ErrRootPIDReused    = errors.New("起動スクリプトのPIDが再利用されました")
+	ErrJavaNotFound     = errors.New("java process not found yet")
+	ErrDetachedTerminal = errors.New("start scripts using screen/tmux are not supported")
+	ErrRootPIDReused    = errors.New("start script PID was reused")
 )
 
 type JavaFinder struct {
@@ -35,7 +35,7 @@ func (f JavaFinder) Find(rootPID int) (int, error) {
 func readProcesses(procRoot string) (map[int]procEntry, error) {
 	entries, err := os.ReadDir(procRoot)
 	if err != nil {
-		return nil, fmt.Errorf("%sを読む: %w", procRoot, err)
+		return nil, fmt.Errorf("read %s: %w", procRoot, err)
 	}
 	processes := make(map[int]procEntry)
 	for _, entry := range entries {
@@ -169,24 +169,24 @@ func parseProcStat(data []byte) (procEntry, error) {
 	open := strings.IndexByte(line, '(')
 	close := strings.LastIndexByte(line, ')')
 	if open < 0 || close <= open {
-		return procEntry{}, errors.New("不正な/proc stat形式")
+		return procEntry{}, errors.New("malformed /proc stat")
 	}
 
 	fields := strings.Fields(line[close+1:])
 	if len(fields) < 20 {
-		return procEntry{}, errors.New("不正な/proc statフィールド")
+		return procEntry{}, errors.New("malformed /proc stat fields")
 	}
 	ppid, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return procEntry{}, fmt.Errorf("PPIDを読む: %w", err)
+		return procEntry{}, fmt.Errorf("read PPID: %w", err)
 	}
 	pgrp, err := strconv.Atoi(fields[2])
 	if err != nil {
-		return procEntry{}, fmt.Errorf("プロセスグループIDを読む: %w", err)
+		return procEntry{}, fmt.Errorf("read process group ID: %w", err)
 	}
 	startTime, err := strconv.ParseUint(fields[19], 10, 64)
 	if err != nil {
-		return procEntry{}, fmt.Errorf("開始時刻を読む: %w", err)
+		return procEntry{}, fmt.Errorf("read start time: %w", err)
 	}
 
 	return procEntry{

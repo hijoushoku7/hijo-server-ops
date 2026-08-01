@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 type Options struct {
@@ -43,14 +45,14 @@ func Start(options Options) (*Process, error) {
 
 	gcLogDir, err := os.MkdirTemp("", "hso-")
 	if err != nil {
-		return nil, fmt.Errorf("GCログ用ディレクトリを作る: %w", err)
+		return nil, fmt.Errorf("create GC log directory: %w", err)
 	}
 	gcLogPath := filepath.Join(gcLogDir, "gc.log")
 
 	executable, err := os.Executable()
 	if err != nil {
 		_ = os.RemoveAll(gcLogDir)
-		return nil, fmt.Errorf("hsoの実行ファイルを確認する: %w", err)
+		return nil, fmt.Errorf("resolve hso executable: %w", err)
 	}
 	cmd := exec.Command(executable, supervisorArgument, command)
 	cmd.Dir = options.WorkDir
@@ -62,14 +64,14 @@ func Start(options Options) (*Process, error) {
 	stdinReader, stdinWriter, err := os.Pipe()
 	if err != nil {
 		_ = os.RemoveAll(gcLogDir)
-		return nil, fmt.Errorf("サーバーstdinを開く: %w", err)
+		return nil, fmt.Errorf("open server stdin: %w", err)
 	}
 	controlReader, controlWriter, err := os.Pipe()
 	if err != nil {
 		_ = stdinReader.Close()
 		_ = stdinWriter.Close()
 		_ = os.RemoveAll(gcLogDir)
-		return nil, fmt.Errorf("supervisor制御パイプを開く: %w", err)
+		return nil, fmt.Errorf("open supervisor control pipe: %w", err)
 	}
 	cmd.Stdin = stdinReader
 	cmd.Stdout = options.Stdout
@@ -82,7 +84,7 @@ func Start(options Options) (*Process, error) {
 		_ = controlReader.Close()
 		_ = controlWriter.Close()
 		_ = os.RemoveAll(gcLogDir)
-		return nil, fmt.Errorf("supervisorを開始する: %w", err)
+		return nil, fmt.Errorf("start supervisor: %w", err)
 	}
 	_ = stdinReader.Close()
 	_ = controlWriter.Close()
@@ -94,7 +96,7 @@ func Start(options Options) (*Process, error) {
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 		_ = cmd.Wait()
 		_ = os.RemoveAll(gcLogDir)
-		return nil, fmt.Errorf("supervisorの開始時刻を読む: %w", err)
+		return nil, fmt.Errorf("read supervisor start time: %w", err)
 	}
 
 	serverPID, err := readSupervisorPID(controlReader)
@@ -128,17 +130,17 @@ func resolveCommand(command, workDir string) (string, error) {
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("起動スクリプトの絶対パスを求める: %w", err)
+		return "", msg.ScriptAbsPathFailed(err)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", fmt.Errorf("起動スクリプトを確認する: %w", err)
+		return "", msg.ScriptStatFailed(err)
 	}
 	if info.IsDir() {
-		return "", fmt.Errorf("起動スクリプトはディレクトリです: %s", path)
+		return "", msg.ScriptIsDirectory(path)
 	}
 	if info.Mode().Perm()&0o111 == 0 {
-		return "", fmt.Errorf("起動スクリプトに実行権限がありません: %s", path)
+		return "", msg.ScriptNotExecutable(path)
 	}
 	return path, nil
 }
@@ -174,7 +176,7 @@ func (p *Process) Write(data []byte) (int, error) {
 
 	select {
 	case <-p.done:
-		return 0, errors.New("サーバープロセスは終了しています")
+		return 0, errors.New("server process has exited")
 	default:
 		return p.stdin.Write(data)
 	}
@@ -189,10 +191,10 @@ func (p *Process) Send(command string) error {
 func (p *Process) Signal(signal os.Signal) error {
 	value, ok := signal.(syscall.Signal)
 	if !ok {
-		return fmt.Errorf("未対応のシグナル: %v", signal)
+		return fmt.Errorf("unsupported signal: %v", signal)
 	}
 	if err := p.cmd.Process.Signal(value); err != nil {
-		return fmt.Errorf("supervisorへ%sを送る: %w", signal, err)
+		return fmt.Errorf("send %s to supervisor: %w", signal, err)
 	}
 	return nil
 }
@@ -207,21 +209,21 @@ func (p *Process) reap() {
 func readSupervisorPID(control *os.File) (int, error) {
 	line, err := bufio.NewReader(control).ReadString('\n')
 	if err != nil {
-		return 0, fmt.Errorf("supervisorの応答を読む: %w", err)
+		return 0, fmt.Errorf("read supervisor reply: %w", err)
 	}
 	line = strings.TrimSpace(line)
 	if strings.HasPrefix(line, "ERR ") {
 		return 0, errors.New(strings.TrimPrefix(line, "ERR "))
 	}
 	if !strings.HasPrefix(line, "PID ") {
-		return 0, fmt.Errorf("不正なsupervisor応答: %q", line)
+		return 0, fmt.Errorf("malformed supervisor reply: %q", line)
 	}
 	pid, err := strconv.Atoi(strings.TrimPrefix(line, "PID "))
 	if err != nil {
-		return 0, fmt.Errorf("supervisor応答のPIDを読む: %w", err)
+		return 0, fmt.Errorf("read PID from supervisor reply: %w", err)
 	}
 	if pid <= 0 {
-		return 0, fmt.Errorf("supervisor応答のPIDが不正です: %d", pid)
+		return 0, fmt.Errorf("invalid PID in supervisor reply: %d", pid)
 	}
 	return pid, nil
 }

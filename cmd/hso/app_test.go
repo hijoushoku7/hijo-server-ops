@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
@@ -141,7 +142,7 @@ func TestStopServerReturnsSignalError(t *testing.T) {
 
 func TestServerExitErrorRejectsUnexpectedCleanExit(t *testing.T) {
 	err := serverExitError(nil, true, false)
-	if err == nil || !strings.Contains(err.Error(), "予期せず終了") {
+	if !errors.Is(err, msg.ErrServerExited) {
 		t.Fatalf("err = %v", err)
 	}
 	if err := serverExitError(nil, true, true); err != nil {
