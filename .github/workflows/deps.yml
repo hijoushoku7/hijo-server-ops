@@ -3,7 +3,17 @@ name: deps
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "**.gif"
+      - "**.png"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.gif"
+      - "**.png"
+      - "LICENSE"
   schedule:
     # 毎週月曜 09:00 JST (00:00 UTC)
     - cron: "0 0 * * 1"
