@@ -57,6 +57,29 @@ func ActionFailed(err error) string {
 	return "操作失敗: " + err.Error()
 }
 
+// キーバー（画面下部のキー説明）。日本語は全角なので、最小端末幅 72 桁に
+// 収まるよう短くしている。
+const (
+	BarItem         = "項目"
+	BarValue        = "値"
+	BarClose        = "閉じる"
+	BarExit         = "終了"
+	BarSelectPanel  = "選ぶ"
+	BarFocus        = "開く"
+	BarSettings     = "設定"
+	BarBackToSelect = "選択"
+	BarConsoleTab   = "入力/再起動/停止"
+	BarExecute      = "実行"
+	BarBack         = "戻る"
+	BarCommand      = "コマンド"
+	BarPutInConsole = "入力欄へ"
+	BarPlayer       = "プレイヤー"
+	BarCommandList  = "コマンド一覧"
+	BarScroll       = "スクロール"
+	BarPage         = "ページ"
+	BarLatest       = "最新"
+)
+
 // セットアップウィザードの画面。
 const (
 	SetupTitle            = "hijo-server-ops セットアップ"

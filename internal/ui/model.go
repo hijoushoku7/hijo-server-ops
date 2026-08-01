@@ -1091,47 +1091,47 @@ func (model *Model) keybar() string {
 	switch {
 	case model.settingsOpen:
 		keys = [][2]string{
-			{"↑↓", "item"},
-			{"←→", "value"},
-			{"Enter/Esc", "close"},
-			{"^C", "exit"},
+			{"↑↓", msg.BarItem},
+			{"←→", msg.BarValue},
+			{"Enter/Esc", msg.BarClose},
+			{"^C", msg.BarExit},
 		}
 	case model.mode == modeSelect:
 		keys = [][2]string{
-			{"←↑↓→", "select"},
-			{"Enter", "focus"},
-			{"G", "settings"},
-			{"^C", "exit"},
+			{"←↑↓→", msg.BarSelectPanel},
+			{"Enter", msg.BarFocus},
+			{"G", msg.BarSettings},
+			{"^C", msg.BarExit},
 		}
 	case model.panel == panelConsole:
 		keys = [][2]string{
-			{"Esc", "select"},
-			{"Tab", "input/restart/stop"},
-			{"Enter", "execute"},
-			{"^C", "exit"},
+			{"Esc", msg.BarBackToSelect},
+			{"Tab", msg.BarConsoleTab},
+			{"Enter", msg.BarExecute},
+			{"^C", msg.BarExit},
 		}
 	case model.panel == panelPlayers &&
 		model.playerStage == playerStageCommands:
 		keys = [][2]string{
-			{"Esc", "back"},
-			{"↑↓", "command"},
-			{"Enter", "put in console"},
-			{"^C", "exit"},
+			{"Esc", msg.BarBack},
+			{"↑↓", msg.BarCommand},
+			{"Enter", msg.BarPutInConsole},
+			{"^C", msg.BarExit},
 		}
 	case model.panel == panelPlayers:
 		keys = [][2]string{
-			{"Esc", "select"},
-			{"↑↓", "player"},
-			{"Enter", "commands"},
-			{"^C", "exit"},
+			{"Esc", msg.BarBackToSelect},
+			{"↑↓", msg.BarPlayer},
+			{"Enter", msg.BarCommandList},
+			{"^C", msg.BarExit},
 		}
 	default:
 		keys = [][2]string{
-			{"Esc", "select"},
-			{"↑↓", "scroll"},
-			{"PgUp/PgDn", "page"},
-			{"End", "latest"},
-			{"^C", "exit"},
+			{"Esc", msg.BarBackToSelect},
+			{"↑↓", msg.BarScroll},
+			{"PgUp/PgDn", msg.BarPage},
+			{"End", msg.BarLatest},
+			{"^C", msg.BarExit},
 		}
 	}
 

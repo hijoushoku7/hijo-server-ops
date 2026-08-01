@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
@@ -422,17 +423,79 @@ func TestModelKeybarReflectsMode(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 
-	if !strings.Contains(model.keybar(), "execute") {
+	if !strings.Contains(model.keybar(), msg.BarExecute) {
 		t.Fatalf("console keybar = %q", model.keybar())
 	}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if !strings.Contains(model.keybar(), "focus") {
+	if !strings.Contains(model.keybar(), msg.BarFocus) {
 		t.Fatalf("select keybar = %q", model.keybar())
 	}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !strings.Contains(model.keybar(), "page") {
+	if !strings.Contains(model.keybar(), msg.BarPage) {
 		t.Fatalf("buffer keybar = %q", model.keybar())
+	}
+}
+
+// TestKeybarFitsMinimumWidth はキー説明が最小端末幅に収まるかを見る。
+// keybar は fitLine で切り詰めるので、はみ出してもエラーにはならず末尾が
+// 黙って欠けるだけになる。日本語版はラベルが全角で幅が伸びるため、
+// 文言を足したり訳し直したりしたときにここで気付けるようにする。
+func TestKeybarFitsMinimumWidth(t *testing.T) {
+	// 切り詰めが起きない広さで測り、fitLine が右へ足した空白は落とす。
+	const wide = 200
+
+	focusPlayerCommands := func(t *testing.T, model *Model) {
+		t.Helper()
+		for _, name := range []string{"alice", "bob"} {
+			_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+				Kind:   serverlog.KindPlayerJoin,
+				Player: name,
+			}})
+		}
+		focusPlayers(t, model)
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		if model.playerStage != playerStageCommands {
+			t.Fatalf("stage = %d", model.playerStage)
+		}
+	}
+
+	cases := map[string]func(*testing.T, *Model){
+		"console": func(*testing.T, *Model) {},
+		"select": func(t *testing.T, model *Model) {
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+		},
+		"logs": func(t *testing.T, model *Model) {
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		},
+		"players":        focusPlayers,
+		"playerCommands": focusPlayerCommands,
+		"settings": func(t *testing.T, model *Model) {
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+			if !model.settingsOpen {
+				t.Fatal("settings did not open")
+			}
+		},
+	}
+
+	for name, focus := range cases {
+		model := newTestModel()
+		_, _ = model.Update(tea.WindowSizeMsg{Width: wide, Height: 40})
+		focus(t, model)
+
+		bar := strings.TrimRight(model.keybar(), " ")
+		if width := stringWidth(bar); width > minimumWidth {
+			t.Errorf(
+				"%s のキー説明が %d 桁で、最小端末幅 %d に収まらない: %q",
+				name,
+				width,
+				minimumWidth,
+				stripANSI(bar),
+			)
+		}
 	}
 }
 
