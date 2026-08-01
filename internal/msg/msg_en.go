@@ -59,6 +59,28 @@ func ActionFailed(err error) string {
 	return "operation failed: " + err.Error()
 }
 
+// Key bar (the hint line at the bottom of the screen).
+const (
+	BarItem         = "item"
+	BarValue        = "value"
+	BarClose        = "close"
+	BarExit         = "exit"
+	BarSelectPanel  = "select"
+	BarFocus        = "focus"
+	BarSettings     = "settings"
+	BarBackToSelect = "select"
+	BarConsoleTab   = "input/restart/stop"
+	BarExecute      = "execute"
+	BarBack         = "back"
+	BarCommand      = "command"
+	BarPutInConsole = "put in console"
+	BarPlayer       = "player"
+	BarCommandList  = "commands"
+	BarScroll       = "scroll"
+	BarPage         = "page"
+	BarLatest       = "latest"
+)
+
 // Setup wizard screens.
 const (
 	SetupTitle            = "hijo-server-ops setup"

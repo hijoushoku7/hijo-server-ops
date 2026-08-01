@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
@@ -422,16 +423,16 @@ func TestModelKeybarReflectsMode(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 
-	if !strings.Contains(model.keybar(), "execute") {
+	if !strings.Contains(model.keybar(), msg.BarExecute) {
 		t.Fatalf("console keybar = %q", model.keybar())
 	}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if !strings.Contains(model.keybar(), "focus") {
+	if !strings.Contains(model.keybar(), msg.BarFocus) {
 		t.Fatalf("select keybar = %q", model.keybar())
 	}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !strings.Contains(model.keybar(), "page") {
+	if !strings.Contains(model.keybar(), msg.BarPage) {
 		t.Fatalf("buffer keybar = %q", model.keybar())
 	}
 }
