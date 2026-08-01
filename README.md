@@ -1,189 +1,43 @@
-# hijo-server-ops
+<img src="https://img.shields.io/badge/Go-1.25.12-00ADD8?logo=go&logoColor=white"> <img src="https://img.shields.io/badge/platform-Linux-333">
 
-Minecraft サーバー用のラッパー型 TUI コンソール。**Linux 専用。**
+![hijo Server Ops](hso-animation.gif)
 
-既存の起動スクリプトを `hso` 経由で起動すると、サーバーのログを表示しつつ、メモリ・プレイヤー・稼働時間・ラグイベントをターミナル上のパネルに常時表示する。
+## hijo Server Ops
 
-**ステータス: v1 実装中。**
+Linux で使える Minecraft サーバー用の TUI 画面ソフトウェアです。サーバーのラッパーとして動くので、いま使っている起動スクリプトはそのままで構いません。
 
-## 解決する課題
+## クイックスタート
 
-- Linux サーバー上では Swing GUI（`nogui` を付けないと出るあれ）が見られない
-- ヒープ使用量・プレイヤー一覧などの情報取得が個別に面倒
-- `htop` は RSS しか見えず、ヒープの状況が分からない
-
-複数サーバーの集中管理パネル（Pterodactyl 等）ではなく、**1サーバーのコンソールそのものを代替する**もの。
-
-## 画面イメージ
-
-```
-┌─ hijo-server-ops · uptime 3d 04:12:33 ─┐┌─ Meters · RSS/cgroup ─┐┌─ Players 3 ──┐
-│ Server 203.0.113.10:25565               ││ CPU  ███░░░░░░░  82%  ││ alice        │
-│ Heap 2.1G / 3.2G committed (max 4.0G)  ││ Heap █████▏░░░░  52%  ││ bob          │
-│ RSS  5.4G / 8.0G limit  Δ +3.3G        ││ RSS  ███████░░░  67%  ││ carol        │
-│ GC   142 collections  last 12.3ms      ││                       ││              │
-│ Players 3  Lag events: 2  CPU 82%      ││                       ││              │
-└────────────────────────────────────────┘└───────────────────────┘└──────────────┘
-┌─ Chat ─────────────────┐┌─ Log ─────────────────────────────────┐
-│                        ││                                       │
-└────────────────────────┘│                                       │
-┌─ Commands ─────────────┐│                                       │
-│                        ││                                       │
-└────────────────────────┘└───────────────────────────────────────┘
-┌─ Console ──────────────────────────────────────────────────────┐
-│ > _                                        [restart] [stop]    │
-└────────────────────────────────────────────────────────────────┘
- Esc  select   Tab  input/restart/stop   Enter  execute   ^C  exit
-```
-
-Meters は CPU / Heap / RSS を横棒でも出す。満目はそれぞれ **コア数 × 100%**、
-**heap max**、**cgroup 制限（なければホスト総メモリ）**。どの分母を使ったかは
-`Meters · RSS/cgroup` のようにタイトルへ出し、分母が取れないときはメーターを
-描かず `n/a` と表示する。パーセントの数値表示は従来どおり併記する。
-
-`RSS - Heap committed` の差分（Δ）を明示するのが既存ツールにない点。「`-Xmx` を積んだのに OOM Killer に殺される」の原因（Direct ByteBuffer / Metaspace / JIT Code Cache / スレッドスタック）がそのまま可視化される。
-
-## 仕組み
-
-```
-hso
- └─ 設定した起動スクリプトを子プロセスとして実行
-     ├─ env JAVA_TOOL_OPTIONS で -Xlog:gc を注入（スクリプトを書き換えない）
-     ├─ /proc を辿って実際の java プロセスの PID を特定
-     ├─ hsperfdata を mmap 直読み        → ヒープ / 世代別 / GC 統計
-     ├─ /proc/<pid>/status + cgroup      → RSS / メモリ上限
-     ├─ GC ログを tail                   → GC 後の谷の値、停止時間
-     ├─ api.ipify.org + server.properties → 公開IPv4とポート
-     └─ stdout をパース                  → チャット / コマンド / 参加退出 / ラグ
-```
-
-サーバー側にプラグインも MOD も不要（TPS 表示のみ将来 Fabric mod を使用）。JVM 引数は管理せず、ユーザーの `user_jvm_args.txt` / 起動スクリプトの記述をそのまま尊重する。
-
-Stats の `Server` 行は、`api.ipify.org` から取得した公開 IPv4 と、
-`server.workdir/server.properties` の `server-port` を組み合わせて表示する。
-取得はサーバー起動・再起動ごとに非同期で一度だけ行い、ネットワーク障害、
-設定ファイルなし、不正なポートでは `Server n/a` と表示する。取得失敗で
-Minecraft サーバーを停止することはない。
-
-この値は外部からの疎通を確認したものではない。NAT の外部ポートが異なる、
-CGNAT、HTTP プロキシ経由などの環境では、実際の接続先と異なる場合がある。
-
-## 設定
-
-設定ファイルがない状態で `hso` を実行すると、セットアップウィザードが
-開く。
+[Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) からアーカイブを取得して展開します。
 
 ```bash
-hso
+tar xzf hso_v0.1.1_linux_amd64_ja.tar.gz
+cd hso_v0.1.1_linux_amd64_ja
+./hso
 ```
 
-サーバーディレクトリを入力すると、その中の起動スクリプト候補を一覧から
-選べる。実行権限のないスクリプトを選んだ場合は、確認画面で断らない限り
-作成時に実行権限を付ける（読める相手にだけ実行を許す。`0644` なら
-`0755`、`0640` なら `0750`）。作成するとそのままサーバーが起動する。
+初回は設定ウィザードが開きます。サーバーのディレクトリを入力し、起動スクリプトを一覧から選ぶだけで、そのままサーバーが立ち上がります。
 
-パイプ越しや systemd 配下など端末がない環境では、ウィザードを出さずに
-エラーで終了する。
+arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを選んでください。
 
-テンプレートをコピーして手で書いてもよい。
+## 機能
 
-```bash
-cp hso.toml.example hso.toml
-```
+- Heap（Java が確保したメモリ）と RSS（実際の使用メモリ）を別々に表示
+- その差分も表示。`-Xmx` を積んだのに OOM Killer に殺される、の原因が見える
+- メモリ推移をグラフ表示
+- GC の回数と平均停止時間
+- 接続中のプレイヤー数と一覧
+- プレイヤーを選んでコマンドを実行
+- ログからチャットだけを抜き出して表示
 
-`hso.toml`
-
-```toml
-[server]
-command = "./run.sh"      # 起動スクリプト。必須・明示指定
-workdir = "/srv/minecraft"
-
-[ui]
-panes = ["stats", "chat", "commands", "log"]
-```
-
-起動スクリプトは実行可能ファイルとして用意する。`workdir` を省略した
-場合は `hso.toml` のあるディレクトリを使う。TUI は 72 列 × 21 行以上の
-端末で表示する。ただし 72 列では上段左の Stats の行末が切れる（Δ・post-GC・
-Braille グラフは残る）。全項目が読めるのは **94 列**から。ログは各ペイン
-ごとに 500 行、メモリ推移は Braille グラフの横幅に入るサンプル数だけを
-保持する。
-
-```bash
-hso -config /path/to/hso.toml
-```
-
-### 操作
-
-画面は**選択モード**と**フォーカスモード**の 2 状態で動く。現在のキー割り当ては
-常に最下行に表示される。
-
-| モード | キー | 動作 |
-|---|---|---|
-| 選択 | ← ↑ ↓ → | パネルを選ぶ（枠がシアンの太線になる） |
-| 選択 | Enter | 選んだパネルにフォーカスする（枠が黄色の太線になる） |
-| フォーカス | Esc | フォーカスを外して選択モードへ戻る（スクロール位置は最新へ戻る） |
-| Console | 文字 / Enter | コマンドを入力して Minecraft サーバーへ送信 |
-| Console | Tab | 入力欄 → `restart` → `stop` を巡回、Enter で実行 |
-| Chat / Commands / Log | ↑ ↓ | 1 行スクロール |
-| Chat / Commands / Log | PgUp / PgDn | 1 画面スクロール |
-| Chat / Commands / Log | End | 最新行へ戻る |
-| Players | ↑ ↓ | プレイヤーを選ぶ |
-| Players | Enter | 選んだプレイヤーへのコマンド一覧を開く |
-| Players（コマンドモーダル） | Enter | コマンドを Console 入力欄に組み立てる |
-| Players（コマンドモーダル） | Esc | モーダルを閉じてプレイヤー一覧へ戻る |
-| 常時 | Ctrl+C | 終了 |
-
-フォーカスできるのは Players / Chat / Commands / Log / Console の 5 つ。
-Stats と Meters は表示専用なので選択対象に含めない。
-
-### プレイヤーへのコマンド
-
-Players パネルでプレイヤーを選んで Enter を押すと、そのプレイヤーに対する
-コマンド一覧が**モーダル**で開く。選んだ行の左下を起点に、フォーカス枠と
-同じ色の細枠で重なって出るので、背後のプレイヤー一覧は見えたまま残る。
-
-`tell` `kick` `ban` `op` `deop` `whitelist add` `whitelist rm`
-`gm survival` `gm creative` `gm adventure` `gm spectator` `kill`
-
-選んだコマンドは**即実行せず、Console 入力欄に組み立てて置く**。`ban` や
-`kick` の誤操作が Enter のもう一押しで止まり、`tell` の本文や `kick` の理由を
-そのまま書き足せる。送信されるのは `whitelist remove` のように省略しない
-完全な形で、一覧のラベルだけを枠幅に合わせて短くしてある。
-
-起動直後は Console にフォーカスした状態なので、そのままコマンドを打てる。
-Console にフォーカス中は ← → を入力に使うため、`restart` / `stop` の選択は
-Tab で行う。最新行から遡っている間はパネルのタイトルに `↑N` と遡り行数が出て、
-新着ログが届いても表示位置は動かない。
-
-入力は 512 文字を上限とし、操作キューも固定長にしてメモリ使用量を制限する。
-
-`restart` は Minecraft の `stop` コマンドによる正常終了を待ってから同じ
-起動スクリプトを再実行する。Java プロセスをまだ特定できていない起動途中
-では、安全に停止できないため `restart` を受け付けない。
-
-## インストール
-
-[Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) から
-アーカイブを取得する。
-
-```bash
-tar xzf hso_v0.1_linux_amd64.tar.gz
-cd hso_v0.1_linux_amd64
-```
-
-`hso`（実行ファイル）と `hso.toml`（設定テンプレート）が展開される。arm64
-環境では `linux_arm64` のアーカイブを使う。
-
-## ビルド
-
-```bash
-CGO_ENABLED=0 go build -ldflags="-s -w" -o hso ./cmd/hso
-```
-
-`CGO_ENABLED=0` で完全静的リンク。実行時依存はゼロ。配布対象は `linux/amd64` と `linux/arm64`。
+サーバー側にプラグインや MOD を入れる必要はありません。
 
 ## ドキュメント
 
 - [ビルド手順](docs/build.md)
 - [仕様・技術調査](docs/spec.md)
+
+## 作者
+
+hijoushoku https://github.com/hijoushoku7
+A Student Engineer from Japan🗾
