@@ -170,21 +170,17 @@ func (p *Process) Wait() error {
 	return p.waitErr
 }
 
-func (p *Process) Write(data []byte) (int, error) {
+func (p *Process) Send(command string) error {
 	p.writeMu.Lock()
 	defer p.writeMu.Unlock()
 
 	select {
 	case <-p.done:
-		return 0, errors.New("server process has exited")
+		return errors.New("server process has exited")
 	default:
-		return p.stdin.Write(data)
 	}
-}
-
-func (p *Process) Send(command string) error {
 	command = strings.TrimRight(command, "\r\n") + "\n"
-	_, err := io.WriteString(p, command)
+	_, err := io.WriteString(p.stdin, command)
 	return err
 }
 

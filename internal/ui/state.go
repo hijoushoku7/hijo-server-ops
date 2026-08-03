@@ -1,0 +1,152 @@
+package ui
+
+import (
+	"fmt"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
+	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
+	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
+)
+
+func (model *Model) updateMetrics(message MetricsMsg) {
+	model.metrics = hsperfdata.Metrics{
+		Heap:    message.JVM.Heap,
+		Uptime:  message.JVM.Uptime,
+		Threads: message.JVM.Threads,
+	}
+	model.memory = message.Memory
+	model.cpu = message.CPU
+	model.cpuAvailable = message.CPUAvailable
+	model.updateMetricError("heap", &model.jvmMetricError, message.JVMError)
+	model.updateMetricError("RSS", &model.memoryMetricError, message.MemoryError)
+	model.addSample(message)
+}
+
+func (model *Model) updateServerAddress(message ServerAddressMsg) {
+	model.serverIP = message.IP
+	model.serverPort = message.Port
+	if message.IPErr != "" {
+		model.serverIP = ""
+		model.logUnavailableAddress("public IPv4", message.IPErr)
+	}
+	if message.PortErr != "" {
+		model.serverPort = 0
+		model.logUnavailableAddress("server-port", message.PortErr)
+	}
+}
+
+func (model *Model) logUnavailableAddress(source, detail string) {
+	model.addLog(serverlog.Entry{
+		Kind: serverlog.KindOther,
+		Message: "server address: " + source + " unavailable: " +
+			truncateRunes(detail, maxMetricErrorRunes),
+	})
+}
+
+func (model *Model) resetServerState() {
+	model.metrics = hsperfdata.Metrics{}
+	model.memory = procstats.Memory{}
+	model.cpu = 0
+	model.cpuAvailable = false
+	model.jvmMetricError = ""
+	model.memoryMetricError = ""
+	model.serverIP = ""
+	model.serverPort = 0
+	model.gcStats = gclog.Stats{}
+	model.tracker = serverlog.Tracker{}
+	model.playerList = nil
+	model.playerCursor = 0
+	model.playerStage = playerStagePlayers
+	model.samples = sampleBuffer{}
+	model.samples.SetLimit(model.layout.graphWidth * 2)
+}
+
+func (model *Model) resize(width, height int) {
+	model.layout = calculateLayout(width, height)
+	history := 0
+	if model.layout.ready {
+		// 履歴は表示行数と切り離し、スクロール可能な量を一定にする。
+		history = historyLines
+	}
+	model.chat.SetLimit(history)
+	model.logs.SetLimit(history)
+	model.chat.Truncate(model.layout.leftContentWidth())
+	model.logs.Truncate(model.layout.rightContentWidth())
+	model.samples.SetLimit(model.layout.graphWidth * 2)
+}
+
+func (model *Model) addLog(entry serverlog.Entry) {
+	if entry.Kind == serverlog.KindIgnored {
+		return
+	}
+	model.tracker.Apply(entry)
+	if entry.Kind == serverlog.KindPlayerJoin ||
+		entry.Kind == serverlog.KindPlayerLeave {
+		model.playerList = model.tracker.Players()
+		model.playerCursor = clamp(
+			model.playerCursor,
+			0,
+			max(0, len(model.playerList)-1),
+		)
+	}
+
+	switch entry.Kind {
+	case serverlog.KindChat:
+		line := fmt.Sprintf("<%s> %s", entry.Player, entry.Chat)
+		model.chat.Add(truncate(line, model.layout.leftContentWidth()))
+	case serverlog.KindCommand:
+		line := entry.Command
+		if entry.Player != "" {
+			line = entry.Player + ": " + entry.Command
+		}
+		model.logs.Add(truncate(line, model.layout.rightContentWidth()))
+	default:
+		model.logs.Add(truncate(entry.Message, model.layout.rightContentWidth()))
+	}
+}
+
+func (model *Model) addSample(message MetricsMsg) {
+	sample := memorySample{}
+	if message.JVM.Heap.Used.Available && message.JVM.Heap.Used.Value >= 0 {
+		sample.heap = uint64(message.JVM.Heap.Used.Value)
+		sample.heapKnown = true
+	}
+	if message.Memory.RSS.Available {
+		sample.rss = message.Memory.RSS.Value
+		sample.rssKnown = true
+	}
+	model.samples.Add(sample)
+}
+
+func (model *Model) updateMetricError(source string, current *string, next string) {
+	if next == *current {
+		return
+	}
+	next = truncateRunes(next, maxMetricErrorRunes)
+	if next == *current {
+		return
+	}
+	if next == "" {
+		if *current != "" {
+			model.addLog(serverlog.Entry{
+				Kind:    serverlog.KindOther,
+				Message: "metrics: " + source + " recovered",
+			})
+		}
+	} else {
+		model.addLog(serverlog.Entry{
+			Kind:    serverlog.KindOther,
+			Message: "metrics: " + source + " unavailable: " + next,
+		})
+	}
+	*current = next
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}

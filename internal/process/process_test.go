@@ -101,7 +101,7 @@ func TestProcessRunsRelativeCommandWithoutSlash(t *testing.T) {
 	}
 }
 
-func TestWriteAfterExitFails(t *testing.T) {
+func TestSendAfterExitFails(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "run.sh")
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
@@ -115,8 +115,8 @@ func TestWriteAfterExitFails(t *testing.T) {
 	if err := server.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.Write([]byte("list\n")); err == nil {
-		t.Fatal("Write succeeded after process exit")
+	if err := server.Send("list"); err == nil {
+		t.Fatal("Send succeeded after process exit")
 	}
 }
 

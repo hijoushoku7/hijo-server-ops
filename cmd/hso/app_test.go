@@ -186,7 +186,7 @@ func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
 		tea.WithInput(nil),
 		tea.WithoutRenderer(),
 	)
-	controller := newServerController(ctx, filepath.Join(dir, "hso.toml"), config.Config{
+	controller := newServerController(ctx, config.Config{
 		Server: config.Server{
 			Command: script,
 			WorkDir: dir,

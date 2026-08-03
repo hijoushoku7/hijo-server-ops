@@ -25,17 +25,6 @@ func formatProcBytes(number procstats.Number) string {
 	return formatBytes(number.Value)
 }
 
-func formatLimit(limit procstats.Limit) string {
-	switch {
-	case !limit.Available:
-		return "n/a"
-	case limit.Unlimited:
-		return "unlimited"
-	default:
-		return formatBytes(limit.Value)
-	}
-}
-
 func formatBytes(value uint64) string {
 	const unit = uint64(1024)
 	if value < unit {
@@ -136,7 +125,6 @@ func formatFrequency(value float64, available bool) string {
 	return fmt.Sprintf("%.2f/min", value)
 }
 
-// formatCPU は全コア合計で数えた使用率を、分母 100% に直して出す。
 func formatCPU(value float64, available bool) string {
 	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return "n/a"
@@ -154,8 +142,6 @@ func normalizeCPU(value float64) float64 {
 	return value / cores
 }
 
-// formatRSSPercent は RSS が分母に占める割合。分母は rssDenominator と同じで、
-// cgroup 制限があればそれ、なければ OS の総メモリ。
 func formatRSSPercent(memory procstats.Memory) string {
 	limit, _ := rssDenominator(memory)
 	if !memory.RSS.Available || limit == 0 ||
@@ -165,7 +151,6 @@ func formatRSSPercent(memory procstats.Memory) string {
 	return fmt.Sprintf("%.0f%%", percent(int64(memory.RSS.Value), int64(limit)))
 }
 
-// rssRatio は RSS が分母に占める割合の 0..1 表現。取れなければ NaN。
 func rssRatio(memory procstats.Memory) float64 {
 	limit, _ := rssDenominator(memory)
 	if !memory.RSS.Available || limit == 0 {
@@ -174,7 +159,6 @@ func rssRatio(memory procstats.Memory) float64 {
 	return float64(memory.RSS.Value) / float64(limit)
 }
 
-// cpuRatio は CPU 使用率の 0..1 表現。取れなければ NaN。
 func cpuRatio(value float64, available bool) float64 {
 	if !available || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return math.NaN()
