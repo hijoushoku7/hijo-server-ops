@@ -36,8 +36,6 @@ type meter struct {
 	available bool
 }
 
-// renderMeter は ratio を width セルの横棒にする。
-// 端数は 1/8 幅のブロックで表し、1 セル未満の変化も見えるようにする。
 func renderMeter(ratio float64, width int) string {
 	if width <= 0 {
 		return ""
@@ -115,7 +113,6 @@ func cpuMeter(value float64, available bool) meter {
 	}
 }
 
-// heapMeter は heap used / heap max。
 func heapMeter(heap hsperfdata.Memory) meter {
 	used := heap.Used
 	limit := heap.Max
@@ -146,7 +143,6 @@ func rssMeter(memory procstats.Memory) (meter, string) {
 	}, source
 }
 
-// rssDenominator は RSS の割合に使う分母と、その出所を返す。
 func rssDenominator(memory procstats.Memory) (uint64, string) {
 	if memory.CgroupLimit.Available && !memory.CgroupLimit.Unlimited &&
 		memory.CgroupLimit.Value > 0 {

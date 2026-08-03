@@ -1,10 +1,10 @@
 package hsperfdata
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 const (
@@ -124,7 +124,7 @@ func parseEntry(data []byte, offset int, order binary.ByteOrder) (string, Counte
 	}
 
 	nameBytes := data[offset+nameOffset : offset+dataOffset]
-	terminator := strings.IndexByte(string(nameBytes), 0)
+	terminator := bytes.IndexByte(nameBytes, 0)
 	if terminator <= 0 {
 		return "", Counter{}, 0, errors.New("name is not NUL terminated")
 	}
@@ -142,7 +142,7 @@ func parseEntry(data []byte, offset int, order binary.ByteOrder) (string, Counte
 			return "", Counter{}, 0, errors.New("string crosses the entry boundary")
 		}
 		value := data[offset+dataOffset : offset+dataOffset+vectorLength]
-		if end := strings.IndexByte(string(value), 0); end >= 0 {
+		if end := bytes.IndexByte(value, 0); end >= 0 {
 			value = value[:end]
 		}
 		return name, Counter{text: string(value), isString: true}, offset + entryLength, nil

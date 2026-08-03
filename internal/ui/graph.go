@@ -7,7 +7,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// overlapStyle は heap と rss が同じセルに乗ったときの色。
 var overlapStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C"))
 
 type memorySample struct {
@@ -82,7 +81,6 @@ func rssValue(sample memorySample) (uint64, bool) {
 	return sample.rss, sample.rssKnown
 }
 
-// chartSeries は 1 本の折れ線。
 type chartSeries struct {
 	value sampleValue
 	style lipgloss.Style
@@ -121,7 +119,6 @@ func renderChart(
 	return lines
 }
 
-// plotSeries は 1 系列を braille のセル配列（1 セル 8 ドット）に描く。
 func plotSeries(
 	samples sampleBuffer,
 	value sampleValue,
@@ -167,7 +164,6 @@ func plotSeries(
 	return cells
 }
 
-// writeChartRow は 1 行ぶんのセルを書く。同じ色が続く間はまとめて着色する。
 func writeChartRow(
 	line *strings.Builder,
 	grids [][]byte,
@@ -220,7 +216,6 @@ func writeChartRow(
 	flush()
 }
 
-// axisLabel は行の左に置く Y 軸ラベル。上端と下端、真ん中だけに値を出す。
 func axisLabel(row, height int, low, high uint64) string {
 	value := uint64(0)
 	switch row {

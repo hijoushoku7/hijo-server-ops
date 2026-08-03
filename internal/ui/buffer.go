@@ -61,18 +61,15 @@ func (buffer *lineBuffer) SetLimit(limit int) {
 	buffer.clampOffset()
 }
 
-// Scroll は表示位置を delta 行ぶん遡らせる（負なら最新方向へ戻す）。
 func (buffer *lineBuffer) Scroll(delta, viewport int) {
 	buffer.offset += delta
 	buffer.clampViewport(viewport)
 }
 
-// ScrollToEnd は最新行に追従する状態へ戻す。
 func (buffer *lineBuffer) ScrollToEnd() {
 	buffer.offset = 0
 }
 
-// Window は現在の表示位置から viewport 行ぶんの表示内容を返す。
 func (buffer *lineBuffer) Window(viewport int) []string {
 	if viewport <= 0 || buffer.count == 0 {
 		return nil
@@ -87,7 +84,6 @@ func (buffer *lineBuffer) Window(viewport int) []string {
 	return window
 }
 
-// Offset は最新行から遡っている行数。0 なら最新に追従している。
 func (buffer *lineBuffer) Offset() int {
 	return buffer.offset
 }

@@ -1,7 +1,5 @@
 package ui
 
-// mode は選択モード（矢印でパネルを選ぶ）とフォーカスモード
-// （選んだパネルを操作する）の 2 状態を表す。
 type mode uint8
 
 const (
@@ -32,8 +30,6 @@ const (
 
 const consoleFocusCount = 3
 
-// playerStage は Players パネルにフォーカス中の段階。
-// プレイヤーを選ぶ段階と、そのプレイヤーへのコマンドを選ぶ段階に分ける。
 type playerStage uint8
 
 const (
@@ -41,9 +37,6 @@ const (
 	playerStageCommands
 )
 
-// playerCommand は選択したプレイヤーに対して実行できるコマンド。
-// template の %s にプレイヤー名が入る。末尾が空白のものは引数を続けて
-// 入力してもらう前提（tell の本文、kick / ban の理由）。
 type playerCommand struct {
 	label    string
 	template string
@@ -88,7 +81,7 @@ type neighbor struct {
 	right panel
 }
 
-var neighbors = map[panel]neighbor{
+var neighbors = [...]neighbor{
 	panelPlayers: {
 		up:    panelPlayers,
 		down:  panelLog,
