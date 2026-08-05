@@ -32,8 +32,8 @@ arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを�
 
 ## ドキュメント
 
-- [ビルド手順](docs/build.md)
-- [仕様・技術調査](docs/spec.md)
+- [ビルド手順](dev-docs/build.md)
+- [仕様・技術調査](dev-docs/spec.md)
 
 ## 作者
 
