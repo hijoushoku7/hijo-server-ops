@@ -27,6 +27,7 @@ const (
 	LabelMeterBar  = "meter bar"
 	LabelTitle     = "title"
 	LabelSelection = "selection"
+	LabelLog       = "log"
 )
 
 // Color preset names.

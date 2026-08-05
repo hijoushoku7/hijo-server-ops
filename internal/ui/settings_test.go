@@ -128,4 +128,8 @@ func TestApplyThemeFallsBackToDefaultsForUnknownPresets(t *testing.T) {
 		color(meterPresets[defaults.MeterPreset].over).GetForeground() {
 		t.Fatalf("meter = %#v", meterOverStyle)
 	}
+	if logTimestampStyle.GetForeground() !=
+		color(logPresets[defaults.LogPreset].timestamp).GetForeground() {
+		t.Fatalf("log timestamp = %#v", logTimestampStyle)
+	}
 }

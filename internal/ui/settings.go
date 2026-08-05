@@ -17,6 +17,7 @@ type Settings struct {
 	MeterPreset     string
 	TitlePreset     string
 	SelectionPreset string
+	LogPreset       string
 }
 
 func DefaultSettings() Settings {
@@ -26,6 +27,7 @@ func DefaultSettings() Settings {
 		MeterPreset:     "signal",
 		TitlePreset:     "cyan",
 		SelectionPreset: "amber",
+		LogPreset:       "dracula",
 	}
 }
 
@@ -110,6 +112,20 @@ var settingItems = []settingItem{
 		get: func(settings Settings) string { return settings.SelectionPreset },
 		set: func(settings *Settings, value string) {
 			settings.SelectionPreset = value
+		},
+	},
+	{
+		label: msg.LabelLog,
+		options: []settingOption{
+			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptMono, value: "mono"},
+			{label: msg.OptWarm, value: "warm"},
+			{label: msg.OptCool, value: "cool"},
+			{label: msg.OptSafe, value: "safe"},
+		},
+		get: func(settings Settings) string { return settings.LogPreset },
+		set: func(settings *Settings, value string) {
+			settings.LogPreset = value
 		},
 	},
 }

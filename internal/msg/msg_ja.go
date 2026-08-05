@@ -25,6 +25,7 @@ const (
 	LabelMeterBar  = "メーターの棒"
 	LabelTitle     = "タイトル"
 	LabelSelection = "選択行"
+	LabelLog       = "ログ"
 )
 
 // 配色プリセットの表示名。

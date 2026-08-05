@@ -36,6 +36,7 @@ type Theme struct {
 	Meter     string `toml:"meter"`
 	Title     string `toml:"title"`
 	Selection string `toml:"selection"`
+	Log       string `toml:"log"`
 }
 
 func Load(path string) (Config, error) {
@@ -150,6 +151,7 @@ func render(cfg Config) string {
 			{"meter", cfg.UI.Theme.Meter},
 			{"title", cfg.UI.Theme.Title},
 			{"selection", cfg.UI.Theme.Selection},
+			{"log", cfg.UI.Theme.Log},
 		} {
 			if preset[1] != "" {
 				out.WriteString(preset[0] + " = " + quote(preset[1]) + "\n")

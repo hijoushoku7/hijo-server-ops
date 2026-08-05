@@ -126,16 +126,20 @@ func (model *Model) renderBufferPanel(
 	contentHeight := max(0, height-2)
 	window := buffer.Window(contentHeight)
 	lines := make([]string, contentHeight)
+	innerWidth := max(0, width-2)
+	for index := range lines {
+		lines[index] = strings.Repeat(" ", innerWidth)
+	}
 	padding := max(0, contentHeight-len(window))
 	for index := 0; index < len(window) && padding+index < len(lines); index++ {
-		lines[padding+index] = window[index].line()
+		lines[padding+index] = renderLogRecord(window[index], innerWidth)
 	}
 
 	title := target.title()
 	if offset := buffer.Offset(); offset > 0 {
 		title = fmt.Sprintf("%s ↑%d", title, offset)
 	}
-	return renderPanel(title, lines, width, height, true, model.frameFor(target))
+	return renderFittedPanel(title, lines, width, height, true, model.frameFor(target))
 }
 
 func renderPanel(
@@ -145,6 +149,31 @@ func renderPanel(
 	height int,
 	alignBottom bool,
 	box frame,
+) string {
+	return renderPanelLines(title, lines, width, height, alignBottom, box, false)
+}
+
+// renderFittedPanel は素テキストで切り詰めてから色を付けた行をそのまま描く。
+// ANSI 付きの行へ再度 fitLine を通さず、ログの色と枠幅を保つ。
+func renderFittedPanel(
+	title string,
+	lines []string,
+	width int,
+	height int,
+	alignBottom bool,
+	box frame,
+) string {
+	return renderPanelLines(title, lines, width, height, alignBottom, box, true)
+}
+
+func renderPanelLines(
+	title string,
+	lines []string,
+	width int,
+	height int,
+	alignBottom bool,
+	box frame,
+	linesFitted bool,
 ) string {
 	if width <= 0 || height <= 0 {
 		return ""
@@ -178,7 +207,10 @@ func renderPanel(
 		if position >= 0 && position < len(lines) {
 			line = lines[position]
 		}
-		result.WriteString(fitLine(line, innerWidth))
+		if !linesFitted {
+			line = fitLine(line, innerWidth)
+		}
+		result.WriteString(line)
 		result.WriteString(vertical)
 	}
 	result.WriteByte('\n')
