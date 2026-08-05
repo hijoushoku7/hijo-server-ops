@@ -38,12 +38,37 @@ func (record logRecord) bounded(width int) logRecord {
 	return record
 }
 
+type storedLogRecord struct {
+	number uint64
+	record logRecord
+}
+
+type wrappedLogRecord struct {
+	number uint64
+	lines  []logLine
+}
+
+type logAnchor struct {
+	record  uint64
+	segment int
+}
+
+type bufferViewport struct {
+	width  int
+	height int
+}
+
 type lineBuffer struct {
-	lines []logRecord
-	start int
-	count int
-	// offset は最新行から何行遡って表示しているか。0 なら最新に追従する。
-	offset int
+	lines      []storedLogRecord
+	start      int
+	count      int
+	nextNumber uint64
+	// record が 0 の間は、幅が変わっても末尾への追従を続ける。
+	anchor logAnchor
+
+	wrapWidth int
+	wrapValid bool
+	wrapped   []wrappedLogRecord
 }
 
 func (buffer *lineBuffer) Add(record logRecord) {
@@ -51,25 +76,32 @@ func (buffer *lineBuffer) Add(record logRecord) {
 		return
 	}
 	record = record.bounded(maxLogRecordWidth)
-	if buffer.count < len(buffer.lines) {
+	buffer.nextNumber++
+	item := storedLogRecord{number: buffer.nextNumber, record: record}
+	full := buffer.count == len(buffer.lines)
+
+	if !full {
 		position := (buffer.start + buffer.count) % len(buffer.lines)
-		buffer.lines[position] = record
+		buffer.lines[position] = item
 		buffer.count++
-		// 遡って読んでいる間は、新着で表示が流れないよう位置を保つ。
-		if buffer.offset > 0 {
-			buffer.offset++
-		}
-		buffer.clampOffset()
+	} else {
+		buffer.lines[buffer.start] = item
+		buffer.start = (buffer.start + 1) % len(buffer.lines)
+	}
+
+	if !buffer.wrapValid {
 		return
 	}
-	buffer.lines[buffer.start] = record
-	buffer.start = (buffer.start + 1) % len(buffer.lines)
-	// 満杯のときは最古行が押し出されて全体が 1 行ずれるので、空きがある
-	// ときと同じく offset も進めないと遡り位置が流れてしまう。
-	if buffer.offset > 0 {
-		buffer.offset++
+	wrapped := wrappedLogRecord{
+		number: item.number,
+		lines:  wrapLogRecord(item.record, buffer.wrapWidth),
 	}
-	buffer.clampOffset()
+	if !full {
+		buffer.wrapped = append(buffer.wrapped, wrapped)
+		return
+	}
+	copy(buffer.wrapped, buffer.wrapped[1:])
+	buffer.wrapped[len(buffer.wrapped)-1] = wrapped
 }
 
 func (buffer *lineBuffer) SetLimit(limit int) {
@@ -83,69 +115,177 @@ func (buffer *lineBuffer) SetLimit(limit int) {
 		buffer.lines = nil
 		buffer.start = 0
 		buffer.count = 0
-		buffer.offset = 0
+		buffer.nextNumber = 0
+		buffer.anchor = logAnchor{}
+		buffer.invalidateWrap()
 		return
 	}
 
 	keep := min(buffer.count, limit)
-	lines := make([]logRecord, limit)
+	lines := make([]storedLogRecord, limit)
 	for index := 0; index < keep; index++ {
-		lines[index] = buffer.At(buffer.count - keep + index)
+		lines[index] = buffer.itemAt(buffer.count - keep + index)
 	}
 	buffer.lines = lines
 	buffer.start = 0
 	buffer.count = keep
-	buffer.clampOffset()
+	buffer.invalidateWrap()
 }
 
-func (buffer *lineBuffer) Scroll(delta, viewport int) {
-	buffer.offset += delta
-	buffer.clampViewport(viewport)
+func (buffer *lineBuffer) Scroll(delta int, viewport bufferViewport) {
+	if delta == 0 || viewport.width <= 0 || viewport.height <= 0 || buffer.count == 0 {
+		return
+	}
+	buffer.ensureWrapped(viewport.width)
+	start := buffer.viewportStart(viewport)
+	tail := max(0, buffer.displayLineCount()-viewport.height)
+	target := clamp(start-delta, 0, tail)
+	if target == tail {
+		buffer.anchor = logAnchor{}
+		return
+	}
+	buffer.anchor = buffer.anchorAt(target)
+}
+
+func (buffer *lineBuffer) ScrollToStart(viewport bufferViewport) {
+	if viewport.width <= 0 || viewport.height <= 0 || buffer.count == 0 {
+		return
+	}
+	buffer.ensureWrapped(viewport.width)
+	if buffer.displayLineCount() <= viewport.height {
+		buffer.anchor = logAnchor{}
+		return
+	}
+	buffer.anchor = buffer.anchorAt(0)
 }
 
 func (buffer *lineBuffer) ScrollToEnd() {
-	buffer.offset = 0
+	buffer.anchor = logAnchor{}
 }
 
-func (buffer *lineBuffer) Window(viewport int) []logRecord {
-	if viewport <= 0 || buffer.count == 0 {
+func (buffer *lineBuffer) Window(viewport bufferViewport) []logLine {
+	if viewport.width <= 0 || viewport.height <= 0 || buffer.count == 0 {
 		return nil
 	}
+	buffer.ensureWrapped(viewport.width)
 	buffer.clampViewport(viewport)
-	end := buffer.count - buffer.offset
-	start := max(0, end-viewport)
-	window := make([]logRecord, 0, end-start)
-	for index := start; index < end; index++ {
-		window = append(window, buffer.At(index))
+	start := buffer.viewportStart(viewport)
+	end := min(buffer.displayLineCount(), start+viewport.height)
+	window := make([]logLine, 0, end-start)
+	lineNumber := 0
+	for _, record := range buffer.wrapped {
+		for _, line := range record.lines {
+			if lineNumber >= start && lineNumber < end {
+				window = append(window, line)
+			}
+			lineNumber++
+			if lineNumber >= end {
+				return window
+			}
+		}
 	}
 	return window
 }
 
-func (buffer *lineBuffer) Offset() int {
-	return buffer.offset
+// Offset は現在の表示領域より下にある表示行数を返す。
+func (buffer *lineBuffer) Offset(viewport bufferViewport) int {
+	if viewport.width <= 0 || viewport.height <= 0 || buffer.count == 0 {
+		return 0
+	}
+	buffer.ensureWrapped(viewport.width)
+	buffer.clampViewport(viewport)
+	if buffer.anchor.record == 0 {
+		return 0
+	}
+	start := buffer.viewportStart(viewport)
+	return max(0, buffer.displayLineCount()-min(buffer.displayLineCount(), start+viewport.height))
 }
 
-func (buffer *lineBuffer) clampOffset() {
-	if buffer.offset > buffer.count {
-		buffer.offset = buffer.count
+func (buffer *lineBuffer) clampViewport(viewport bufferViewport) {
+	if len(buffer.wrapped) == 0 || buffer.anchor.record == 0 {
+		return
 	}
-	if buffer.offset < 0 {
-		buffer.offset = 0
+	start := buffer.anchorLine()
+	tail := max(0, buffer.displayLineCount()-viewport.height)
+	if start >= tail {
+		buffer.anchor = logAnchor{}
+		return
 	}
+	buffer.anchor = buffer.anchorAt(max(0, start))
 }
 
-func (buffer *lineBuffer) clampViewport(viewport int) {
-	buffer.clampOffset()
-	if limit := max(0, buffer.count-viewport); buffer.offset > limit {
-		buffer.offset = limit
+func (buffer *lineBuffer) viewportStart(viewport bufferViewport) int {
+	if buffer.anchor.record == 0 {
+		return max(0, buffer.displayLineCount()-viewport.height)
 	}
+	return max(0, buffer.anchorLine())
+}
+
+func (buffer *lineBuffer) anchorLine() int {
+	lineNumber := 0
+	for _, record := range buffer.wrapped {
+		if record.number == buffer.anchor.record {
+			segment := clamp(buffer.anchor.segment, 0, max(0, len(record.lines)-1))
+			return lineNumber + segment
+		}
+		lineNumber += len(record.lines)
+	}
+	// アンカーのレコードが履歴から押し出されたときは最古行へ寄せる。
+	return 0
+}
+
+func (buffer *lineBuffer) anchorAt(lineNumber int) logAnchor {
+	position := 0
+	for _, record := range buffer.wrapped {
+		end := position + len(record.lines)
+		if lineNumber < end {
+			return logAnchor{record: record.number, segment: lineNumber - position}
+		}
+		position = end
+	}
+	return logAnchor{}
+}
+
+func (buffer *lineBuffer) ensureWrapped(width int) {
+	if buffer.wrapValid && buffer.wrapWidth == width {
+		return
+	}
+	wrapped := make([]wrappedLogRecord, 0, len(buffer.lines))
+	for index := 0; index < buffer.count; index++ {
+		item := buffer.itemAt(index)
+		wrapped = append(wrapped, wrappedLogRecord{
+			number: item.number,
+			lines:  wrapLogRecord(item.record, width),
+		})
+	}
+	buffer.wrapWidth = width
+	buffer.wrapValid = true
+	buffer.wrapped = wrapped
+}
+
+func (buffer *lineBuffer) invalidateWrap() {
+	buffer.wrapWidth = 0
+	buffer.wrapValid = false
+	buffer.wrapped = nil
+}
+
+func (buffer *lineBuffer) displayLineCount() int {
+	count := 0
+	for _, record := range buffer.wrapped {
+		count += len(record.lines)
+	}
+	return count
+}
+
+func (buffer *lineBuffer) itemAt(index int) storedLogRecord {
+	if index < 0 || index >= buffer.count {
+		return storedLogRecord{}
+	}
+	return buffer.lines[(buffer.start+index)%len(buffer.lines)]
 }
 
 func (buffer *lineBuffer) At(index int) logRecord {
-	if index < 0 || index >= buffer.count {
-		return logRecord{}
-	}
-	return buffer.lines[(buffer.start+index)%len(buffer.lines)]
+	return buffer.itemAt(index).record
 }
 
 func (buffer *lineBuffer) Len() int {

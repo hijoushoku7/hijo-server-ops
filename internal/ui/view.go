@@ -124,19 +124,20 @@ func (model *Model) renderBufferPanel(
 	width, height int,
 ) string {
 	contentHeight := max(0, height-2)
-	window := buffer.Window(contentHeight)
-	lines := make([]string, contentHeight)
 	innerWidth := max(0, width-2)
+	viewport := bufferViewport{width: innerWidth, height: contentHeight}
+	window := buffer.Window(viewport)
+	lines := make([]string, contentHeight)
 	for index := range lines {
 		lines[index] = strings.Repeat(" ", innerWidth)
 	}
 	padding := max(0, contentHeight-len(window))
 	for index := 0; index < len(window) && padding+index < len(lines); index++ {
-		lines[padding+index] = renderLogRecord(window[index], innerWidth)
+		lines[padding+index] = renderLogLine(window[index], innerWidth)
 	}
 
 	title := target.title()
-	if offset := buffer.Offset(); offset > 0 {
+	if offset := buffer.Offset(viewport); offset > 0 {
 		title = fmt.Sprintf("%s ↑%d", title, offset)
 	}
 	return renderFittedPanel(title, lines, width, height, true, model.frameFor(target))
