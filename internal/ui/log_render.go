@@ -2,53 +2,192 @@ package ui
 
 import (
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
 
 const timestampGutterWidth = 6
 
+type textSegment struct {
+	text   string
+	offset int
+}
+
+type logLine struct {
+	record     logRecord
+	text       string
+	bodyOffset int
+	prefix     string
+	timestamp  bool
+}
+
+func wrapLogRecord(record logRecord, width int) []logLine {
+	body := strings.ReplaceAll(record.line(), "\t", " ")
+	firstWidth := width
+	continuationWidth := width
+	indent := 0
+	prefix := ""
+	if width >= timestampGutterWidth {
+		firstWidth -= timestampGutterWidth
+		indent = timestampGutterWidth
+		prefix = formatLogTimestamp(record) + " "
+	}
+
+	segments := wrapPlainText(body, firstWidth, continuationWidth, indent)
+	lines := make([]logLine, len(segments))
+	for index, segment := range segments {
+		linePrefix := strings.Repeat(" ", indent)
+		showTimestamp := false
+		if index == 0 {
+			linePrefix = prefix
+			showTimestamp = prefix != ""
+		}
+		lines[index] = logLine{
+			record:     record,
+			text:       segment.text,
+			bodyOffset: segment.offset,
+			prefix:     linePrefix,
+			timestamp:  showTimestamp,
+		}
+	}
+	return lines
+}
+
+// wrapPlainText は ANSI を含まない本文だけを折り、元文字列内の位置も残す。
+// 空白で折れるときは区切りを表示せず、長い単語はセル幅で切る。
+func wrapPlainText(value string, firstWidth, continuationWidth, indent int) []textSegment {
+	firstWidth = max(0, firstWidth)
+	continuationWidth = max(0, continuationWidth-indent)
+	if value == "" || firstWidth == 0 {
+		return []textSegment{{}}
+	}
+
+	segments := make([]textSegment, 0, 1)
+	start := 0
+	width := firstWidth
+	for start < len(value) {
+		end := hardWrapEnd(value, start, width)
+		if end >= len(value) {
+			segments = append(segments, textSegment{text: value[start:], offset: start})
+			break
+		}
+
+		breakAt, next := whitespaceBreak(value, start, end)
+		if breakAt < 0 {
+			breakAt, next = end, end
+			for next < len(value) {
+				character, size := utf8.DecodeRuneInString(value[next:])
+				if !unicode.IsSpace(character) {
+					break
+				}
+				next += size
+			}
+		}
+		segments = append(segments, textSegment{
+			text:   value[start:breakAt],
+			offset: start,
+		})
+		start = next
+		width = continuationWidth
+		if width == 0 {
+			break
+		}
+	}
+	if len(segments) == 0 {
+		return []textSegment{{}}
+	}
+	return segments
+}
+
+func hardWrapEnd(value string, start, width int) int {
+	end := start
+	used := 0
+	for end < len(value) {
+		cluster, characterWidth := ansi.FirstGraphemeCluster(
+			value[end:],
+			ansi.GraphemeWidth,
+		)
+		if end > start && used+characterWidth > width {
+			break
+		}
+		end += len(cluster)
+		used += characterWidth
+		if used >= width {
+			break
+		}
+	}
+	return end
+}
+
+func whitespaceBreak(value string, start, end int) (int, int) {
+	breakAt := -1
+	next := -1
+	for index, character := range value[start:end] {
+		position := start + index
+		if position > start && unicode.IsSpace(character) {
+			breakAt = position
+			next = position + utf8.RuneLen(character)
+		}
+	}
+	if breakAt < 0 {
+		return -1, -1
+	}
+	for next < len(value) {
+		character, size := utf8.DecodeRuneInString(value[next:])
+		if !unicode.IsSpace(character) {
+			break
+		}
+		next += size
+	}
+	return breakAt, next
+}
+
 func renderLogRecord(record logRecord, width int) string {
+	lines := wrapLogRecord(record, width)
+	return renderLogLine(lines[0], width)
+}
+
+func renderLogLine(line logLine, width int) string {
 	if width <= 0 {
 		return ""
 	}
 
-	// タブは幅計算では 0 桁だが lipgloss が描画時に空白 4 個へ展開するので、
-	// 幅を数える前に空白 1 個へ潰す。1 バイトのままなので後段の位置計算も狂わない。
-	body := strings.ReplaceAll(record.line(), "\t", " ")
-	prefix := ""
-	if width >= timestampGutterWidth {
-		prefix = formatLogTimestamp(record) + " "
-	}
-	// 切り詰めは ANSI を含まない状態で済ませ、色は残った範囲へ最後に付ける。
-	plain := truncate(prefix+body, width)
+	prefix := truncate(line.prefix, width)
+	bodyWidth := max(0, width-stringWidth(prefix))
+	body := truncate(line.text, bodyWidth)
 
 	var result strings.Builder
-	prefixEnd := min(len(prefix), len(plain))
-	if prefixEnd > 0 {
-		result.WriteString(timestampStyle(record.timestampSource).Render(plain[:prefixEnd]))
-	}
-
-	bodyStart := prefixEnd
-	playerStart := -1
-	if record.player != "" {
-		if position := strings.Index(body, record.player); position >= 0 {
-			playerStart = len(prefix) + position
-		}
-	}
-	kindStyle := styleForLogKind(record.kind)
-	if playerStart < bodyStart || playerStart >= len(plain) {
-		result.WriteString(kindStyle.Render(plain[bodyStart:]))
+	if line.timestamp {
+		result.WriteString(timestampStyle(line.record.timestampSource).Render(prefix))
 	} else {
-		playerEnd := min(playerStart+len(record.player), len(plain))
-		result.WriteString(kindStyle.Render(plain[bodyStart:playerStart]))
-		result.WriteString(styleForPlayer(record.player).Render(plain[playerStart:playerEnd]))
-		result.WriteString(kindStyle.Render(plain[playerEnd:]))
+		result.WriteString(prefix)
 	}
 
-	if padding := width - stringWidth(plain); padding > 0 {
+	playerStart := -1
+	normalized := strings.ReplaceAll(line.record.line(), "\t", " ")
+	if line.record.player != "" {
+		playerStart = strings.Index(normalized, line.record.player)
+	}
+	segmentStart := line.bodyOffset
+	segmentEnd := segmentStart + len(body)
+	playerEnd := playerStart + len(line.record.player)
+	kindStyle := styleForLogKind(line.record.kind)
+	if playerStart < 0 || playerEnd <= segmentStart || playerStart >= segmentEnd {
+		result.WriteString(kindStyle.Render(body))
+	} else {
+		start := clamp(playerStart-segmentStart, 0, len(body))
+		end := clamp(playerEnd-segmentStart, start, len(body))
+		result.WriteString(kindStyle.Render(body[:start]))
+		result.WriteString(styleForPlayer(line.record.player).Render(body[start:end]))
+		result.WriteString(kindStyle.Render(body[end:]))
+	}
+
+	if padding := width - stringWidth(prefix+body); padding > 0 {
 		result.WriteString(strings.Repeat(" ", padding))
 	}
 	return result.String()

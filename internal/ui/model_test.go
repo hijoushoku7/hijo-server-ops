@@ -31,7 +31,7 @@ func TestModelBoundsLogHistoryAndStoredRecords(t *testing.T) {
 	if model.logs.Len() != historyLines {
 		t.Fatalf("logs = %d, limit = %d", model.logs.Len(), historyLines)
 	}
-	if window := model.logs.Window(model.layout.logLines()); len(window) !=
+	if window := model.logs.Window(modelLogViewport(model)); len(window) !=
 		model.layout.logLines() {
 		t.Fatalf("window = %d, viewport = %d", len(window), model.layout.logLines())
 	}
@@ -391,6 +391,7 @@ func TestModelScrollsFocusedBufferAndKeepsPositionOnNewLines(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	viewport := model.layout.logLines()
+	logViewport := modelLogViewport(model)
 	for index := 0; index < viewport*3; index++ {
 		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
 			Kind:    serverlog.KindOther,
@@ -408,27 +409,27 @@ func TestModelScrollsFocusedBufferAndKeepsPositionOnNewLines(t *testing.T) {
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if model.logs.Offset() != viewport {
-		t.Fatalf("offset = %d, viewport = %d", model.logs.Offset(), viewport)
+	if model.logs.Offset(logViewport) != viewport {
+		t.Fatalf("offset = %d, viewport = %d", model.logs.Offset(logViewport), viewport)
 	}
-	top := model.logs.Window(viewport)[0].line()
+	top := model.logs.Window(logViewport)[0].record.line()
 
 	// 遡っている間は新着で表示が流れない。
 	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
 		Kind:    serverlog.KindOther,
 		Message: "newest",
 	}})
-	if got := model.logs.Window(viewport)[0].line(); got != top {
+	if got := model.logs.Window(logViewport)[0].record.line(); got != top {
 		t.Fatalf("window shifted: %q -> %q", top, got)
 	}
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
-	if model.logs.Offset() != 0 {
-		t.Fatalf("offset = %d", model.logs.Offset())
+	if model.logs.Offset(logViewport) != 0 {
+		t.Fatalf("offset = %d", model.logs.Offset(logViewport))
 	}
-	window := model.logs.Window(viewport)
-	if window[len(window)-1].line() != "newest" {
-		t.Fatalf("tail = %q", window[len(window)-1].line())
+	window := model.logs.Window(logViewport)
+	if window[len(window)-1].record.line() != "newest" {
+		t.Fatalf("tail = %q", window[len(window)-1].record.line())
 	}
 }
 
@@ -436,6 +437,7 @@ func TestModelReturnsToLatestWhenFocusIsReleased(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	viewport := model.layout.logLines()
+	logViewport := modelLogViewport(model)
 	for index := 0; index < viewport*3; index++ {
 		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
 			Kind:    serverlog.KindOther,
@@ -448,7 +450,7 @@ func TestModelReturnsToLatestWhenFocusIsReleased(t *testing.T) {
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if model.logs.Offset() == 0 {
+	if model.logs.Offset(logViewport) == 0 {
 		t.Fatalf("buffer did not scroll back")
 	}
 
@@ -456,11 +458,38 @@ func TestModelReturnsToLatestWhenFocusIsReleased(t *testing.T) {
 	if model.mode != modeSelect {
 		t.Fatalf("mode = %d", model.mode)
 	}
-	if model.logs.Offset() != 0 {
-		t.Fatalf("offset = %d, want 0", model.logs.Offset())
+	if model.logs.Offset(logViewport) != 0 {
+		t.Fatalf("offset = %d, want 0", model.logs.Offset(logViewport))
 	}
 	if !strings.Contains(model.View().Content, "line "+fmt.Sprint(viewport*3-1)) {
 		t.Fatalf("view does not show the latest line")
+	}
+}
+
+func TestBufferPanelIndicatorCountsWrappedDisplayLines(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	for index := 0; index < 6; index++ {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind:    serverlog.KindOther,
+			Message: strings.Repeat(fmt.Sprintf("record%d ", index), 20),
+		}})
+	}
+	viewport := modelLogViewport(model)
+	model.logs.ScrollToStart(viewport)
+	offset := model.logs.Offset(viewport)
+	if offset <= model.logs.Len() {
+		t.Fatalf("display-line offset = %d, records = %d", offset, model.logs.Len())
+	}
+
+	panel := stripANSI(model.renderBufferPanel(
+		panelLog,
+		&model.logs,
+		model.layout.rightWidth,
+		model.layout.bodyHeight,
+	))
+	if !strings.Contains(panel, fmt.Sprintf("Log ↑%d", offset)) {
+		t.Fatalf("panel title does not contain display-line offset %d:\n%s", offset, panel)
 	}
 }
 
@@ -922,6 +951,13 @@ func TestModelViewKeepsRectangularWithThreeTopPanels(t *testing.T) {
 
 func newTestModel() *Model {
 	return New(make(chan Action, 8), nil, 0, DefaultSettings())
+}
+
+func modelLogViewport(model *Model) bufferViewport {
+	return bufferViewport{
+		width:  model.layout.rightContentWidth(),
+		height: model.layout.logLines(),
+	}
 }
 
 func stripANSI(value string) string {

@@ -167,25 +167,31 @@ func (model *Model) handleBufferKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyDown:
 		buffer.Scroll(-1, viewport)
 	case tea.KeyPgUp:
-		buffer.Scroll(viewport, viewport)
+		buffer.Scroll(viewport.height, viewport)
 	case tea.KeyPgDown:
-		buffer.Scroll(-viewport, viewport)
+		buffer.Scroll(-viewport.height, viewport)
 	case tea.KeyHome:
-		buffer.Scroll(buffer.Len(), viewport)
+		buffer.ScrollToStart(viewport)
 	case tea.KeyEnd:
 		buffer.ScrollToEnd()
 	}
 	return model, nil
 }
 
-func (model *Model) focusedBuffer() (*lineBuffer, int) {
+func (model *Model) focusedBuffer() (*lineBuffer, bufferViewport) {
 	switch model.panel {
 	case panelChat:
-		return &model.chat, model.layout.chatLines()
+		return &model.chat, bufferViewport{
+			width:  model.layout.leftContentWidth(),
+			height: model.layout.chatLines(),
+		}
 	case panelLog:
-		return &model.logs, model.layout.logLines()
+		return &model.logs, bufferViewport{
+			width:  model.layout.rightContentWidth(),
+			height: model.layout.logLines(),
+		}
 	default:
-		return nil, 0
+		return nil, bufferViewport{}
 	}
 }
 

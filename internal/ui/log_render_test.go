@@ -1,12 +1,47 @@
 package ui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
+
+func TestWrapPlainTextPrefersWhitespace(t *testing.T) {
+	segments := wrapPlainText("alpha beta gamma", 8, 10, 2)
+	if got, want := segmentTexts(segments), []string{"alpha", "beta", "gamma"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("segments = %q, want %q", got, want)
+	}
+}
+
+func TestWrapPlainTextHardWrapsLongWords(t *testing.T) {
+	segments := wrapPlainText("abcdefghij", 4, 4, 0)
+	if got, want := segmentTexts(segments), []string{"abcd", "efgh", "ij"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("segments = %q, want %q", got, want)
+	}
+}
+
+func TestWrapPlainTextUsesCellWidthForWideCharacters(t *testing.T) {
+	segments := wrapPlainText("あいうえお", 4, 6, 2)
+	if got, want := segmentTexts(segments), []string{"あい", "うえ", "お"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("segments = %q, want %q", got, want)
+	}
+}
+
+func TestWrapLogRecordIndentsContinuationLines(t *testing.T) {
+	record := logRecord{kind: serverlog.KindOther, text: "abcdefghij"}
+	lines := wrapLogRecord(record, 10)
+	got := make([]string, len(lines))
+	for index, line := range lines {
+		got[index] = stripANSI(renderLogLine(line, 10))
+	}
+	want := []string{"n/a   abcd", "      efgh", "      ij  "}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("lines = %q, want %q", got, want)
+	}
+}
 
 func TestRenderLogRecordAddsSixColumnTimestampGutter(t *testing.T) {
 	record := logRecord{
@@ -86,4 +121,12 @@ func TestRenderLogRecordKeepsWidthAfterColoring(t *testing.T) {
 			t.Fatalf("width %d: line width = %d, text = %q", width, got, stripANSI(line))
 		}
 	}
+}
+
+func segmentTexts(segments []textSegment) []string {
+	values := make([]string, len(segments))
+	for index, segment := range segments {
+		values[index] = segment.text
+	}
+	return values
 }
