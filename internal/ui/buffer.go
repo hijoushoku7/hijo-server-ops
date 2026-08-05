@@ -48,9 +48,12 @@ type wrappedLogRecord struct {
 	lines  []logLine
 }
 
+// logAnchor は閲覧位置を本文のバイト位置で覚える。セグメント番号で持つと
+// 幅を変えたときにセグメントの総数自体が変わり、同じ番号が本文の別の場所を
+// 指してしまう（長い JSON やスタックトレースで顕著）。
 type logAnchor struct {
-	record  uint64
-	segment int
+	record uint64
+	offset int
 }
 
 type bufferViewport struct {
@@ -205,13 +208,13 @@ func (buffer *lineBuffer) clampViewport(viewport bufferViewport) {
 	if len(buffer.wrapped) == 0 || buffer.anchor.record == 0 {
 		return
 	}
-	start := buffer.anchorLine()
+	// 末尾より下を指してしまったときだけ追従へ戻す。それ以外で書き戻すと
+	// 覚えた本文位置が現在の幅のセグメント先頭へ丸められ、幅を往復した
+	// ときに位置がずれていく。
 	tail := max(0, buffer.displayLineCount()-viewport.height)
-	if start >= tail {
+	if buffer.anchorLine() >= tail {
 		buffer.anchor = logAnchor{}
-		return
 	}
-	buffer.anchor = buffer.anchorAt(max(0, start))
 }
 
 func (buffer *lineBuffer) viewportStart(viewport bufferViewport) int {
@@ -225,7 +228,15 @@ func (buffer *lineBuffer) anchorLine() int {
 	lineNumber := 0
 	for _, record := range buffer.wrapped {
 		if record.number == buffer.anchor.record {
-			segment := clamp(buffer.anchor.segment, 0, max(0, len(record.lines)-1))
+			// 覚えた本文位置を含むセグメント、つまり先頭がその位置を
+			// 追い越さない最後のセグメントへ写す。
+			segment := 0
+			for index, line := range record.lines {
+				if line.bodyOffset > buffer.anchor.offset {
+					break
+				}
+				segment = index
+			}
 			return lineNumber + segment
 		}
 		lineNumber += len(record.lines)
@@ -239,7 +250,8 @@ func (buffer *lineBuffer) anchorAt(lineNumber int) logAnchor {
 	for _, record := range buffer.wrapped {
 		end := position + len(record.lines)
 		if lineNumber < end {
-			return logAnchor{record: record.number, segment: lineNumber - position}
+			line := record.lines[lineNumber-position]
+			return logAnchor{record: record.number, offset: line.bodyOffset}
 		}
 		position = end
 	}

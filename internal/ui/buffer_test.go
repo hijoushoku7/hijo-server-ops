@@ -2,6 +2,7 @@ package ui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -85,7 +86,10 @@ func TestLineBufferKeepsRecordAnchorAcrossWidthChange(t *testing.T) {
 	firstLines := len(wrapLogRecord(buffer.At(0), narrow.width))
 	buffer.Scroll(-firstLines-1, narrow)
 	wantAnchor := buffer.itemAt(1).number
-	want := logAnchor{record: wantAnchor, segment: 1}
+	want := logAnchor{
+		record: wantAnchor,
+		offset: wrapLogRecord(buffer.At(1), narrow.width)[1].bodyOffset,
+	}
 	if buffer.anchor != want {
 		t.Fatalf("anchor = %#v, want %#v", buffer.anchor, want)
 	}
@@ -95,9 +99,45 @@ func TestLineBufferKeepsRecordAnchorAcrossWidthChange(t *testing.T) {
 	if buffer.anchor != want {
 		t.Fatalf("anchor after resize = %#v, want %#v", buffer.anchor, want)
 	}
-	if len(window) == 0 || window[0].record.line() != "anchored record wraps" ||
-		window[0].bodyOffset == 0 {
+	// 幅が広がるとセグメントの切れ目は変わるので、先頭が同じセグメント
+	// 番号になるとは限らない。覚えた本文位置を含んでいればよい。
+	top := window[0]
+	if len(window) == 0 || top.record.line() != "anchored record wraps" ||
+		top.bodyOffset > want.offset ||
+		want.offset >= top.bodyOffset+len(top.text) {
 		t.Fatalf("window after resize = %#v", window)
+	}
+}
+
+// 1 レコードが何十セグメントにも折れるとき、アンカーをセグメント番号で
+// 持つと幅を変えた時点でセグメント総数が変わり、まったく別の場所へ飛ぶ。
+// 本文位置で覚えていれば、広げても狭めても同じ本文が先頭に残る。
+func TestLineBufferKeepsBodyPositionAcrossWidthRoundTrip(t *testing.T) {
+	var buffer lineBuffer
+	buffer.SetLimit(2)
+	buffer.Add(testLogRecord(strings.Repeat("あa1", 200)))
+
+	narrow := bufferViewport{width: 12, height: 3}
+	buffer.ScrollToStart(narrow)
+	buffer.Scroll(-30, narrow)
+	want := buffer.Window(narrow)[0].bodyOffset
+	if want == 0 {
+		t.Fatalf("scroll did not move into the record")
+	}
+
+	for _, viewport := range []bufferViewport{
+		{width: 60, height: 3},
+		{width: 8, height: 3},
+		narrow,
+	} {
+		line := buffer.Window(viewport)[0]
+		length := len(line.text)
+		if line.bodyOffset > want || want >= line.bodyOffset+max(1, length) {
+			t.Fatalf(
+				"width %d: top segment covers [%d,%d), want it to contain %d",
+				viewport.width, line.bodyOffset, line.bodyOffset+length, want,
+			)
+		}
 	}
 }
 
