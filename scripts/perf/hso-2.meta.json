@@ -1,0 +1,11 @@
+{
+  "mode": "hso",
+  "label": "hso-2",
+  "ready": true,
+  "ready_sec": 7.116578102111816,
+  "stop_sec": 157.7569375038147,
+  "settle": 30.0,
+  "sample": 120.0,
+  "hz": 100,
+  "started_at": 1785745461.0357149
+}
