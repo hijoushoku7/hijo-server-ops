@@ -1,6 +1,10 @@
 package ui
 
-import "charm.land/lipgloss/v2"
+import (
+	"charm.land/lipgloss/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
+)
 
 // 初期値を既定プリセットと揃え、New を通さないテストでも同じ配色にする。
 var (
@@ -20,6 +24,19 @@ var (
 	keyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#282A36")).
 			Background(lipgloss.Color("#BBBBBB"))
+	logTimestampStyle = color("#777777")
+	logReceivedStyle  = color("#5A5A5A").Faint(true)
+	logKindStyles     = map[serverlog.Kind]lipgloss.Style{
+		serverlog.KindPlayerJoin:  color("#50FA7B"),
+		serverlog.KindPlayerLeave: color("#FF5555"),
+		serverlog.KindChat:        color("#F8F8F2"),
+		serverlog.KindCommand:     color("#BD93F9"),
+		serverlog.KindLag:         color("#FFB86C"),
+		serverlog.KindOther:       color("#BBBBBB"),
+	}
+	logPlayerStyles = playerStyles([]string{
+		"#8BE9FD", "#FF79C6", "#F1FA8C", "#50FA7B", "#BD93F9", "#FFB86C",
+	})
 )
 
 type framePalette struct {
@@ -47,6 +64,18 @@ type selectionPalette struct {
 	background    string
 	keyForeground string
 	keyBackground string
+}
+
+type logPalette struct {
+	timestamp string
+	received  string
+	join      string
+	leave     string
+	chat      string
+	command   string
+	lag       string
+	other     string
+	players   []string
 }
 
 var framePresets = map[string]framePalette{
@@ -101,6 +130,39 @@ var selectionPresets = map[string]selectionPalette{
 	},
 }
 
+var logPresets = map[string]logPalette{
+	"dracula": {
+		timestamp: "#777777", received: "#5A5A5A",
+		join: "#50FA7B", leave: "#FF5555", chat: "#F8F8F2",
+		command: "#BD93F9", lag: "#FFB86C", other: "#BBBBBB",
+		players: []string{"#8BE9FD", "#FF79C6", "#F1FA8C", "#50FA7B", "#BD93F9", "#FFB86C"},
+	},
+	"mono": {
+		timestamp: "#777777", received: "#555555",
+		join: "#E0E0E0", leave: "#A0A0A0", chat: "#F8F8F2",
+		command: "#C8C8C8", lag: "#FFFFFF", other: "#909090",
+		players: []string{"#FFFFFF", "#E0E0E0", "#C8C8C8", "#B0B0B0"},
+	},
+	"warm": {
+		timestamp: "#9B7B6B", received: "#70584D",
+		join: "#F1FA8C", leave: "#FF5555", chat: "#FFF1DC",
+		command: "#FF79C6", lag: "#FFB86C", other: "#C9A58A",
+		players: []string{"#FFD166", "#FF9F68", "#FF79C6", "#F1FA8C", "#FFB86C"},
+	},
+	"cool": {
+		timestamp: "#6272A4", received: "#44506B",
+		join: "#8BE9FD", leave: "#BD93F9", chat: "#E6F7FF",
+		command: "#7AA2F7", lag: "#FF79C6", other: "#8FA9B8",
+		players: []string{"#8BE9FD", "#56B4E9", "#BD93F9", "#A0E9FF", "#7DCFFF"},
+	},
+	"safe": {
+		timestamp: "#777777", received: "#555555",
+		join: "#009E73", leave: "#D55E00", chat: "#F0F0F0",
+		command: "#CC79A7", lag: "#E69F00", other: "#999999",
+		players: []string{"#56B4E9", "#E69F00", "#CC79A7", "#009E73", "#F0E442"},
+	},
+}
+
 // 配色をグループ単位に限定し、反転表示や警告色の意味を壊さない。
 func applyTheme(settings Settings) {
 	defaults := DefaultSettings()
@@ -136,6 +198,20 @@ func applyTheme(settings Settings) {
 		Bold(true)
 	keyStyle = color(selection.keyForeground).
 		Background(lipgloss.Color(selection.keyBackground))
+
+	logs := preset(logPresets, settings.LogPreset, defaults.LogPreset)
+	logTimestampStyle = color(logs.timestamp)
+	// 受信時刻はログ由来の時刻より暗くし、推定値であることを区別する。
+	logReceivedStyle = color(logs.received).Faint(true)
+	logKindStyles = map[serverlog.Kind]lipgloss.Style{
+		serverlog.KindPlayerJoin:  color(logs.join),
+		serverlog.KindPlayerLeave: color(logs.leave),
+		serverlog.KindChat:        color(logs.chat),
+		serverlog.KindCommand:     color(logs.command),
+		serverlog.KindLag:         color(logs.lag),
+		serverlog.KindOther:       color(logs.other),
+	}
+	logPlayerStyles = playerStyles(logs.players)
 }
 
 func preset[T any](presets map[string]T, selected, fallback string) T {
@@ -147,4 +223,12 @@ func preset[T any](presets map[string]T, selected, fallback string) T {
 
 func color(value string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(value))
+}
+
+func playerStyles(colors []string) []lipgloss.Style {
+	styles := make([]lipgloss.Style, len(colors))
+	for index, value := range colors {
+		styles[index] = color(value).Bold(true)
+	}
+	return styles
 }

@@ -88,7 +88,7 @@ func TestSaveWritesReloadableConfig(t *testing.T) {
 	path := filepath.Join(dir, "hso.toml")
 	cfg := Config{
 		Server: Server{Command: "./run.sh", WorkDir: dir},
-		UI:     UI{Theme: Theme{Frame: "neon", Graph: "safe"}},
+		UI:     UI{Theme: Theme{Frame: "neon", Graph: "safe", Log: "cool"}},
 	}
 
 	if err := Save(path, cfg); err != nil {

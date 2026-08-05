@@ -162,7 +162,7 @@ func TestModelKeepsHistoryWhenTerminalBecomesTooSmall(t *testing.T) {
 
 func TestModelRestoresFullLogLineAfterResize(t *testing.T) {
 	model := newTestModel()
-	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
 	line := "start-" + strings.Repeat("x", 50) + "-restored"
 	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
 		Kind:    serverlog.KindOther,
@@ -173,7 +173,7 @@ func TestModelRestoresFullLogLineAfterResize(t *testing.T) {
 	if strings.Contains(model.View().Content, line) {
 		t.Fatalf("narrow view unexpectedly contains the full line")
 	}
-	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
 	if !strings.Contains(model.View().Content, line) {
 		t.Fatalf("expanded view did not restore the full line")
 	}

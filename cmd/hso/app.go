@@ -64,6 +64,9 @@ func settingsFrom(cfg config.Config) ui.Settings {
 	if value := cfg.UI.Theme.Selection; value != "" {
 		settings.SelectionPreset = value
 	}
+	if value := cfg.UI.Theme.Log; value != "" {
+		settings.LogPreset = value
+	}
 	return settings
 }
 
@@ -74,6 +77,7 @@ func saveSettings(configPath string, cfg config.Config, settings ui.Settings) er
 		Meter:     settings.MeterPreset,
 		Title:     settings.TitlePreset,
 		Selection: settings.SelectionPreset,
+		Log:       settings.LogPreset,
 	}
 	return config.Save(configPath, cfg)
 }
