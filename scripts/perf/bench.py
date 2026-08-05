@@ -7,6 +7,9 @@ bare : mc-server-test/run.sh を直接起動（stdout はファイル）
 hso  : pty 上で hso_ja -config hso.toml を起動
 
 出力: <label>.csv (毎秒のプロセス別サンプル), <label>.meta.json
+
+パスは既定でスクリプトの位置から導く。変えたいときは環境変数で上書きする:
+HSO_ROOT / HSO_SERVER_DIR / HSO_BINARY / HSO_PERF_OUT
 """
 import json
 import os
@@ -21,10 +24,14 @@ import termios
 import time
 import fcntl
 
-ROOT = "/home/hijoushoku9/projects/hijo-server-ops"
-SERVER_DIR = os.path.join(ROOT, "mc-server-test")
+HERE = os.path.dirname(os.path.abspath(__file__))
+# scripts/perf から 2 つ上がリポジトリのルート。
+ROOT = os.environ.get("HSO_ROOT") or os.path.dirname(os.path.dirname(HERE))
+SERVER_DIR = os.environ.get("HSO_SERVER_DIR") or os.path.join(ROOT, "mc-server-test")
 LOG = os.path.join(SERVER_DIR, "logs", "latest.log")
-OUT = "/home/hijoushoku9/.claude/jobs/bde3b859/tmp"
+# 出力はこのスクリプトと同じ場所へ。analyze.py が読む先と揃える。
+OUT = os.environ.get("HSO_PERF_OUT") or HERE
+BINARY = os.environ.get("HSO_BINARY") or os.path.join(ROOT, "hso_ja")
 HZ = os.sysconf("SC_CLK_TCK")
 PAGE = os.sysconf("SC_PAGE_SIZE")
 
@@ -168,8 +175,7 @@ def start_hso():
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLUMNS"] = "120"
         os.environ["LINES"] = "40"
-        os.execv(os.path.join(ROOT, "hso_ja"),
-                 [os.path.join(ROOT, "hso_ja"), "-config", "hso.toml"])
+        os.execv(BINARY, [BINARY, "-config", "hso.toml"])
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     return pid, fd

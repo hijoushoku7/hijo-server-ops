@@ -1,0 +1,11 @@
+{
+  "mode": "bare",
+  "label": "bare-1",
+  "ready": true,
+  "ready_sec": 7.085573673248291,
+  "stop_sec": 368.10987663269043,
+  "settle": 60.0,
+  "sample": 300.0,
+  "hz": 100,
+  "started_at": 1785744493.652349
+}

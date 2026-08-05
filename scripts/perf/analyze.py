@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""bench.py の CSV を集計する。"""
+"""bench.py の CSV を集計する。
+
+読む場所は既定でこのスクリプトと同じディレクトリ。HSO_PERF_OUT で上書きできる。
+"""
 import csv
 import json
 import os
 import statistics
 import sys
 
-OUT = "/home/hijoushoku9/.claude/jobs/bde3b859/tmp"
+OUT = os.environ.get("HSO_PERF_OUT") or os.path.dirname(os.path.abspath(__file__))
 HZ = 100
 
 
