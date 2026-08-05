@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
@@ -52,11 +53,16 @@ func readServerOutput(input io.Reader, logs chan serverlog.Entry) {
 }
 
 func parseOutputLine(line []byte, truncated bool) serverlog.Entry {
+	receivedAt := time.Now()
 	line = bytes.TrimRight(line, "\r\n")
 	if truncated {
 		line = append(line, []byte("…")...)
 	}
 	entry := serverlog.Parse(string(line))
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = receivedAt
+		entry.TimestampSource = serverlog.TimestampReceived
+	}
 	entry.Raw = ""
 	return entry
 }

@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"fmt"
+	"time"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
@@ -64,15 +64,9 @@ func (model *Model) resetServerState() {
 
 func (model *Model) resize(width, height int) {
 	model.layout = calculateLayout(width, height)
-	history := 0
-	if model.layout.ready {
-		// 履歴は表示行数と切り離し、スクロール可能な量を一定にする。
-		history = historyLines
-	}
-	model.chat.SetLimit(history)
-	model.logs.SetLimit(history)
-	model.chat.Truncate(model.layout.leftContentWidth())
-	model.logs.Truncate(model.layout.rightContentWidth())
+	// 履歴は表示可否や表示行数と切り離し、常に一定量を保持する。
+	model.chat.SetLimit(historyLines)
+	model.logs.SetLimit(historyLines)
 	model.samples.SetLimit(model.layout.graphWidth * 2)
 }
 
@@ -93,16 +87,25 @@ func (model *Model) addLog(entry serverlog.Entry) {
 
 	switch entry.Kind {
 	case serverlog.KindChat:
-		line := fmt.Sprintf("<%s> %s", entry.Player, entry.Chat)
-		model.chat.Add(truncate(line, model.layout.leftContentWidth()))
+		model.chat.Add(newLogRecord(entry, entry.Chat))
 	case serverlog.KindCommand:
-		line := entry.Command
-		if entry.Player != "" {
-			line = entry.Player + ": " + entry.Command
-		}
-		model.logs.Add(truncate(line, model.layout.rightContentWidth()))
+		model.logs.Add(newLogRecord(entry, entry.Command))
 	default:
-		model.logs.Add(truncate(entry.Message, model.layout.rightContentWidth()))
+		model.logs.Add(newLogRecord(entry, entry.Message))
+	}
+}
+
+func newLogRecord(entry serverlog.Entry, text string) logRecord {
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now()
+		entry.TimestampSource = serverlog.TimestampReceived
+	}
+	return logRecord{
+		timestamp:       entry.Timestamp,
+		timestampSource: entry.TimestampSource,
+		kind:            entry.Kind,
+		player:          entry.Player,
+		text:            text,
 	}
 }
 
