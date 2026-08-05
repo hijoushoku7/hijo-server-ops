@@ -17,6 +17,10 @@ func TestParseVanillaChat(t *testing.T) {
 	if entry.Message != "<alice> hello world" || entry.Raw != line {
 		t.Fatalf("Entry = %#v", entry)
 	}
+	if entry.TimestampSource != TimestampLog ||
+		entry.Timestamp.Format("15:04:05") != "12:34:56" {
+		t.Fatalf("timestamp = %v (%d)", entry.Timestamp, entry.TimestampSource)
+	}
 }
 
 func TestParseNotSecureChat(t *testing.T) {
@@ -40,6 +44,18 @@ func TestParseForgeCommand(t *testing.T) {
 	assertKind(t, entry, KindCommand)
 	if entry.Player != "alice" || entry.Command != "/time set day" {
 		t.Fatalf("Entry = %#v", entry)
+	}
+	if entry.TimestampSource != TimestampLog ||
+		entry.Timestamp.Format("15:04:05") != "12:34:56" {
+		t.Fatalf("timestamp = %v (%d)", entry.Timestamp, entry.TimestampSource)
+	}
+}
+
+func TestParseLeavesTimestampUnknownWithoutLogPrefix(t *testing.T) {
+	entry := Parse("plain output")
+
+	if !entry.Timestamp.IsZero() || entry.TimestampSource != TimestampUnknown {
+		t.Fatalf("timestamp = %v (%d)", entry.Timestamp, entry.TimestampSource)
 	}
 }
 

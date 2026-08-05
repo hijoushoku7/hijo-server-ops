@@ -39,6 +39,14 @@ func (kind Kind) String() string {
 	}
 }
 
+type TimestampSource uint8
+
+const (
+	TimestampUnknown TimestampSource = iota
+	TimestampLog
+	TimestampReceived
+)
+
 type Lag struct {
 	Behind      time.Duration
 	BehindKnown bool
@@ -47,14 +55,16 @@ type Lag struct {
 }
 
 type Entry struct {
-	Kind    Kind
-	Raw     string
-	Message string
-	Player  string
-	Chat    string
-	Command string
-	Reason  string
-	Lag     Lag
+	Kind            Kind
+	Timestamp       time.Time
+	TimestampSource TimestampSource
+	Raw             string
+	Message         string
+	Player          string
+	Chat            string
+	Command         string
+	Reason          string
+	Lag             Lag
 }
 
 var (
@@ -62,9 +72,12 @@ var (
 		"\x1b\\[[0-?]*[ -/]*[@-~]",
 	)
 	logPrefixPattern = regexp.MustCompile(
-		`^\[[^\]\r\n]+\]\s+` +
+		`^\[([^\]\r\n]+)\]\s+` +
 			`\[[^\]\r\n]+/(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\]` +
 			`(?:\s+\[[^\]\r\n]+\])*\s*:\s?(.*)$`,
+	)
+	clockPattern = regexp.MustCompile(
+		`(?:^|\s)([0-9]{2}:[0-9]{2}:[0-9]{2})(?:\.[0-9]+)?(?:$|\s)`,
 	)
 	chatPattern = regexp.MustCompile(
 		`^(?:\[Not Secure\]\s+)?<([^<>\s]+)>\s?(.*)$`,
@@ -98,11 +111,13 @@ var (
 func Parse(line string) Entry {
 	raw := strings.TrimRight(line, "\r\n")
 	normalized := ansiPattern.ReplaceAllString(raw, "")
-	message := extractMessage(normalized)
+	message, timestamp, timestampSource := extractLogFields(normalized)
 	entry := Entry{
-		Kind:    KindOther,
-		Raw:     raw,
-		Message: message,
+		Kind:            KindOther,
+		Timestamp:       timestamp,
+		TimestampSource: timestampSource,
+		Raw:             raw,
+		Message:         message,
 	}
 
 	if strings.HasPrefix(strings.TrimSpace(message), "Picked up JAVA_TOOL_OPTIONS:") {
@@ -160,12 +175,20 @@ func SentCommand(command string) Entry {
 	}
 }
 
-func extractMessage(line string) string {
+func extractLogFields(line string) (string, time.Time, TimestampSource) {
 	match := logPrefixPattern.FindStringSubmatch(line)
 	if match == nil {
-		return line
+		return line, time.Time{}, TimestampUnknown
 	}
-	return match[1]
+	clock := clockPattern.FindStringSubmatch(match[1])
+	if clock == nil {
+		return match[2], time.Time{}, TimestampUnknown
+	}
+	timestamp, err := time.Parse("15:04:05", clock[1])
+	if err != nil {
+		return match[2], time.Time{}, TimestampUnknown
+	}
+	return match[2], timestamp, TimestampLog
 }
 
 func parseLag(message string) Lag {

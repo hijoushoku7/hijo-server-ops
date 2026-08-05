@@ -51,6 +51,21 @@ func TestReadServerOutputParsesLines(t *testing.T) {
 	if first.Raw != "" || second.Raw != "" {
 		t.Fatalf("raw log was retained")
 	}
+	if first.TimestampSource != serverlog.TimestampLog ||
+		first.Timestamp.Format("15:04:05") != "12:00:00" {
+		t.Fatalf("first timestamp = %v (%d)", first.Timestamp, first.TimestampSource)
+	}
+}
+
+func TestReadServerOutputUsesReceiveTimeWithoutLogTimestamp(t *testing.T) {
+	logs := make(chan serverlog.Entry, 1)
+	readServerOutput(strings.NewReader("plain output\n"), logs)
+
+	entry := <-logs
+	if entry.Timestamp.IsZero() ||
+		entry.TimestampSource != serverlog.TimestampReceived {
+		t.Fatalf("timestamp = %v (%d)", entry.Timestamp, entry.TimestampSource)
+	}
 }
 
 func TestReadServerOutputBoundsLongLinesAndContinues(t *testing.T) {

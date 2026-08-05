@@ -1,22 +1,85 @@
 package ui
 
-import "github.com/charmbracelet/x/ansi"
+import (
+	"time"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
+)
+
+const maxLogRecordWidth = 1024
+
+type logRecord struct {
+	timestamp       time.Time
+	timestampSource serverlog.TimestampSource
+	kind            serverlog.Kind
+	player          string
+	text            string
+}
+
+func (record logRecord) line() string {
+	switch record.kind {
+	case serverlog.KindChat:
+		return "<" + record.player + "> " + record.text
+	case serverlog.KindCommand:
+		if record.player != "" {
+			return record.player + ": " + record.text
+		}
+	}
+	return record.text
+}
+
+func (record logRecord) bounded(width int) logRecord {
+	playerWidth := stringWidth(record.player)
+	textWidth := stringWidth(record.text)
+	overhead := 0
+	switch record.kind {
+	case serverlog.KindChat:
+		overhead = 3
+	case serverlog.KindCommand:
+		if record.player != "" {
+			overhead = 2
+		} else {
+			if textWidth > width {
+				record.text = truncate(record.text, width)
+			}
+			return record
+		}
+	default:
+		if playerWidth > width {
+			record.player = truncate(record.player, width)
+		}
+		if textWidth > width {
+			record.text = truncate(record.text, width)
+		}
+		return record
+	}
+	if overhead+playerWidth+textWidth <= width {
+		return record
+	}
+	record.player = truncate(record.player, max(0, width-overhead))
+	remaining := width - overhead - stringWidth(record.player)
+	record.text = truncate(record.text, max(0, remaining))
+	return record
+}
 
 type lineBuffer struct {
-	lines []string
+	lines []logRecord
 	start int
 	count int
 	// offset は最新行から何行遡って表示しているか。0 なら最新に追従する。
 	offset int
 }
 
-func (buffer *lineBuffer) Add(line string) {
+func (buffer *lineBuffer) Add(record logRecord) {
 	if len(buffer.lines) == 0 {
 		return
 	}
+	record = record.bounded(maxLogRecordWidth)
 	if buffer.count < len(buffer.lines) {
 		position := (buffer.start + buffer.count) % len(buffer.lines)
-		buffer.lines[position] = line
+		buffer.lines[position] = record
 		buffer.count++
 		// 遡って読んでいる間は、新着で表示が流れないよう位置を保つ。
 		if buffer.offset > 0 {
@@ -25,7 +88,7 @@ func (buffer *lineBuffer) Add(line string) {
 		buffer.clampOffset()
 		return
 	}
-	buffer.lines[buffer.start] = line
+	buffer.lines[buffer.start] = record
 	buffer.start = (buffer.start + 1) % len(buffer.lines)
 	// 満杯のときは最古行が押し出されて全体が 1 行ずれるので、空きがある
 	// ときと同じく offset も進めないと遡り位置が流れてしまう。
@@ -51,7 +114,7 @@ func (buffer *lineBuffer) SetLimit(limit int) {
 	}
 
 	keep := min(buffer.count, limit)
-	lines := make([]string, limit)
+	lines := make([]logRecord, limit)
 	for index := 0; index < keep; index++ {
 		lines[index] = buffer.At(buffer.count - keep + index)
 	}
@@ -70,14 +133,14 @@ func (buffer *lineBuffer) ScrollToEnd() {
 	buffer.offset = 0
 }
 
-func (buffer *lineBuffer) Window(viewport int) []string {
+func (buffer *lineBuffer) Window(viewport int) []logRecord {
 	if viewport <= 0 || buffer.count == 0 {
 		return nil
 	}
 	buffer.clampViewport(viewport)
 	end := buffer.count - buffer.offset
 	start := max(0, end-viewport)
-	window := make([]string, 0, end-start)
+	window := make([]logRecord, 0, end-start)
 	for index := start; index < end; index++ {
 		window = append(window, buffer.At(index))
 	}
@@ -104,16 +167,9 @@ func (buffer *lineBuffer) clampViewport(viewport int) {
 	}
 }
 
-func (buffer *lineBuffer) Truncate(width int) {
-	for index := 0; index < buffer.count; index++ {
-		position := (buffer.start + index) % len(buffer.lines)
-		buffer.lines[position] = truncate(buffer.lines[position], width)
-	}
-}
-
-func (buffer *lineBuffer) At(index int) string {
+func (buffer *lineBuffer) At(index int) logRecord {
 	if index < 0 || index >= buffer.count {
-		return ""
+		return logRecord{}
 	}
 	return buffer.lines[(buffer.start+index)%len(buffer.lines)]
 }

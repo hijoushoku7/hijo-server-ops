@@ -128,7 +128,7 @@ func (model *Model) renderBufferPanel(
 	lines := make([]string, contentHeight)
 	padding := max(0, contentHeight-len(window))
 	for index := 0; index < len(window) && padding+index < len(lines); index++ {
-		lines[padding+index] = window[index]
+		lines[padding+index] = window[index].line()
 	}
 
 	title := target.title()

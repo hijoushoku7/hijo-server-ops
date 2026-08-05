@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -15,14 +16,15 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
 
-func TestModelBoundsLogsAndSamplesToScreen(t *testing.T) {
+func TestModelBoundsLogHistoryAndStoredRecords(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	for index := 0; index < historyLines+2; index++ {
 		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
-			Kind:    serverlog.KindOther,
-			Message: strings.Repeat("x", 200) + string(rune('a'+index%26)),
+			Kind: serverlog.KindOther,
+			Message: strings.Repeat("x", maxLogRecordWidth+100) +
+				string(rune('a'+index%26)),
 		}})
 	}
 
@@ -33,8 +35,8 @@ func TestModelBoundsLogsAndSamplesToScreen(t *testing.T) {
 		model.layout.logLines() {
 		t.Fatalf("window = %d, viewport = %d", len(window), model.layout.logLines())
 	}
-	if stringWidth(model.logs.At(0)) > model.layout.rightContentWidth() {
-		t.Fatalf("line width = %d", stringWidth(model.logs.At(0)))
+	if width := stringWidth(model.logs.At(0).line()); width != maxLogRecordWidth {
+		t.Fatalf("line width = %d, want %d", width, maxLogRecordWidth)
 	}
 
 	for index := 0; index < model.layout.graphWidth*2+2; index++ {
@@ -52,8 +54,15 @@ func TestModelBoundsLogsAndSamplesToScreen(t *testing.T) {
 func TestModelRoutesLogsAndTracksPlayers(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	timestamp := time.Date(0, time.January, 1, 12, 34, 56, 0, time.UTC)
 	entries := []serverlog.Entry{
-		{Kind: serverlog.KindChat, Player: "alice", Chat: "hello"},
+		{
+			Kind:            serverlog.KindChat,
+			Timestamp:       timestamp,
+			TimestampSource: serverlog.TimestampLog,
+			Player:          "alice",
+			Chat:            "hello",
+		},
 		{Kind: serverlog.KindCommand, Player: "alice", Command: "/time set day"},
 		{Kind: serverlog.KindPlayerJoin, Player: "alice", Message: "alice joined the game"},
 		{Kind: serverlog.KindLag, Message: "Can't keep up!"},
@@ -62,12 +71,19 @@ func TestModelRoutesLogsAndTracksPlayers(t *testing.T) {
 		_, _ = model.Update(LogMsg{Entry: entry})
 	}
 
-	if model.chat.At(0) != "<alice> hello" {
-		t.Fatalf("chat = %q", model.chat.At(0))
+	if model.chat.At(0).line() != "<alice> hello" {
+		t.Fatalf("chat = %q", model.chat.At(0).line())
+	}
+	chat := model.chat.At(0)
+	if chat.timestamp != timestamp ||
+		chat.timestampSource != serverlog.TimestampLog ||
+		chat.kind != serverlog.KindChat || chat.player != "alice" ||
+		chat.text != "hello" {
+		t.Fatalf("chat record = %#v", chat)
 	}
 	// コマンドは専用ペインをやめて Log に流している。
-	if model.logs.At(0) != "alice: /time set day" {
-		t.Fatalf("command = %q", model.logs.At(0))
+	if model.logs.At(0).line() != "alice: /time set day" {
+		t.Fatalf("command = %q", model.logs.At(0).line())
 	}
 	if model.tracker.PlayerCount() != 1 || model.tracker.LagEvents() != 1 {
 		t.Fatalf(
@@ -114,7 +130,7 @@ func TestModelViewContainsBrailleGraphs(t *testing.T) {
 	}
 }
 
-func TestModelReleasesDisplayCachesWhenTerminalBecomesTooSmall(t *testing.T) {
+func TestModelKeepsHistoryWhenTerminalBecomesTooSmall(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
@@ -128,9 +144,38 @@ func TestModelReleasesDisplayCachesWhenTerminalBecomesTooSmall(t *testing.T) {
 	})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 20, Height: 5})
 
-	if model.chat.lines != nil ||
-		model.logs.lines != nil || model.samples.samples != nil {
-		t.Fatalf("display caches were retained: %#v", model)
+	if model.logs.Len() != 1 || model.logs.At(0).line() != "log" {
+		t.Fatalf("log history was discarded: %#v", model.logs)
+	}
+	if model.logs.Limit() != historyLines || model.chat.Limit() != historyLines {
+		t.Fatalf("history limits = %d, %d", model.logs.Limit(), model.chat.Limit())
+	}
+	if model.samples.samples != nil {
+		t.Fatalf("graph cache was retained: %#v", model.samples)
+	}
+
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	if !strings.Contains(model.View().Content, "log") {
+		t.Fatalf("restored view does not contain retained history")
+	}
+}
+
+func TestModelRestoresFullLogLineAfterResize(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	line := "start-" + strings.Repeat("x", 50) + "-restored"
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind:    serverlog.KindOther,
+		Message: line,
+	}})
+
+	_, _ = model.Update(tea.WindowSizeMsg{Width: minimumWidth, Height: 24})
+	if strings.Contains(model.View().Content, line) {
+		t.Fatalf("narrow view unexpectedly contains the full line")
+	}
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	if !strings.Contains(model.View().Content, line) {
+		t.Fatalf("expanded view did not restore the full line")
 	}
 }
 
@@ -173,8 +218,8 @@ func TestModelReportsMetricFailureOnceAndRecovery(t *testing.T) {
 
 	_, _ = model.Update(MetricsMsg{})
 	if model.logs.Len() != 2 ||
-		!strings.Contains(model.logs.At(1), "heap recovered") {
-		t.Fatalf("logs = %q, %q", model.logs.At(0), model.logs.At(1))
+		!strings.Contains(model.logs.At(1).line(), "heap recovered") {
+		t.Fatalf("logs = %q, %q", model.logs.At(0).line(), model.logs.At(1).line())
 	}
 	if strings.Contains(model.statsTitle(), "metrics degraded") {
 		t.Fatalf("title = %q", model.statsTitle())
@@ -218,9 +263,9 @@ func TestModelDisplaysServerAddressAndReportsFailure(t *testing.T) {
 		t.Fatalf("failed address = %q", got)
 	}
 	if model.logs.Len() != 1 || !strings.Contains(
-		model.logs.At(0), "public IPv4 unavailable",
+		model.logs.At(0).line(), "public IPv4 unavailable",
 	) {
-		t.Fatalf("logs = %q", model.logs.At(0))
+		t.Fatalf("logs = %q", model.logs.At(0).line())
 	}
 }
 
@@ -366,14 +411,14 @@ func TestModelScrollsFocusedBufferAndKeepsPositionOnNewLines(t *testing.T) {
 	if model.logs.Offset() != viewport {
 		t.Fatalf("offset = %d, viewport = %d", model.logs.Offset(), viewport)
 	}
-	top := model.logs.Window(viewport)[0]
+	top := model.logs.Window(viewport)[0].line()
 
 	// 遡っている間は新着で表示が流れない。
 	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
 		Kind:    serverlog.KindOther,
 		Message: "newest",
 	}})
-	if got := model.logs.Window(viewport)[0]; got != top {
+	if got := model.logs.Window(viewport)[0].line(); got != top {
 		t.Fatalf("window shifted: %q -> %q", top, got)
 	}
 
@@ -382,8 +427,8 @@ func TestModelScrollsFocusedBufferAndKeepsPositionOnNewLines(t *testing.T) {
 		t.Fatalf("offset = %d", model.logs.Offset())
 	}
 	window := model.logs.Window(viewport)
-	if window[len(window)-1] != "newest" {
-		t.Fatalf("tail = %q", window[len(window)-1])
+	if window[len(window)-1].line() != "newest" {
+		t.Fatalf("tail = %q", window[len(window)-1].line())
 	}
 }
 
@@ -540,8 +585,8 @@ func TestModelRecordsOnlySuccessfullySentCommands(t *testing.T) {
 		t.Fatalf("failed command was recorded")
 	}
 	_, _ = model.Update(ActionResultMsg{Action: action})
-	if model.logs.Len() != 1 || model.logs.At(0) != "say hello" {
-		t.Fatalf("logs = %q", model.logs.At(0))
+	if model.logs.Len() != 1 || model.logs.At(0).line() != "say hello" {
+		t.Fatalf("logs = %q", model.logs.At(0).line())
 	}
 }
 
