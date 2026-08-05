@@ -30,37 +30,11 @@ func (record logRecord) line() string {
 	return record.text
 }
 
+// bounded はレコード 1 件が抱える文字列量に上限を設ける。端末幅とは無関係の
+// メモリ上限で、画面幅がここに達することはないため表示には影響しない。
 func (record logRecord) bounded(width int) logRecord {
-	playerWidth := stringWidth(record.player)
-	textWidth := stringWidth(record.text)
-	overhead := 0
-	switch record.kind {
-	case serverlog.KindChat:
-		overhead = 3
-	case serverlog.KindCommand:
-		if record.player != "" {
-			overhead = 2
-		} else {
-			if textWidth > width {
-				record.text = truncate(record.text, width)
-			}
-			return record
-		}
-	default:
-		if playerWidth > width {
-			record.player = truncate(record.player, width)
-		}
-		if textWidth > width {
-			record.text = truncate(record.text, width)
-		}
-		return record
-	}
-	if overhead+playerWidth+textWidth <= width {
-		return record
-	}
-	record.player = truncate(record.player, max(0, width-overhead))
-	remaining := width - overhead - stringWidth(record.player)
-	record.text = truncate(record.text, max(0, remaining))
+	record.player = truncate(record.player, width)
+	record.text = truncate(record.text, width)
 	return record
 }
 
