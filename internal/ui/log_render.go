@@ -15,7 +15,9 @@ func renderLogRecord(record logRecord, width int) string {
 		return ""
 	}
 
-	body := record.line()
+	// タブは幅計算では 0 桁だが lipgloss が描画時に空白 4 個へ展開するので、
+	// 幅を数える前に空白 1 個へ潰す。1 バイトのままなので後段の位置計算も狂わない。
+	body := strings.ReplaceAll(record.line(), "\t", " ")
 	prefix := ""
 	if width >= timestampGutterWidth {
 		prefix = formatLogTimestamp(record) + " "

@@ -50,6 +50,27 @@ func TestPlayerColorIsStableForSameName(t *testing.T) {
 	}
 }
 
+// lipgloss はタブを空白 4 個へ展開するので、残したままだと幅計算より実際の
+// 描画が広くなり枠がずれる。スタックトレースのような本文で起きる。
+func TestRenderLogRecordFlattensTabs(t *testing.T) {
+	record := logRecord{
+		timestamp:       time.Date(2026, time.August, 5, 12, 34, 56, 0, time.UTC),
+		timestampSource: serverlog.TimestampLog,
+		kind:            serverlog.KindOther,
+		text:            "\tat java.base/java.lang.Thread.run",
+	}
+
+	for width := 1; width <= 40; width++ {
+		line := renderLogRecord(record, width)
+		if strings.Contains(line, "\t") {
+			t.Fatalf("width %d: line still contains a tab: %q", width, stripANSI(line))
+		}
+		if got := stringWidth(line); got != width {
+			t.Fatalf("width %d: line width = %d, text = %q", width, got, stripANSI(line))
+		}
+	}
+}
+
 func TestRenderLogRecordKeepsWidthAfterColoring(t *testing.T) {
 	record := logRecord{
 		timestamp:       time.Date(2026, time.August, 5, 12, 34, 56, 0, time.UTC),
