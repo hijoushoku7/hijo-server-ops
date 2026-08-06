@@ -81,9 +81,10 @@ const (
 
 	ExitAutoRestartHint     = "Esc: stop auto restart"
 	ExitAutoRestartCanceled = "Auto restart stopped."
-	ExitAutoRestartStopped  = "Auto restart gave up: the server keeps dying right after start."
+	ExitAutoRestartStopped  = "Auto restart gave up: the server keeps dying at startup."
 	ExitAutoRestartRejected = "Could not request the auto restart."
 	ExitAutoRestartSkipped  = "No auto restart: the start script never started java."
+	ExitAutoRestartFatal    = "No auto restart: hso itself failed."
 )
 
 func StoppedLogTitle(code string) string {

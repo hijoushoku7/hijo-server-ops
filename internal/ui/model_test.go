@@ -1626,3 +1626,101 @@ func TestModelAutoRestartReportsRejectedRequest(t *testing.T) {
 		t.Fatalf("exit = %#v, command = %T", model.exit, command)
 	}
 }
+
+// hso 自身の失敗は自動再起動の対象外。findJava の失敗のように hso が
+// SIGTERM を送る経路では、後から同じ世代の終了通知が届いて状態を
+// 作り直すので、そこで普通のクラッシュに化けてはいけない。
+func TestModelFatalExitIsNeverAutoRestarted(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := newAutoRestartModel(actions)
+	_, _ = model.Update(FatalMsg{Err: errors.New("java not found")})
+
+	exitedAt := time.Now()
+	_, command := model.Update(ProcessExitedMsg{
+		ExitCode:  143,
+		StartedAt: exitedAt.Add(-time.Second),
+		ExitedAt:  exitedAt,
+	})
+	if command != nil || model.exit.autoRestart ||
+		model.exit.notice != msg.ExitAutoRestartFatal {
+		t.Fatalf("exit = %#v, command = %T", model.exit, command)
+	}
+	if len(actions) != 0 || len(model.restart.attempts) != 0 {
+		t.Fatalf("actions = %d, attempts = %d",
+			len(actions), len(model.restart.attempts))
+	}
+}
+
+// 手動 restart では controller が runtime を切り離すので終了通知が届かない。
+// 畳まれる世代の稼働時間はここで拾わないと、履歴が残ったままになる。
+func TestModelManualRestartForgetsCrashesAfterLongRun(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	crash(model, errors.New("crashed"), time.Second)
+	if len(model.restart.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+
+	_, _ = model.Update(ServerStartedMsg{
+		Generation: 1,
+		StartedAt:  time.Now().Add(-2 * shortRunLimit),
+	})
+	_, _ = model.Update(ServerRestartingMsg{})
+	if len(model.restart.attempts) != 0 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+}
+
+// 終了通知で記録済みの世代を、その後の再起動でもう一度数えない。
+func TestModelRestartingDoesNotRecordTwice(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	crash(model, errors.New("crashed"), time.Second)
+	_, _ = model.Update(ServerRestartingMsg{})
+	if len(model.restart.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+}
+
+func TestRestartTrackerShortRunBoundary(t *testing.T) {
+	startedAt := time.Date(2026, time.August, 6, 12, 0, 0, 0, time.UTC)
+	tracker := restartTracker{attempts: []restartAttempt{{}, {}}}
+
+	tracker.record(startedAt, startedAt.Add(shortRunLimit-time.Nanosecond), true)
+	if len(tracker.attempts) != 3 {
+		t.Fatalf("attempts = %d", len(tracker.attempts))
+	}
+	// ちょうど shortRunLimit もった世代は立ち直り側に入れる。
+	tracker.record(startedAt, startedAt.Add(shortRunLimit), true)
+	if len(tracker.attempts) != 0 {
+		t.Fatalf("attempts = %d", len(tracker.attempts))
+	}
+
+	// 稼働時間が分からない世代は履歴に触らない。
+	tracker.attempts = []restartAttempt{{}}
+	tracker.record(time.Time{}, startedAt, true)
+	if len(tracker.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(tracker.attempts))
+	}
+}
+
+// モーダルは幅 64 で、はみ出した行は黙って切られる。ja / en どちらの
+// ビルドでも切れないことを、文言を足したときに気付ける形で見張る。
+func TestExitModalMessagesFitTheModal(t *testing.T) {
+	lines := []string{
+		msg.ExitStateCrashed,
+		msg.ExitStateStopped,
+		msg.ExitAutoRestartHint,
+		msg.ExitAutoRestartCanceled,
+		msg.ExitAutoRestartStopped,
+		msg.ExitAutoRestartSkipped,
+		msg.ExitAutoRestartRejected,
+		msg.ExitAutoRestartFatal,
+		msg.ExitAutoRestartIn(999),
+		msg.ExitAutoQuit(999),
+		msg.ExitStateRestarting("..."),
+	}
+	for _, line := range lines {
+		if width := stringWidth(line); width > exitModalWidth-2 {
+			t.Errorf("width %d > %d: %q", width, exitModalWidth-2, line)
+		}
+	}
+}

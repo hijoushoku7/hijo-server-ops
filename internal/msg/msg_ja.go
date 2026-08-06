@@ -80,8 +80,9 @@ const (
 	ExitAutoRestartHint     = "Esc: 自動再起動をやめる"
 	ExitAutoRestartCanceled = "自動再起動をやめました。"
 	ExitAutoRestartStopped  = "短時間での終了が続いたため、自動再起動を打ち切りました。"
-	ExitAutoRestartSkipped  = "起動スクリプトがjavaを起動していないため、自動再起動しません。"
+	ExitAutoRestartSkipped  = "起動スクリプトがjavaを起動しないため、自動再起動しません。"
 	ExitAutoRestartRejected = "自動再起動を要求できませんでした。"
+	ExitAutoRestartFatal    = "hso 側の失敗のため、自動再起動しません。"
 )
 
 func StoppedLogTitle(code string) string {

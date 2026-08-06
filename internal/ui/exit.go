@@ -57,6 +57,10 @@ type exitState struct {
 	autoRestart bool
 	// autoRestartAt はバックオフの明け時刻。0 なら待ちは終わっている。
 	autoRestartAt time.Time
+	// fatal は hso 自身の失敗で開いたモーダル。findJava の失敗のように
+	// hso が SIGTERM を送る経路では、後から同じ世代の終了通知が届いて
+	// 状態を作り直すので、自動再起動の対象外であることを引き継ぐ。
+	fatal bool
 }
 
 type restartTracker struct {
@@ -65,6 +69,9 @@ type restartTracker struct {
 	// この世代に限り、前回のクラッシュの残骸を原因として出さない。
 	logMark  uint64
 	attempts []restartAttempt
+	// recorded は現世代の終了をもう書き留めたか。手動 restart は
+	// controller が runtime を切り離すので終了通知が届かない。
+	recorded bool
 }
 
 type restartAttempt struct {
@@ -80,6 +87,7 @@ type restartAttempt struct {
 // 挟まれば立ち直っている。数えるのは短命な異常終了だけで、短時間で
 // 止められた正常停止は増やしも減らしもしない。
 func (tracker *restartTracker) record(startedAt, exitedAt time.Time, crashed bool) {
+	tracker.recorded = true
 	// 稼働時間が分からない世代は、短命とも立ち直りとも言えないので触らない。
 	if startedAt.IsZero() || exitedAt.Before(startedAt) {
 		return
@@ -94,6 +102,16 @@ func (tracker *restartTracker) record(startedAt, exitedAt time.Time, crashed boo
 			exitedAt:  exitedAt,
 		})
 	}
+}
+
+// recordStop は終了通知が来ないまま畳まれる世代を書き留める。手動 restart
+// では controller が runtime を切り離すため ProcessExitedMsg が届かず、
+// ここで拾わないと長くもった世代でも履歴が残る。
+func (tracker *restartTracker) recordStop(stoppedAt time.Time) {
+	if tracker.recorded {
+		return
+	}
+	tracker.record(tracker.startedAt, stoppedAt, false)
 }
 
 func (tracker *restartTracker) crashLoop() bool {
@@ -131,8 +149,11 @@ func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
 		crashed = true
 	}
 	state := model.newExitState(crashed, err, message.ExitCode, startedAt, exitedAt)
+	// hso 自身の失敗で開いていたモーダルを、その後始末で届く終了通知が
+	// 普通のクラッシュに見せかけないようにする。
+	state.fatal = model.exit != nil && model.exit.fatal
 	model.exit = state
-	model.restart.record(startedAt, exitedAt, state.crashed)
+	model.restart.record(startedAt, exitedAt, state.crashed && !state.fatal)
 	if state.crashed {
 		return model.startAutoRestart(state, err)
 	}
@@ -148,6 +169,7 @@ func (model *Model) setFatalExit(err error) {
 	model.endRestart()
 	state := model.newExitState(true, err, unknownExitCode, time.Time{}, time.Now())
 	state.snapshot = exitSnapshot{}
+	state.fatal = true
 	model.exit = state
 }
 
@@ -253,6 +275,9 @@ func (model *Model) startAutoRestart(state *exitState, err error) tea.Cmd {
 		return nil
 	}
 	switch {
+	case state.fatal:
+		state.notice = msg.ExitAutoRestartFatal
+		return nil
 	// 起動スクリプトが java を立てないまま終わるのは設定やスクリプトの
 	// 誤りで、待って叩き直しても直らない。1 回で人に渡す。
 	case errors.Is(err, msg.ErrScriptExitedWithoutJava):
