@@ -1401,3 +1401,25 @@ func TestModelExitKeepsFatalCauseOverLaterProcessExit(t *testing.T) {
 		t.Fatalf("exitCode = %d", model.exit.exitCode)
 	}
 }
+
+func TestModelKeepsPartiallyAvailableHeapForExitModal(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	_, _ = model.Update(MetricsMsg{JVM: hsperfdata.Metrics{Heap: hsperfdata.Memory{
+		Used:      hsperfdata.Number{Value: 3 << 30, Available: true},
+		Committed: hsperfdata.Number{Value: 4 << 30, Available: true},
+	}}})
+	// カウンタの一部だけ読めない採取。まとめて置き換えると committed が消える。
+	_, _ = model.Update(MetricsMsg{JVM: hsperfdata.Metrics{Heap: hsperfdata.Memory{
+		Used: hsperfdata.Number{Value: 2 << 30, Available: true},
+	}}})
+	_, _ = model.Update(ProcessExitedMsg{ExitCode: 1})
+
+	heap := model.exit.snapshot.heap
+	if !heap.Committed.Available || heap.Committed.Value != 4<<30 {
+		t.Fatalf("committed = %#v", heap.Committed)
+	}
+	if heap.Used.Value != 2<<30 {
+		t.Fatalf("used = %#v", heap.Used)
+	}
+}

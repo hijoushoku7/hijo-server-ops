@@ -29,11 +29,19 @@ func (model *Model) updateMetrics(message MetricsMsg) {
 // 終了モーダルに出す最終メモリが消える。ダッシュボードの表示は生の値の
 // ままにして、控えはモーダル専用にする。
 func (model *Model) rememberLastMetrics(message MetricsMsg) {
-	if message.JVM.Heap.Used.Available {
-		model.lastHeap = message.JVM.Heap
-	}
+	// 項目ごとに控える。hsperfdata は一部のカウンタだけ読めないことがあり、
+	// まとめて置き換えると取れていた committed が取れない値で消える。
+	rememberNumber(&model.lastHeap.Used, message.JVM.Heap.Used)
+	rememberNumber(&model.lastHeap.Committed, message.JVM.Heap.Committed)
+	rememberNumber(&model.lastHeap.Max, message.JVM.Heap.Max)
 	if message.Memory.RSS.Available {
 		model.lastRSS = message.Memory.RSS
+	}
+}
+
+func rememberNumber(last *hsperfdata.Number, next hsperfdata.Number) {
+	if next.Available {
+		*last = next
 	}
 }
 
