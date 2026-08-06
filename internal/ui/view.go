@@ -87,7 +87,7 @@ func (model *Model) View() tea.View {
 
 func (model *Model) consoleLine() string {
 	restart := "[restart]"
-	if model.restarting {
+	if model.restartPhase != 0 {
 		restart = "[restarting" + model.restartDots() + "]"
 	}
 	stop := "[stop]"

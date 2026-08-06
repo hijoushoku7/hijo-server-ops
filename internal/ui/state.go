@@ -105,17 +105,10 @@ func (model *Model) addLog(entry serverlog.Entry) {
 	case serverlog.KindChat:
 		model.chat.Add(newLogRecord(entry, entry.Chat))
 	case serverlog.KindCommand:
-		model.addLogRecord(newLogRecord(entry, entry.Command))
+		model.logs.Add(newLogRecord(entry, entry.Command))
 	default:
-		model.addLogRecord(newLogRecord(entry, entry.Message))
+		model.logs.Add(newLogRecord(entry, entry.Message))
 	}
-}
-
-// addLogRecord は Log ペインへ 1 行足す。累計を数えるのは、押し出されて
-// 位置がずれた後でも「どこから今の世代か」を言えるようにするため。
-func (model *Model) addLogRecord(record logRecord) {
-	model.logs.Add(record)
-	model.logsAdded++
 }
 
 func newLogRecord(entry serverlog.Entry, text string) logRecord {

@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -59,7 +60,7 @@ func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	}
 
 	// 正常終了の自動終了は、モーダルに対するどのキー操作でも解除する。
-	model.exit.autoQuit = false
+	model.exit.autoQuitAt = time.Time{}
 	switch key.Code {
 	case tea.KeyLeft:
 		model.exit.button = (model.exit.button + 2) % 3

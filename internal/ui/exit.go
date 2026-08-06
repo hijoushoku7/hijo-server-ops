@@ -28,21 +28,18 @@ type exitSnapshot struct {
 }
 
 type exitState struct {
-	crashed     bool
-	err         error
-	exitCode    int
-	exitedAt    time.Time
-	uptime      time.Duration
-	uptimeKnown bool
-	errorLines  []string
-	snapshot    exitSnapshot
-	button      int
-	closed      bool
+	crashed    bool
+	exitCode   int
+	exitedAt   time.Time
+	uptime     hsperfdata.Duration
+	errorLines []string
+	snapshot   exitSnapshot
+	button     int
+	closed     bool
 	// notice は再起動を試みて失敗したときの理由。モーダルには status 行が
 	// ないので、握り潰さずここへ出す。
 	notice string
 
-	autoQuit   bool
 	autoQuitAt time.Time
 }
 
@@ -81,8 +78,8 @@ func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
 	// 先に出ていた原因を残す。java を見つけられず hso が SIGTERM を送った
 	// ような場合、後から届く「exit status 143」に置き換えると本当の理由が
 	// モーダルから消える。
-	if previous := model.exit; previous != nil && previous.err != nil {
-		err = previous.err
+	if model.runErr != nil {
+		err = model.runErr
 		crashed = true
 	}
 	state := model.newExitState(crashed, err, message.ExitCode, startedAt, exitedAt)
@@ -90,7 +87,6 @@ func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
 	if state.crashed {
 		return nil
 	}
-	state.autoQuit = true
 	state.autoQuitAt = time.Now().Add(normalExitWait)
 	return model.exitCountdownCmd(state)
 }
@@ -113,19 +109,19 @@ func (model *Model) newExitState(
 	startedAt time.Time,
 	exitedAt time.Time,
 ) *exitState {
-	uptime := time.Duration(0)
-	known := !startedAt.IsZero() && !exitedAt.Before(startedAt)
-	if known {
-		uptime = exitedAt.Sub(startedAt)
+	uptime := hsperfdata.Duration{}
+	if !startedAt.IsZero() && !exitedAt.Before(startedAt) {
+		uptime = hsperfdata.Duration{
+			Value:     exitedAt.Sub(startedAt),
+			Available: true,
+		}
 	}
 	return &exitState{
-		crashed:     crashed,
-		err:         err,
-		exitCode:    exitCode,
-		exitedAt:    exitedAt,
-		uptime:      uptime,
-		uptimeKnown: known,
-		errorLines:  model.exitErrorLines(err, crashed),
+		crashed:    crashed,
+		exitCode:   exitCode,
+		exitedAt:   exitedAt,
+		uptime:     uptime,
+		errorLines: model.exitErrorLines(err, crashed),
 		snapshot: exitSnapshot{
 			heap: model.lastHeap,
 			rss:  model.lastRSS,
@@ -166,7 +162,7 @@ func (model *Model) exitErrorLines(err error, crashed bool) []string {
 // generationLogStart は現世代の最初のログが今どの位置にいるかを返す。
 // バッファは再起動で消さないので、位置は古い行が押し出されるたびにずれる。
 func (model *Model) generationLogStart() int {
-	discarded := model.logsAdded - uint64(model.logs.Len())
+	discarded := model.logs.nextNumber - uint64(model.logs.Len())
 	if model.restart.logMark <= discarded {
 		return 0
 	}
@@ -180,7 +176,7 @@ func (model *Model) exitCountdownCmd(state *exitState) tea.Cmd {
 }
 
 func (model *Model) handleExitCountdown(message exitCountdownMsg) (tea.Model, tea.Cmd) {
-	if model.exit != message.state || !message.state.autoQuit {
+	if model.exit != message.state || message.state.autoQuitAt.IsZero() {
 		return model, nil
 	}
 	if !time.Now().Before(message.state.autoQuitAt) {
@@ -190,7 +186,7 @@ func (model *Model) handleExitCountdown(message exitCountdownMsg) (tea.Model, te
 }
 
 func (model *Model) exitCountdownSeconds() int {
-	if model.exit == nil || !model.exit.autoQuit {
+	if model.exit == nil || model.exit.autoQuitAt.IsZero() {
 		return 0
 	}
 	remaining := time.Until(model.exit.autoQuitAt)
@@ -201,7 +197,7 @@ func (model *Model) exitCountdownSeconds() int {
 }
 
 func (model *Model) closeExitModal() {
-	model.exit.autoQuit = false
+	model.exit.autoQuitAt = time.Time{}
 	model.exit.closed = true
 	model.mode = modeFocus
 	model.panel = panelLog
@@ -224,7 +220,7 @@ func (model *Model) exitModal() (string, int, int) {
 		msg.ExitSummary(
 			exitCode,
 			state.exitedAt.Format("2006-01-02 15:04:05"),
-			formatExitUptime(state.uptime, state.uptimeKnown),
+			formatUptime(state.uptime),
 		),
 		msg.ExitMemory(
 			formatProcBytes(state.snapshot.rss),
@@ -249,7 +245,7 @@ func (model *Model) exitModal() (string, int, int) {
 		lines = append(lines, "")
 	}
 	switch {
-	case model.restarting:
+	case model.restartPhase != 0:
 		lines = append(lines, msg.ExitStateRestarting(model.restartDots()))
 	case state.notice != "":
 		lines = append(lines, state.notice)
@@ -292,8 +288,4 @@ func formatExitCode(code int) string {
 		return "n/a"
 	}
 	return strconv.Itoa(code)
-}
-
-func formatExitUptime(duration time.Duration, known bool) string {
-	return formatUptime(hsperfdata.Duration{Value: duration, Available: known})
 }

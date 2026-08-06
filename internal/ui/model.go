@@ -91,8 +91,10 @@ type ActionResultMsg struct {
 }
 
 type Model struct {
-	layout            layout
-	status            string
+	layout layout
+	status string
+	// runErr は現世代で最初に起きた終了原因。後続の終了通知でも上書きせず、
+	// ServerStartedMsg で復旧したときだけ消す。
 	runErr            error
 	actions           chan<- Action
 	save              func(Settings) error
@@ -125,11 +127,8 @@ type Model struct {
 	settingCursor     int
 	exit              *exitState
 	restart           restartTracker
-	restarting        bool
-	restartPhase      int
-	// logsAdded は Log ペインへ足した累計。バッファから押し出された分を
-	// 差し引いて、世代の境目が今どの位置かを割り出す。
-	logsAdded uint64
+	// 0 は停止中、1..3 は表示する点の数。
+	restartPhase int
 	// 終了モーダル用に、最後に取れたメモリの値を控える。
 	lastHeap hsperfdata.Memory
 	lastRSS  procstats.Number
@@ -142,17 +141,16 @@ type restartTickMsg struct{}
 const restartTickInterval = 400 * time.Millisecond
 
 func (model *Model) beginRestart() tea.Cmd {
-	model.restartPhase = 0
 	// すでに動いていれば tick を二重に走らせない。
-	if model.restarting {
+	if model.restartPhase != 0 {
+		model.restartPhase = 1
 		return nil
 	}
-	model.restarting = true
+	model.restartPhase = 1
 	return restartTick()
 }
 
 func (model *Model) endRestart() {
-	model.restarting = false
 	model.restartPhase = 0
 }
 
@@ -165,7 +163,7 @@ func restartTick() tea.Cmd {
 // restartDots は "." → ".." → "..." を返す。幅は常に 3 桁で、隣の表示が
 // 点の数で揺れないようにする。
 func (model *Model) restartDots() string {
-	count := model.restartPhase%3 + 1
+	count := model.restartPhase
 	return strings.Repeat(".", count) + strings.Repeat(" ", 3-count)
 }
 
@@ -232,7 +230,7 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if model.restart.startedAt.IsZero() {
 			model.restart.startedAt = time.Now()
 		}
-		model.restart.logMark = model.logsAdded
+		model.restart.logMark = model.logs.nextNumber
 		// 新しい世代が立ち上がった時点で復旧とみなす。前世代のクラッシュを
 		// 抱えたままだと、その後に正常停止しても hso が失敗で終わる。
 		model.runErr = nil
@@ -279,10 +277,10 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case exitCountdownMsg:
 		return model.handleExitCountdown(message)
 	case restartTickMsg:
-		if !model.restarting {
+		if model.restartPhase == 0 {
 			break
 		}
-		model.restartPhase++
+		model.restartPhase = model.restartPhase%3 + 1
 		return model, restartTick()
 	}
 	return model, nil

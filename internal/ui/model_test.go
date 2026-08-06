@@ -312,7 +312,8 @@ func TestModelReturnsProcessError(t *testing.T) {
 		t.Fatalf("unexpected command = %T", command())
 	}
 	if model.exit == nil || !model.exit.crashed || model.exit.exitCode != 1 ||
-		model.exit.uptime != 90*time.Second || model.exit.button != 0 {
+		!model.exit.uptime.Available ||
+		model.exit.uptime.Value != 90*time.Second || model.exit.button != 0 {
 		t.Fatalf("exit = %#v", model.exit)
 	}
 }
@@ -370,12 +371,12 @@ func TestModelNormalExitCountsDownAndAnyKeyCancelsIt(t *testing.T) {
 	model := newTestModel()
 	_, command := model.Update(ProcessExitedMsg{ExitCode: 0})
 	if command == nil || model.exit == nil || model.exit.crashed ||
-		!model.exit.autoQuit {
+		model.exit.autoQuitAt.IsZero() {
 		t.Fatalf("exit = %#v, command = %T", model.exit, command)
 	}
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
-	if model.exit.autoQuit || model.settingsOpen || model.exit.closed {
+	if !model.exit.autoQuitAt.IsZero() || model.settingsOpen || model.exit.closed {
 		t.Fatalf("key did not only cancel countdown: %#v", model.exit)
 	}
 	_, command = model.Update(exitCountdownMsg{state: model.exit})
@@ -1223,8 +1224,8 @@ func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
 	if action := <-actions; action.Kind != ActionRestart {
 		t.Fatalf("action = %#v", action)
 	}
-	if !model.restarting || command == nil {
-		t.Fatalf("restarting = %t, command = %T", model.restarting, command)
+	if model.restartPhase == 0 || command == nil {
+		t.Fatalf("restartPhase = %d, command = %T", model.restartPhase, command)
 	}
 	// 点は 3 桁に揃え、コンソールのボタン幅を揺らさない。
 	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restarting.  ]") {
@@ -1236,7 +1237,7 @@ func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
 	}
 
 	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
-	if model.restarting {
+	if model.restartPhase != 0 {
 		t.Fatal("animation outlived the restart")
 	}
 	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restart]") {
@@ -1269,7 +1270,7 @@ func TestModelExitModalShowsRestartProgressAndFailure(t *testing.T) {
 		Action: Action{Kind: ActionRestart},
 		Err:    errors.New("no server"),
 	})
-	if model.restarting {
+	if model.restartPhase != 0 {
 		t.Fatal("animation outlived the failure")
 	}
 	box, _, _ = model.exitModal()
@@ -1311,7 +1312,7 @@ func TestModelFatalExitDoesNotReuseStaleUptimeAndMemory(t *testing.T) {
 	// 起動に失敗した世代には稼働時間もメモリもない。前の値を流用すると、
 	// ログを読んでいた時間まで uptime に足された嘘になる。
 	_, _ = model.Update(FatalMsg{Err: errors.New("start the start script")})
-	if model.exit.uptimeKnown || model.exit.snapshot.rss.Available {
+	if model.exit.uptime.Available || model.exit.snapshot.rss.Available {
 		t.Fatalf("exit = %#v", model.exit)
 	}
 	box, _, _ := model.exitModal()
