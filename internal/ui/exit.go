@@ -75,16 +75,25 @@ type restartAttempt struct {
 // record は 1 世代分の稼働を書き留める。shortRunLimit 以上もった世代は
 // 立ち直ったとみなして履歴を捨てる。残すと、何日も動いた後の 1 回目の
 // クラッシュが過去の失敗と合算されて打ち切られる。
-func (tracker *restartTracker) record(startedAt, exitedAt time.Time) {
-	if startedAt.IsZero() || exitedAt.Before(startedAt) ||
-		exitedAt.Sub(startedAt) >= shortRunLimit {
+//
+// 履歴を捨てる判定は終了の種類を見ない。正常停止でも、長くもった世代が
+// 挟まれば立ち直っている。数えるのは短命な異常終了だけで、短時間で
+// 止められた正常停止は増やしも減らしもしない。
+func (tracker *restartTracker) record(startedAt, exitedAt time.Time, crashed bool) {
+	// 稼働時間が分からない世代は、短命とも立ち直りとも言えないので触らない。
+	if startedAt.IsZero() || exitedAt.Before(startedAt) {
+		return
+	}
+	if exitedAt.Sub(startedAt) >= shortRunLimit {
 		tracker.attempts = nil
 		return
 	}
-	tracker.attempts = append(tracker.attempts, restartAttempt{
-		startedAt: startedAt,
-		exitedAt:  exitedAt,
-	})
+	if crashed {
+		tracker.attempts = append(tracker.attempts, restartAttempt{
+			startedAt: startedAt,
+			exitedAt:  exitedAt,
+		})
+	}
 }
 
 func (tracker *restartTracker) crashLoop() bool {
@@ -123,8 +132,8 @@ func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
 	}
 	state := model.newExitState(crashed, err, message.ExitCode, startedAt, exitedAt)
 	model.exit = state
+	model.restart.record(startedAt, exitedAt, state.crashed)
 	if state.crashed {
-		model.restart.record(startedAt, exitedAt)
 		return model.startAutoRestart(state, err)
 	}
 	state.autoQuitAt = time.Now().Add(normalExitWait)

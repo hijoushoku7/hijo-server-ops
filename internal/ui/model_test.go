@@ -1442,6 +1442,14 @@ func crash(model *Model, err error, uptime time.Duration) {
 	})
 }
 
+func stopNormally(model *Model, uptime time.Duration) {
+	exitedAt := time.Now()
+	_, _ = model.Update(ProcessExitedMsg{
+		StartedAt: exitedAt.Add(-uptime),
+		ExitedAt:  exitedAt,
+	})
+}
+
 func TestModelAutoRestartKeepsDashboardAndRequestsRestart(t *testing.T) {
 	actions := make(chan Action, 1)
 	model := newAutoRestartModel(actions)
@@ -1509,6 +1517,39 @@ func TestModelAutoRestartForgetsCrashesAfterLongRun(t *testing.T) {
 	if len(model.restart.attempts) != 0 || !model.exit.autoRestart {
 		t.Fatalf("attempts = %d, exit = %#v",
 			len(model.restart.attempts), model.exit)
+	}
+}
+
+// 立ち直りの判定は終了の種類を見ない。長くもった世代を正常停止で挟んでも、
+// その前のクラッシュが次の 1 回目と合算されてはいけない。
+func TestModelAutoRestartForgetsCrashesAfterLongNormalRun(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	for range shortRunGiveUp - 1 {
+		crash(model, errors.New("crashed"), time.Second)
+		_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	}
+
+	stopNormally(model, shortRunLimit+time.Second)
+	if len(model.restart.attempts) != 0 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+
+	crash(model, errors.New("crashed"), time.Second)
+	if !model.exit.autoRestart || model.exit.notice != "" {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+// 短時間で止めた正常停止は、クラッシュの回数を増やしも減らしもしない。
+func TestModelShortNormalStopDoesNotCountAsCrash(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	crash(model, errors.New("crashed"), time.Second)
+	_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+
+	stopNormally(model, time.Second)
+	if len(model.restart.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
 	}
 }
 
