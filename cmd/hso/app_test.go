@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -165,6 +166,19 @@ func TestServerExitErrorRejectsUnexpectedCleanExit(t *testing.T) {
 	}
 }
 
+func TestProcessExitCode(t *testing.T) {
+	if code := processExitCode(nil); code != 0 {
+		t.Fatalf("clean exit code = %d", code)
+	}
+	err := exec.Command("sh", "-c", "exit 7").Run()
+	if code := processExitCode(err); code != 7 {
+		t.Fatalf("failed exit code = %d, err = %v", code, err)
+	}
+	if code := processExitCode(errors.New("wait failed")); code != -1 {
+		t.Fatalf("unknown exit code = %d", code)
+	}
+}
+
 func TestCalculateCPU(t *testing.T) {
 	previous := procstats.Duration{Value: time.Second, Available: true}
 	current := procstats.Duration{Value: 2500 * time.Millisecond, Available: true}
@@ -230,6 +244,16 @@ func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
 		t.Fatalf("generation = %d", runtime.generation)
 	}
 
+	// 自然停止後は runtime が detach 済みでも、最後の世代の次から起動する。
+	controller.sendCommand(ui.Action{Kind: ui.ActionSendCommand, Command: "stop"})
+	waitForControllerStopped(t, controller)
+	controller.restart()
+	waitForFileLines(t, filepath.Join(dir, "launches"), 3)
+	waitForControllerJava(t, controller)
+	if runtime := controller.currentRuntime(); runtime.generation != 3 {
+		t.Fatalf("generation after stopped restart = %d", runtime.generation)
+	}
+
 	cancel()
 	if err := controller.shutdown(); err != nil {
 		t.Fatal(err)
@@ -244,8 +268,8 @@ func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Fields(string(data)); len(got) != 4 ||
-		strings.Join(got, " ") != "say hello stop stop" {
+	if got := strings.Fields(string(data)); len(got) != 5 ||
+		strings.Join(got, " ") != "say hello stop stop stop" {
 		t.Fatalf("commands = %q", data)
 	}
 }
@@ -320,6 +344,18 @@ func waitForControllerJava(t *testing.T, controller *serverController) {
 	t.Fatal("java process was not found")
 }
 
+func waitForControllerStopped(t *testing.T, controller *serverController) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if controller.currentRuntime() == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("server runtime was not detached")
+}
+
 func waitForFileLines(t *testing.T, path string, count int) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -331,4 +367,43 @@ func waitForFileLines(t *testing.T, path string, count int) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("%s did not contain %d lines", path, count)
+}
+
+func TestPumpLogsDrainsRemainingOutputBeforeDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	actions := make(chan ui.Action, 1)
+	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings())
+	program := tea.NewProgram(
+		model,
+		tea.WithContext(ctx),
+		tea.WithInput(nil),
+		tea.WithoutRenderer(),
+	)
+	programDone := make(chan struct{})
+	go func() {
+		_, _ = program.Run()
+		close(programDone)
+	}()
+
+	// クラッシュ直前のスタックトレースを模して、キューを埋めてから閉じる。
+	logs := make(chan serverlog.Entry, logQueueSize)
+	for index := 0; index < logQueueSize; index++ {
+		logs <- serverlog.Entry{Kind: serverlog.KindOther, Message: "crash tail"}
+	}
+	close(logs)
+
+	done := make(chan struct{})
+	go pumpLogs(ctx, program, logs, initialGeneration, done)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pumpLogs did not finish")
+	}
+	if remaining := len(logs); remaining != 0 {
+		t.Fatalf("dropped %d entries", remaining)
+	}
+
+	program.Quit()
+	<-programDone
 }

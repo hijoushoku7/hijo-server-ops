@@ -1,0 +1,291 @@
+package ui
+
+import (
+	"strconv"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
+	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
+)
+
+const (
+	exitModalWidth     = 64
+	exitModalHeight    = 17
+	normalExitWait     = 3 * time.Second
+	unknownExitCode    = -1
+	exitErrorLineLimit = 3
+)
+
+type exitSnapshot struct {
+	heap hsperfdata.Memory
+	rss  procstats.Number
+	gc   gclog.Stats
+}
+
+type exitState struct {
+	crashed    bool
+	exitCode   int
+	exitedAt   time.Time
+	uptime     hsperfdata.Duration
+	errorLines []string
+	snapshot   exitSnapshot
+	button     int
+	closed     bool
+	// notice は再起動を試みて失敗したときの理由。モーダルには status 行が
+	// ないので、握り潰さずここへ出す。
+	notice string
+
+	autoQuitAt time.Time
+}
+
+type restartTracker struct {
+	startedAt time.Time
+	// logMark は現世代が始まった時点の累計ログ件数。エラー行の抜粋を
+	// この世代に限り、前回のクラッシュの残骸を原因として出さない。
+	logMark  uint64
+	attempts []restartAttempt
+}
+
+// restartAttempt はフェーズ 2 の短命再起動判定で記録する 1 回分の枠だけを
+// 先に定義する。今回は記録ロジックを持たせない。
+type restartAttempt struct {
+	startedAt time.Time
+	exitedAt  time.Time
+}
+
+type exitCountdownMsg struct {
+	state *exitState
+}
+
+func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
+	model.busy = false
+	model.endRestart()
+	exitedAt := message.ExitedAt
+	if exitedAt.IsZero() {
+		exitedAt = time.Now()
+	}
+	startedAt := message.StartedAt
+	if startedAt.IsZero() {
+		startedAt = model.restart.startedAt
+	}
+	err := message.Err
+	crashed := err != nil || message.ExitCode != 0
+	// 先に出ていた原因を残す。java を見つけられず hso が SIGTERM を送った
+	// ような場合、後から届く「exit status 143」に置き換えると本当の理由が
+	// モーダルから消える。
+	if model.runErr != nil {
+		err = model.runErr
+		crashed = true
+	}
+	state := model.newExitState(crashed, err, message.ExitCode, startedAt, exitedAt)
+	model.exit = state
+	if state.crashed {
+		return nil
+	}
+	state.autoQuitAt = time.Now().Add(normalExitWait)
+	return model.exitCountdownCmd(state)
+}
+
+// setFatalExit は hso 側の失敗（起動できなかった等）でモーダルを出す。
+// 前世代の稼働時間やメモリは引き継がない。停止後にログを読んでいた時間まで
+// uptime に足され、死んだサーバーの RSS が今の値として出てしまう。
+func (model *Model) setFatalExit(err error) {
+	model.busy = false
+	model.endRestart()
+	state := model.newExitState(true, err, unknownExitCode, time.Time{}, time.Now())
+	state.snapshot = exitSnapshot{}
+	model.exit = state
+}
+
+func (model *Model) newExitState(
+	crashed bool,
+	err error,
+	exitCode int,
+	startedAt time.Time,
+	exitedAt time.Time,
+) *exitState {
+	uptime := hsperfdata.Duration{}
+	if !startedAt.IsZero() && !exitedAt.Before(startedAt) {
+		uptime = hsperfdata.Duration{
+			Value:     exitedAt.Sub(startedAt),
+			Available: true,
+		}
+	}
+	return &exitState{
+		crashed:    crashed,
+		exitCode:   exitCode,
+		exitedAt:   exitedAt,
+		uptime:     uptime,
+		errorLines: model.exitErrorLines(err, crashed),
+		snapshot: exitSnapshot{
+			heap: model.lastHeap,
+			rss:  model.lastRSS,
+			gc:   model.gcStats,
+		},
+	}
+}
+
+// exitErrorLines は原因として読ませる行を集める。異常終了で 1 本も
+// 拾えなかったときだけ末尾で埋める。正常停止でこれをやると、保存完了の
+// INFO 行が「エラー行」の見出しで並ぶ。
+func (model *Model) exitErrorLines(err error, crashed bool) []string {
+	lines := make([]string, 0, exitErrorLineLimit+1)
+	if err != nil {
+		lines = append(lines, err.Error())
+	}
+
+	oldest := model.generationLogStart()
+	matches := make([]string, 0, exitErrorLineLimit)
+	for index := model.logs.Len() - 1; index >= oldest && len(matches) < exitErrorLineLimit; index-- {
+		line := model.logs.At(index).line()
+		if strings.Contains(line, "ERROR") || strings.Contains(line, "FATAL") ||
+			strings.Contains(line, "Exception") || strings.Contains(line, "Caused by") {
+			matches = append(matches, line)
+		}
+	}
+	if len(matches) == 0 && crashed {
+		for index := model.logs.Len() - 1; index >= oldest && len(matches) < exitErrorLineLimit; index-- {
+			matches = append(matches, model.logs.At(index).line())
+		}
+	}
+	for index := len(matches) - 1; index >= 0; index-- {
+		lines = append(lines, matches[index])
+	}
+	return lines
+}
+
+// generationLogStart は現世代の最初のログが今どの位置にいるかを返す。
+// バッファは再起動で消さないので、位置は古い行が押し出されるたびにずれる。
+func (model *Model) generationLogStart() int {
+	discarded := model.logs.nextNumber - uint64(model.logs.Len())
+	if model.restart.logMark <= discarded {
+		return 0
+	}
+	return int(model.restart.logMark - discarded)
+}
+
+func (model *Model) exitCountdownCmd(state *exitState) tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg {
+		return exitCountdownMsg{state: state}
+	})
+}
+
+func (model *Model) handleExitCountdown(message exitCountdownMsg) (tea.Model, tea.Cmd) {
+	if model.exit != message.state || message.state.autoQuitAt.IsZero() {
+		return model, nil
+	}
+	if !time.Now().Before(message.state.autoQuitAt) {
+		return model, tea.Quit
+	}
+	return model, model.exitCountdownCmd(message.state)
+}
+
+func (model *Model) exitCountdownSeconds() int {
+	if model.exit == nil || model.exit.autoQuitAt.IsZero() {
+		return 0
+	}
+	remaining := time.Until(model.exit.autoQuitAt)
+	if remaining <= 0 {
+		return 0
+	}
+	return int((remaining + time.Second - 1) / time.Second)
+}
+
+func (model *Model) closeExitModal() {
+	model.exit.autoQuitAt = time.Time{}
+	model.exit.closed = true
+	model.mode = modeFocus
+	model.panel = panelLog
+}
+
+func (model *Model) exitModal() (string, int, int) {
+	state := model.exit
+	width := min(exitModalWidth, max(2, model.layout.width-4))
+	height := min(exitModalHeight, max(2, model.layout.height-3))
+	title := msg.ExitTitleStopped
+	boxFrame := focusedFrame
+	boxFrame.style = exitStoppedStyle
+	if state.crashed {
+		title = msg.ExitTitleCrashed
+		boxFrame.style = exitCrashStyle
+	}
+
+	exitCode := formatExitCode(state.exitCode)
+	lines := []string{
+		msg.ExitSummary(
+			exitCode,
+			state.exitedAt.Format("2006-01-02 15:04:05"),
+			formatUptime(state.uptime),
+		),
+		msg.ExitMemory(
+			formatProcBytes(state.snapshot.rss),
+			formatJVMBytes(state.snapshot.heap.Used),
+			formatJVMBytes(state.snapshot.heap.Committed),
+			formatDelta(state.snapshot.rss, state.snapshot.heap.Committed),
+		),
+		msg.ExitGC(
+			state.snapshot.gc.Collections,
+			formatPause(
+				state.snapshot.gc.LastPause.Value,
+				state.snapshot.gc.LastPause.Available,
+			),
+		),
+		"",
+	}
+	if len(state.errorLines) > 0 {
+		lines = append(lines, msg.ExitErrorLines)
+		for _, line := range state.errorLines {
+			lines = append(lines, "  "+line)
+		}
+		lines = append(lines, "")
+	}
+	switch {
+	case model.restartPhase != 0:
+		lines = append(lines, msg.ExitStateRestarting(model.restartDots()))
+	case state.notice != "":
+		lines = append(lines, state.notice)
+	case state.crashed:
+		lines = append(lines, msg.ExitStateCrashed)
+	default:
+		lines = append(lines, msg.ExitStateStopped)
+		if seconds := model.exitCountdownSeconds(); seconds > 0 {
+			lines = append(lines, msg.ExitAutoQuit(seconds))
+		}
+	}
+	lines = append(lines, "", model.exitButtons(width-2))
+
+	box := renderPanel(title, lines, width, height, false, boxFrame)
+	x := max(0, (model.layout.width-width)/2)
+	y := max(0, (model.layout.height-1-height)/2)
+	return box, x, y
+}
+
+func (model *Model) exitButtons(width int) string {
+	buttons := []string{
+		"[ " + msg.ExitButtonLogs + " ]",
+		"[ " + msg.ExitButtonRestart + " ]",
+		"[ " + msg.ExitButtonQuit + " ]",
+	}
+	for index := range buttons {
+		if index == model.exit.button {
+			buttons[index] = selectedStyle.Render(buttons[index])
+		} else {
+			buttons[index] = dimStyle.Render(buttons[index])
+		}
+	}
+	line := strings.Join(buttons, "  ")
+	padding := max(0, (width-stringWidth(line))/2)
+	return strings.Repeat(" ", padding) + line
+}
+
+func formatExitCode(code int) string {
+	if code < 0 {
+		return "n/a"
+	}
+	return strconv.Itoa(code)
+}

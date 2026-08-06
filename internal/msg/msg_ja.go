@@ -58,6 +58,45 @@ func ActionFailed(err error) string {
 	return "操作失敗: " + err.Error()
 }
 
+// サーバー終了後のモーダルとログ画面。
+const (
+	ExitTitleCrashed  = "サーバー異常終了"
+	ExitTitleStopped  = "サーバー停止"
+	ExitErrorLines    = "エラー行"
+	ExitStateCrashed  = "異常終了しました。ログを確認するか再起動してください。"
+	ExitStateStopped  = "サーバーは正常に停止しました。"
+	ExitButtonLogs    = "ログを読む"
+	ExitButtonRestart = "再起動"
+	ExitButtonQuit    = "終了"
+)
+
+func StoppedLogTitle(code string) string {
+	return "Log · 停止済み (exit " + code + ")"
+}
+
+func ExitSummary(code, exitedAt, uptime string) string {
+	return fmt.Sprintf("終了コード %s · 停止 %s · 稼働 %s", code, exitedAt, uptime)
+}
+
+func ExitMemory(rss, heapUsed, heapCommitted, delta string) string {
+	return fmt.Sprintf(
+		"最終メモリ  RSS %s · heap %s/%s · Δ %s",
+		rss, heapUsed, heapCommitted, delta,
+	)
+}
+
+func ExitGC(collections uint64, last string) string {
+	return fmt.Sprintf("GC  %d 回 · 最終停止 %s", collections, last)
+}
+
+func ExitStateRestarting(dots string) string {
+	return "再起動中" + dots
+}
+
+func ExitAutoQuit(seconds int) string {
+	return fmt.Sprintf("%d 秒後に hso を終了します（キー入力で解除）", seconds)
+}
+
 // キーバー（画面下部のキー説明）。日本語は全角なので、最小端末幅 72 桁に
 // 収まるよう短くしている。
 const (
@@ -79,6 +118,11 @@ const (
 	BarScroll       = "スクロール"
 	BarPage         = "ページ"
 	BarLatest       = "最新"
+	BarExitButton   = "ボタン"
+	BarConfirm      = "決定"
+	BarReadLogs     = "ログ"
+	BarEnds         = "先頭/末尾"
+	BarRestart      = "再起動"
 )
 
 // セットアップウィザードの画面。

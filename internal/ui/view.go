@@ -20,6 +20,18 @@ func (model *Model) View() tea.View {
 			minimumWidth,
 			minimumHeight,
 		)
+	} else if model.exit != nil {
+		content = model.renderBufferPanelWithTitle(
+			msg.StoppedLogTitle(formatExitCode(model.exit.exitCode)),
+			panelLog,
+			&model.logs,
+			model.layout.width,
+			model.layout.height-keybarHeight,
+		) + "\n" + model.keybar()
+		if !model.exit.closed {
+			box, x, y := model.exitModal()
+			content = overlay(content, box, x, y)
+		}
 	} else {
 		stats := renderPanel(
 			model.statsTitle(),
@@ -75,6 +87,9 @@ func (model *Model) View() tea.View {
 
 func (model *Model) consoleLine() string {
 	restart := "[restart]"
+	if model.restartPhase != 0 {
+		restart = "[restarting" + model.restartDots() + "]"
+	}
 	stop := "[stop]"
 	focused := model.mode == modeFocus && model.panel == panelConsole
 	cursor := ""
@@ -123,6 +138,17 @@ func (model *Model) renderBufferPanel(
 	buffer *lineBuffer,
 	width, height int,
 ) string {
+	return model.renderBufferPanelWithTitle(
+		target.title(), target, buffer, width, height,
+	)
+}
+
+func (model *Model) renderBufferPanelWithTitle(
+	title string,
+	target panel,
+	buffer *lineBuffer,
+	width, height int,
+) string {
 	contentHeight := max(0, height-2)
 	innerWidth := max(0, width-2)
 	viewport := bufferViewport{width: innerWidth, height: contentHeight}
@@ -136,7 +162,6 @@ func (model *Model) renderBufferPanel(
 		lines[padding+index] = renderLogLine(window[index], innerWidth)
 	}
 
-	title := target.title()
 	if offset := buffer.Offset(viewport); offset > 0 {
 		title = fmt.Sprintf("%s ↑%d", title, offset)
 	}
@@ -226,6 +251,20 @@ func renderPanelLines(
 func (model *Model) keybar() string {
 	var keys [][2]string
 	switch {
+	case model.exit != nil && !model.exit.closed:
+		keys = [][2]string{
+			{"←→/Tab", msg.BarExitButton},
+			{"Enter", msg.BarConfirm},
+			{"Esc", msg.BarReadLogs},
+			{"^C", msg.BarExit},
+		}
+	case model.exit != nil:
+		keys = [][2]string{
+			{"↑↓/Pg", msg.BarScroll},
+			{"Home/End", msg.BarEnds},
+			{"R", msg.BarRestart},
+			{"Q/Enter", msg.BarExit},
+		}
 	case model.settingsOpen:
 		keys = [][2]string{
 			{"↑↓", msg.BarItem},

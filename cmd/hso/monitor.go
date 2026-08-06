@@ -80,6 +80,12 @@ func collectMetrics(
 		)
 		previousCPU = cpuTime
 		previousSample = sampledAt
+		// 採取の途中でプロセスが消えていることがある。止められた後の
+		// 結果を送ると、終了モーダルに出す最終 RSS / heap を n/a で
+		// 上書きしてしまう。
+		if ctx.Err() != nil {
+			return
+		}
 		program.Send(ui.MetricsMsg{
 			Generation:   generation,
 			JVM:          metrics,
@@ -200,12 +206,18 @@ func pumpLogs(
 	program *tea.Program,
 	logs <-chan serverlog.Entry,
 	generation uint64,
+	done chan<- struct{},
 ) {
+	defer close(done)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case entry := <-logs:
+		case entry, ok := <-logs:
+			// logs が閉じるのは出力を読み切ったとき。残りを送ってから抜ける。
+			if !ok {
+				return
+			}
 			program.Send(ui.LogMsg{Generation: generation, Entry: entry})
 		}
 	}

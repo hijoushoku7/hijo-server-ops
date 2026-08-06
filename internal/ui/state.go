@@ -20,7 +20,29 @@ func (model *Model) updateMetrics(message MetricsMsg) {
 	model.cpuAvailable = message.CPUAvailable
 	model.updateMetricError("heap", &model.jvmMetricError, message.JVMError)
 	model.updateMetricError("RSS", &model.memoryMetricError, message.MemoryError)
+	model.rememberLastMetrics(message)
 	model.addSample(message)
+}
+
+// rememberLastMetrics は取れた値だけを控える。プロセスが消えてから終了を
+// 検知するまでの隙間に走った採取は全部 n/a で返るので、そのまま持つと
+// 終了モーダルに出す最終メモリが消える。ダッシュボードの表示は生の値の
+// ままにして、控えはモーダル専用にする。
+func (model *Model) rememberLastMetrics(message MetricsMsg) {
+	// 項目ごとに控える。hsperfdata は一部のカウンタだけ読めないことがあり、
+	// まとめて置き換えると取れていた committed が取れない値で消える。
+	rememberNumber(&model.lastHeap.Used, message.JVM.Heap.Used)
+	rememberNumber(&model.lastHeap.Committed, message.JVM.Heap.Committed)
+	rememberNumber(&model.lastHeap.Max, message.JVM.Heap.Max)
+	if message.Memory.RSS.Available {
+		model.lastRSS = message.Memory.RSS
+	}
+}
+
+func rememberNumber(last *hsperfdata.Number, next hsperfdata.Number) {
+	if next.Available {
+		*last = next
+	}
 }
 
 func (model *Model) updateServerAddress(message ServerAddressMsg) {
@@ -53,6 +75,8 @@ func (model *Model) resetServerState() {
 	model.memoryMetricError = ""
 	model.serverIP = ""
 	model.serverPort = 0
+	model.lastHeap = hsperfdata.Memory{}
+	model.lastRSS = procstats.Number{}
 	model.gcStats = gclog.Stats{}
 	model.tracker = serverlog.Tracker{}
 	model.playerList = nil

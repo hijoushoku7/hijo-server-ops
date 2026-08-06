@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -13,6 +14,9 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := message.Key()
 	if message.String() == "ctrl+c" {
 		return model, tea.Quit
+	}
+	if model.exit != nil {
+		return model.handleExitKey(message)
 	}
 	if model.settingsOpen {
 		return model.handleSettingsKey(key)
@@ -33,6 +37,48 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return model.handlePlayersKey(key)
 	}
 	return model.handleBufferKey(key)
+}
+
+func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := message.Key()
+	if model.exit.closed {
+		switch message.String() {
+		case "r", "R":
+			return model, model.requestRestart()
+		case "q", "Q":
+			return model, tea.Quit
+		}
+		switch key.Code {
+		case tea.KeyEnter, tea.KeyKpEnter:
+			return model, tea.Quit
+		case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown,
+			tea.KeyHome, tea.KeyEnd:
+			return model.handleBufferKey(key)
+		default:
+			return model, nil
+		}
+	}
+
+	// 正常終了の自動終了は、モーダルに対するどのキー操作でも解除する。
+	model.exit.autoQuitAt = time.Time{}
+	switch key.Code {
+	case tea.KeyLeft:
+		model.exit.button = (model.exit.button + 2) % 3
+	case tea.KeyRight, tea.KeyTab:
+		model.exit.button = (model.exit.button + 1) % 3
+	case tea.KeyEscape:
+		model.closeExitModal()
+	case tea.KeyEnter, tea.KeyKpEnter:
+		switch model.exit.button {
+		case 0:
+			model.closeExitModal()
+		case 1:
+			return model, model.requestRestart()
+		case 2:
+			return model, tea.Quit
+		}
+	}
+	return model, nil
 }
 
 func (model *Model) editingConsole() bool {
@@ -139,7 +185,7 @@ func (model *Model) handleConsoleKey(key tea.Key) (tea.Model, tea.Cmd) {
 		case consoleStop:
 			return model, tea.Quit
 		case consoleRestart:
-			model.offer(Action{Kind: ActionRestart})
+			return model, model.requestRestart()
 		default:
 			model.sendInput()
 		}
@@ -179,6 +225,12 @@ func (model *Model) handleBufferKey(key tea.Key) (tea.Model, tea.Cmd) {
 }
 
 func (model *Model) focusedBuffer() (*lineBuffer, bufferViewport) {
+	if model.exit != nil {
+		return &model.logs, bufferViewport{
+			width:  max(0, model.layout.width-2),
+			height: max(0, model.layout.height-3),
+		}
+	}
 	switch model.panel {
 	case panelChat:
 		return &model.chat, bufferViewport{
@@ -214,6 +266,15 @@ func (model *Model) sendInput() {
 	if model.offer(Action{Kind: ActionSendCommand, Command: command}) {
 		model.input = model.input[:0]
 	}
+}
+
+// requestRestart は再起動を頼み、受け付けられたときだけ点のアニメーションを
+// 始める。詰まって落とされた要求で動かすと、動いていないものが動いて見える。
+func (model *Model) requestRestart() tea.Cmd {
+	if !model.offer(Action{Kind: ActionRestart}) {
+		return nil
+	}
+	return model.beginRestart()
 }
 
 func (model *Model) offer(action Action) bool {
