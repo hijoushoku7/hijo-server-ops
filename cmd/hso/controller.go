@@ -54,8 +54,11 @@ type serverRuntime struct {
 	javaFound    atomic.Bool
 	expectedExit atomic.Bool
 	cancel       context.CancelFunc
-	stdout       outputPipe
-	stderr       outputPipe
+	// monitorCancel はメトリクス・GC・アドレス解決だけを止める。ログの
+	// 排出は cancel まで生かし、終了直前の行を落とさない。
+	monitorCancel context.CancelFunc
+	stdout        outputPipe
+	stderr        outputPipe
 	// logsDone は pumpLogs が止まったことを知らせる。終了を UI へ告げる
 	// 前に、残っているログを送り切るために待つ。
 	logsDone chan struct{}
@@ -106,14 +109,18 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 	}
 
 	runtimeCtx, runtimeCancel := context.WithCancel(controller.ctx)
+	// 監視はログより先に止める。プロセスが消えた後も /proc を引き続けると、
+	// 最終 RSS / heap を「取れない」で上書きしてしまう。
+	monitorCtx, monitorCancel := context.WithCancel(runtimeCtx)
 	runtime := &serverRuntime{
-		server:     server,
-		generation: generation,
-		startedAt:  time.Now(),
-		cancel:     runtimeCancel,
-		stdout:     stdout,
-		stderr:     stderr,
-		logsDone:   make(chan struct{}),
+		server:        server,
+		generation:    generation,
+		startedAt:     time.Now(),
+		cancel:        runtimeCancel,
+		monitorCancel: monitorCancel,
+		stdout:        stdout,
+		stderr:        stderr,
+		logsDone:      make(chan struct{}),
 	}
 	controller.currentMu.Lock()
 	controller.current = runtime
@@ -148,10 +155,10 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 		close(logs)
 	}()
 	go controller.waitForServer(runtime)
-	go findJava(runtimeCtx, server, &runtime.javaFound, controller.program, generation)
-	go streamGC(runtimeCtx, server.GCLogPath(), controller.program, generation)
+	go findJava(monitorCtx, server, &runtime.javaFound, controller.program, generation)
+	go streamGC(monitorCtx, server.GCLogPath(), controller.program, generation)
 	go resolveServerAddress(
-		runtimeCtx,
+		monitorCtx,
 		controller.cfg.Server.WorkDir,
 		controller.program,
 		generation,
@@ -255,6 +262,9 @@ func (controller *serverController) shutdown() error {
 
 func (controller *serverController) waitForServer(runtime *serverRuntime) {
 	waitErr := runtime.server.Wait()
+	// 監視はここで止める。ログを流し切るまでの間も /proc を引き続けると、
+	// 死んだ PID の結果でモーダルに出す最終 RSS / heap が n/a に化ける。
+	runtime.monitorCancel()
 	_ = runtime.stdout.writer.Close()
 	_ = runtime.stderr.writer.Close()
 	// 最後の出力を送り切ってから止める。順番を逆にすると、クラッシュの

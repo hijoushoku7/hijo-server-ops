@@ -80,6 +80,12 @@ func collectMetrics(
 		)
 		previousCPU = cpuTime
 		previousSample = sampledAt
+		// 採取の途中でプロセスが消えていることがある。止められた後の
+		// 結果を送ると、終了モーダルに出す最終 RSS / heap を n/a で
+		// 上書きしてしまう。
+		if ctx.Err() != nil {
+			return
+		}
 		program.Send(ui.MetricsMsg{
 			Generation:   generation,
 			JVM:          metrics,
