@@ -76,9 +76,16 @@ func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
 	if startedAt.IsZero() {
 		startedAt = model.restart.startedAt
 	}
-	state := model.newExitState(message.Err != nil || message.ExitCode != 0,
-		message.Err, message.ExitCode,
-		startedAt, exitedAt)
+	err := message.Err
+	crashed := err != nil || message.ExitCode != 0
+	// 先に出ていた原因を残す。java を見つけられず hso が SIGTERM を送った
+	// ような場合、後から届く「exit status 143」に置き換えると本当の理由が
+	// モーダルから消える。
+	if previous := model.exit; previous != nil && previous.err != nil {
+		err = previous.err
+		crashed = true
+	}
+	state := model.newExitState(crashed, err, message.ExitCode, startedAt, exitedAt)
 	model.exit = state
 	if state.crashed {
 		return nil

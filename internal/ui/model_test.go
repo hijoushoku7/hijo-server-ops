@@ -1375,3 +1375,28 @@ func mustModal(t *testing.T, model *Model) string {
 	box, _, _ := model.exitModal()
 	return box
 }
+
+func TestModelExitKeepsFatalCauseOverLaterProcessExit(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+
+	// java を見つけられないと hso が原因を出してから SIGTERM を送る。
+	// 続けて届く終了通知で、その原因を上書きしてはいけない。
+	_, _ = model.Update(FatalMsg{Err: errors.New("java プロセスを見つけられません")})
+	_, _ = model.Update(ProcessExitedMsg{
+		Err:      errors.New("exit status 143"),
+		ExitCode: 143,
+	})
+
+	if !model.exit.crashed {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	joined := strings.Join(model.exit.errorLines, "\n")
+	if !strings.Contains(joined, "見つけられません") {
+		t.Fatalf("errorLines = %q", joined)
+	}
+	// 終了コードや稼働時間は新しい通知の値を使う。
+	if model.exit.exitCode != 143 {
+		t.Fatalf("exitCode = %d", model.exit.exitCode)
+	}
+}
