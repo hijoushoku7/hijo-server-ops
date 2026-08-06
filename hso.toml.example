@@ -4,3 +4,7 @@ command = "./run.sh"
 
 # hso.toml と Minecraft サーバーが別ディレクトリにある場合だけ指定する。
 # workdir = "/srv/minecraft"
+
+# 異常終了したサーバーを hso が自動で立て直す。設定モーダル（G キー）からも
+# 切り替えられる。既定は無効。
+# auto_restart = true

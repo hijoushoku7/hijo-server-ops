@@ -219,6 +219,7 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		model.status = fmt.Sprintf("java pid %d", message.PID)
 	case ServerRestartingMsg:
+		model.restart.recordStop(time.Now())
 		model.status = "restarting"
 		model.busy = true
 		return model, model.beginRestart()
@@ -231,6 +232,7 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			model.restart.startedAt = time.Now()
 		}
 		model.restart.logMark = model.logs.nextNumber
+		model.restart.recorded = false
 		// 新しい世代が立ち上がった時点で復旧とみなす。前世代のクラッシュを
 		// 抱えたままだと、その後に正常停止しても hso が失敗で終わる。
 		model.runErr = nil
@@ -276,6 +278,8 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.setFatalExit(message.Err)
 	case exitCountdownMsg:
 		return model.handleExitCountdown(message)
+	case autoRestartMsg:
+		return model.handleAutoRestart(message)
 	case restartTickMsg:
 		if model.restartPhase == 0 {
 			break

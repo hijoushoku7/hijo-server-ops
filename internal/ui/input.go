@@ -41,6 +41,14 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := message.Key()
+	// 自動再起動の最中は、やめる操作だけを受ける。裏で立ち直る途中に
+	// 再起動や終了を重ねられると、どちらが効いたのか分からなくなる。
+	if model.exit.autoRestart {
+		if key.Code == tea.KeyEscape {
+			model.cancelAutoRestart()
+		}
+		return model, nil
+	}
 	if model.exit.closed {
 		switch message.String() {
 		case "r", "R":

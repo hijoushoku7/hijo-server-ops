@@ -28,6 +28,8 @@ const (
 	LabelTitle     = "title"
 	LabelSelection = "selection"
 	LabelLog       = "log"
+
+	LabelAutoRestart = "auto restart"
 )
 
 // Color preset names.
@@ -47,6 +49,12 @@ const (
 	OptAmber   = "amber"
 	OptViolet  = "violet"
 	OptQuiet   = "quiet"
+)
+
+// On/off names.
+const (
+	OptOn  = "on"
+	OptOff = "off"
 )
 
 // Status line.
@@ -70,6 +78,13 @@ const (
 	ExitButtonLogs    = "Read logs"
 	ExitButtonRestart = "Restart"
 	ExitButtonQuit    = "Quit"
+
+	ExitAutoRestartHint     = "Esc: stop auto restart"
+	ExitAutoRestartCanceled = "Auto restart stopped."
+	ExitAutoRestartStopped  = "Auto restart gave up: the server keeps dying at startup."
+	ExitAutoRestartRejected = "Could not request the auto restart."
+	ExitAutoRestartSkipped  = "No auto restart: the start script never started java."
+	ExitAutoRestartFatal    = "No auto restart: hso itself failed."
 )
 
 func StoppedLogTitle(code string) string {
@@ -93,6 +108,10 @@ func ExitGC(collections uint64, last string) string {
 
 func ExitStateRestarting(dots string) string {
 	return "restarting" + dots
+}
+
+func ExitAutoRestartIn(seconds int) string {
+	return fmt.Sprintf("restarting automatically in %d seconds", seconds)
 }
 
 func ExitAutoQuit(seconds int) string {
@@ -124,6 +143,7 @@ const (
 	BarReadLogs     = "logs"
 	BarEnds         = "first/last"
 	BarRestart      = "restart"
+	BarStopAuto     = "stop auto restart"
 )
 
 // Setup wizard screens.

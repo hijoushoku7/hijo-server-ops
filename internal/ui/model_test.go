@@ -1423,3 +1423,304 @@ func TestModelKeepsPartiallyAvailableHeapForExitModal(t *testing.T) {
 		t.Fatalf("used = %#v", heap.Used)
 	}
 }
+
+func newAutoRestartModel(actions chan Action) *Model {
+	settings := DefaultSettings()
+	settings.AutoRestart = true
+	model := New(actions, nil, 0, settings)
+	model.resize(80, 24)
+	return model
+}
+
+func crash(model *Model, err error, uptime time.Duration) {
+	exitedAt := time.Now()
+	_, _ = model.Update(ProcessExitedMsg{
+		Err:       err,
+		ExitCode:  1,
+		StartedAt: exitedAt.Add(-uptime),
+		ExitedAt:  exitedAt,
+	})
+}
+
+func stopNormally(model *Model, uptime time.Duration) {
+	exitedAt := time.Now()
+	_, _ = model.Update(ProcessExitedMsg{
+		StartedAt: exitedAt.Add(-uptime),
+		ExitedAt:  exitedAt,
+	})
+}
+
+func TestModelAutoRestartKeepsDashboardAndRequestsRestart(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := newAutoRestartModel(actions)
+	crash(model, errors.New("crashed"), 2*time.Hour)
+
+	if !model.exit.autoRestart || model.exit.autoRestartAt.IsZero() {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	// 勝手に戻ってくる画面なので、背景はダッシュボードのまま残す。
+	content := stripANSI(model.View().Content)
+	if !strings.Contains(content, "Console") ||
+		!strings.Contains(content, msg.ExitTitleCrashed) ||
+		strings.Contains(content, "[ "+msg.ExitButtonRestart+" ]") {
+		t.Fatalf("view:\n%s", content)
+	}
+
+	model.exit.autoRestartAt = time.Now().Add(-time.Second)
+	state := model.exit
+	_, command := model.Update(autoRestartMsg{state: state})
+	if command == nil {
+		t.Fatal("no restart command")
+	}
+	if action := <-actions; action.Kind != ActionRestart {
+		t.Fatalf("action = %#v", action)
+	}
+	if model.restartPhase == 0 {
+		t.Fatalf("restartPhase = %d", model.restartPhase)
+	}
+
+	_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	if model.exit != nil {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+func TestModelAutoRestartGivesUpOnCrashLoop(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	for attempt := range shortRunGiveUp - 1 {
+		crash(model, errors.New("crashed"), time.Second)
+		if !model.exit.autoRestart {
+			t.Fatalf("attempt %d did not auto restart: %#v", attempt, model.exit)
+		}
+		_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	}
+
+	crash(model, errors.New("crashed"), time.Second)
+	if model.exit.autoRestart || model.exit.notice != msg.ExitAutoRestartStopped {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	// 打ち切った後はログ全面へ戻し、三択を出す。
+	content := stripANSI(model.View().Content)
+	if !strings.Contains(content, "[ "+msg.ExitButtonRestart+" ]") ||
+		!strings.Contains(content, msg.ExitAutoRestartStopped) {
+		t.Fatalf("view:\n%s", content)
+	}
+}
+
+func TestModelAutoRestartForgetsCrashesAfterLongRun(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	for range shortRunGiveUp - 1 {
+		crash(model, errors.New("crashed"), time.Second)
+		_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	}
+	crash(model, errors.New("crashed"), shortRunLimit+time.Second)
+	if len(model.restart.attempts) != 0 || !model.exit.autoRestart {
+		t.Fatalf("attempts = %d, exit = %#v",
+			len(model.restart.attempts), model.exit)
+	}
+}
+
+// 立ち直りの判定は終了の種類を見ない。長くもった世代を正常停止で挟んでも、
+// その前のクラッシュが次の 1 回目と合算されてはいけない。
+func TestModelAutoRestartForgetsCrashesAfterLongNormalRun(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	for range shortRunGiveUp - 1 {
+		crash(model, errors.New("crashed"), time.Second)
+		_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	}
+
+	stopNormally(model, shortRunLimit+time.Second)
+	if len(model.restart.attempts) != 0 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+
+	crash(model, errors.New("crashed"), time.Second)
+	if !model.exit.autoRestart || model.exit.notice != "" {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+// 短時間で止めた正常停止は、クラッシュの回数を増やしも減らしもしない。
+func TestModelShortNormalStopDoesNotCountAsCrash(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	crash(model, errors.New("crashed"), time.Second)
+	_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+
+	stopNormally(model, time.Second)
+	if len(model.restart.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+}
+
+// 起動スクリプトが java を立てないのは設定の誤りなので、待って叩き直しても
+// 直らない。1 回で人へ渡す。
+func TestModelAutoRestartSkipsScriptWithoutJava(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 1))
+	crash(model, msg.ErrScriptExitedWithoutJava, time.Second)
+	if model.exit.autoRestart || model.exit.notice != msg.ExitAutoRestartSkipped {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+func TestModelAutoRestartIgnoredWhenDisabledOrFatal(t *testing.T) {
+	model := newTestModel()
+	crash(model, errors.New("crashed"), time.Second)
+	if model.exit.autoRestart || model.exit.notice != "" {
+		t.Fatalf("disabled setting auto restarted: %#v", model.exit)
+	}
+
+	model = newAutoRestartModel(make(chan Action, 1))
+	_, command := model.Update(FatalMsg{Err: errors.New("hso failed")})
+	if command != nil || model.exit.autoRestart {
+		t.Fatalf("exit = %#v, command = %T", model.exit, command)
+	}
+}
+
+func TestModelAutoRestartStopsOnEscapeOnlyWhileWaiting(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := newAutoRestartModel(actions)
+	crash(model, errors.New("crashed"), time.Minute*10)
+
+	// 待っている間は他のキーを受けない。
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'R', Text: "R"})
+	if len(actions) != 0 || !model.exit.autoRestart {
+		t.Fatalf("modal leaked key: actions = %d, exit = %#v",
+			len(actions), model.exit)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.exit.autoRestart || !model.exit.autoRestartAt.IsZero() ||
+		model.exit.notice != msg.ExitAutoRestartCanceled {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	// やめた後は元の三択に戻る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if model.exit.button != 1 {
+		t.Fatalf("button = %d", model.exit.button)
+	}
+}
+
+// 再起動を頼んだ後は取り消せない。取り消せたつもりで裏の起動が進むと、
+// 画面と実際がずれる。
+func TestModelAutoRestartCannotBeStoppedAfterRequest(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 1))
+	crash(model, errors.New("crashed"), time.Minute*10)
+	model.exit.autoRestartAt = time.Now().Add(-time.Second)
+	_, _ = model.Update(autoRestartMsg{state: model.exit})
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !model.exit.autoRestart || model.exit.notice != "" {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+func TestModelAutoRestartReportsRejectedRequest(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 1))
+	crash(model, errors.New("crashed"), time.Minute*10)
+	model.exit.autoRestartAt = time.Now().Add(-time.Second)
+	model.busy = true
+	_, command := model.Update(autoRestartMsg{state: model.exit})
+	if command != nil || model.exit.autoRestart ||
+		model.exit.notice != msg.ExitAutoRestartRejected {
+		t.Fatalf("exit = %#v, command = %T", model.exit, command)
+	}
+}
+
+// hso 自身の失敗は自動再起動の対象外。findJava の失敗のように hso が
+// SIGTERM を送る経路では、後から同じ世代の終了通知が届いて状態を
+// 作り直すので、そこで普通のクラッシュに化けてはいけない。
+func TestModelFatalExitIsNeverAutoRestarted(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := newAutoRestartModel(actions)
+	_, _ = model.Update(FatalMsg{Err: errors.New("java not found")})
+
+	exitedAt := time.Now()
+	_, command := model.Update(ProcessExitedMsg{
+		ExitCode:  143,
+		StartedAt: exitedAt.Add(-time.Second),
+		ExitedAt:  exitedAt,
+	})
+	if command != nil || model.exit.autoRestart ||
+		model.exit.notice != msg.ExitAutoRestartFatal {
+		t.Fatalf("exit = %#v, command = %T", model.exit, command)
+	}
+	if len(actions) != 0 || len(model.restart.attempts) != 0 {
+		t.Fatalf("actions = %d, attempts = %d",
+			len(actions), len(model.restart.attempts))
+	}
+}
+
+// 手動 restart では controller が runtime を切り離すので終了通知が届かない。
+// 畳まれる世代の稼働時間はここで拾わないと、履歴が残ったままになる。
+func TestModelManualRestartForgetsCrashesAfterLongRun(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	crash(model, errors.New("crashed"), time.Second)
+	if len(model.restart.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+
+	_, _ = model.Update(ServerStartedMsg{
+		Generation: 1,
+		StartedAt:  time.Now().Add(-2 * shortRunLimit),
+	})
+	_, _ = model.Update(ServerRestartingMsg{})
+	if len(model.restart.attempts) != 0 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+}
+
+// 終了通知で記録済みの世代を、その後の再起動でもう一度数えない。
+func TestModelRestartingDoesNotRecordTwice(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	crash(model, errors.New("crashed"), time.Second)
+	_, _ = model.Update(ServerRestartingMsg{})
+	if len(model.restart.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(model.restart.attempts))
+	}
+}
+
+func TestRestartTrackerShortRunBoundary(t *testing.T) {
+	startedAt := time.Date(2026, time.August, 6, 12, 0, 0, 0, time.UTC)
+	tracker := restartTracker{attempts: []restartAttempt{{}, {}}}
+
+	tracker.record(startedAt, startedAt.Add(shortRunLimit-time.Nanosecond), true)
+	if len(tracker.attempts) != 3 {
+		t.Fatalf("attempts = %d", len(tracker.attempts))
+	}
+	// ちょうど shortRunLimit もった世代は立ち直り側に入れる。
+	tracker.record(startedAt, startedAt.Add(shortRunLimit), true)
+	if len(tracker.attempts) != 0 {
+		t.Fatalf("attempts = %d", len(tracker.attempts))
+	}
+
+	// 稼働時間が分からない世代は履歴に触らない。
+	tracker.attempts = []restartAttempt{{}}
+	tracker.record(time.Time{}, startedAt, true)
+	if len(tracker.attempts) != 1 {
+		t.Fatalf("attempts = %d", len(tracker.attempts))
+	}
+}
+
+// モーダルは幅 64 で、はみ出した行は黙って切られる。ja / en どちらの
+// ビルドでも切れないことを、文言を足したときに気付ける形で見張る。
+func TestExitModalMessagesFitTheModal(t *testing.T) {
+	lines := []string{
+		msg.ExitStateCrashed,
+		msg.ExitStateStopped,
+		msg.ExitAutoRestartHint,
+		msg.ExitAutoRestartCanceled,
+		msg.ExitAutoRestartStopped,
+		msg.ExitAutoRestartSkipped,
+		msg.ExitAutoRestartRejected,
+		msg.ExitAutoRestartFatal,
+		msg.ExitAutoRestartIn(999),
+		msg.ExitAutoQuit(999),
+		msg.ExitStateRestarting("..."),
+	}
+	for _, line := range lines {
+		if width := stringWidth(line); width > exitModalWidth-2 {
+			t.Errorf("width %d > %d: %q", width, exitModalWidth-2, line)
+		}
+	}
+}

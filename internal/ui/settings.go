@@ -18,6 +18,7 @@ type Settings struct {
 	TitlePreset     string
 	SelectionPreset string
 	LogPreset       string
+	AutoRestart     bool
 }
 
 func DefaultSettings() Settings {
@@ -128,7 +129,30 @@ var settingItems = []settingItem{
 			settings.LogPreset = value
 		},
 	},
+	{
+		label: msg.LabelAutoRestart,
+		// 値は文字列で持たせる。項目 1 つのために get/set を型で分けると、
+		// モーダルが項目の中身を知らずに済む今の形が崩れる。
+		options: []settingOption{
+			{label: msg.OptOff, value: settingOff},
+			{label: msg.OptOn, value: settingOn},
+		},
+		get: func(settings Settings) string {
+			if settings.AutoRestart {
+				return settingOn
+			}
+			return settingOff
+		},
+		set: func(settings *Settings, value string) {
+			settings.AutoRestart = value == settingOn
+		},
+	},
 }
+
+const (
+	settingOn  = "on"
+	settingOff = "off"
+)
 
 func (item settingItem) optionIndex(settings Settings) int {
 	current := item.get(settings)

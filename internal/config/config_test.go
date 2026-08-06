@@ -183,3 +183,37 @@ func TestSaveOmitsDefaultedWorkDir(t *testing.T) {
 		t.Fatalf("saved = %s", saved)
 	}
 }
+
+func TestSaveRoundTripsAutoRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	cfg := Config{Server: Server{
+		Command:     "./run.sh",
+		WorkDir:     dir,
+		AutoRestart: true,
+	}}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Server.AutoRestart {
+		t.Fatalf("loaded = %#v", loaded.Server)
+	}
+
+	// 既定の無効は書かない。書いていない設定ファイルをそのまま保つ。
+	loaded.Server.AutoRestart = false
+	if err := Save(path, loaded); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(written), "auto_restart") {
+		t.Fatalf("written:\n%s", written)
+	}
+}

@@ -26,6 +26,8 @@ const (
 	LabelTitle     = "タイトル"
 	LabelSelection = "選択行"
 	LabelLog       = "ログ"
+
+	LabelAutoRestart = "自動再起動"
 )
 
 // 配色プリセットの表示名。
@@ -45,6 +47,12 @@ const (
 	OptAmber   = "黄"
 	OptViolet  = "紫"
 	OptQuiet   = "控えめ"
+)
+
+// 入切の表示名。
+const (
+	OptOn  = "有効"
+	OptOff = "無効"
 )
 
 // ステータス行。
@@ -68,6 +76,13 @@ const (
 	ExitButtonLogs    = "ログを読む"
 	ExitButtonRestart = "再起動"
 	ExitButtonQuit    = "終了"
+
+	ExitAutoRestartHint     = "Esc: 自動再起動をやめる"
+	ExitAutoRestartCanceled = "自動再起動をやめました。"
+	ExitAutoRestartStopped  = "短時間での終了が続いたため、自動再起動を打ち切りました。"
+	ExitAutoRestartSkipped  = "起動スクリプトがjavaを起動しないため、自動再起動しません。"
+	ExitAutoRestartRejected = "自動再起動を要求できませんでした。"
+	ExitAutoRestartFatal    = "hso 側の失敗のため、自動再起動しません。"
 )
 
 func StoppedLogTitle(code string) string {
@@ -91,6 +106,10 @@ func ExitGC(collections uint64, last string) string {
 
 func ExitStateRestarting(dots string) string {
 	return "再起動中" + dots
+}
+
+func ExitAutoRestartIn(seconds int) string {
+	return fmt.Sprintf("%d 秒後に自動で再起動します", seconds)
 }
 
 func ExitAutoQuit(seconds int) string {
@@ -123,6 +142,7 @@ const (
 	BarReadLogs     = "ログ"
 	BarEnds         = "先頭/末尾"
 	BarRestart      = "再起動"
+	BarStopAuto     = "自動再起動をやめる"
 )
 
 // セットアップウィザードの画面。
