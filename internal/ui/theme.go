@@ -24,6 +24,14 @@ var (
 	keyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#282A36")).
 			Background(lipgloss.Color("#BBBBBB"))
+	// 終了モーダルの枠。異常終了と正常終了の区別は配色プリセットに
+	// 左右させない。単色プリセットで両者が同じ色になると意味が壊れる。
+	exitCrashStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF5555")).
+			Bold(true)
+	exitStoppedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#50FA7B")).
+				Bold(true)
 	logTimestampStyle = color("#777777")
 	logReceivedStyle  = color("#5A5A5A").Faint(true)
 	logKindStyles     = map[serverlog.Kind]lipgloss.Style{

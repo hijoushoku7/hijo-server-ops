@@ -60,6 +60,45 @@ func ActionFailed(err error) string {
 	return "operation failed: " + err.Error()
 }
 
+// Server exit modal and stopped log screen.
+const (
+	ExitTitleCrashed  = "Server crashed"
+	ExitTitleStopped  = "Server stopped"
+	ExitErrorLines    = "Error lines"
+	ExitStateCrashed  = "The server crashed. Read the log or restart it."
+	ExitStateStopped  = "The server stopped normally."
+	ExitButtonLogs    = "Read logs"
+	ExitButtonRestart = "Restart"
+	ExitButtonQuit    = "Quit"
+)
+
+func StoppedLogTitle(code string) string {
+	return "Log · stopped (exit " + code + ")"
+}
+
+func ExitSummary(code, exitedAt, uptime string) string {
+	return fmt.Sprintf("exit %s · stopped %s · uptime %s", code, exitedAt, uptime)
+}
+
+func ExitMemory(rss, heapUsed, heapCommitted, delta string) string {
+	return fmt.Sprintf(
+		"final memory  RSS %s · heap %s/%s · Δ %s",
+		rss, heapUsed, heapCommitted, delta,
+	)
+}
+
+func ExitGC(collections uint64, last string) string {
+	return fmt.Sprintf("GC  %d collections · last pause %s", collections, last)
+}
+
+func ExitStateRestarting(dots string) string {
+	return "restarting" + dots
+}
+
+func ExitAutoQuit(seconds int) string {
+	return fmt.Sprintf("hso exits in %d seconds (press a key to stay)", seconds)
+}
+
 // Key bar (the hint line at the bottom of the screen).
 const (
 	BarItem         = "item"
@@ -80,6 +119,11 @@ const (
 	BarScroll       = "scroll"
 	BarPage         = "page"
 	BarLatest       = "latest"
+	BarExitButton   = "button"
+	BarConfirm      = "confirm"
+	BarReadLogs     = "logs"
+	BarEnds         = "first/last"
+	BarRestart      = "restart"
 )
 
 // Setup wizard screens.

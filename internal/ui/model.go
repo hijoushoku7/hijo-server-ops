@@ -3,6 +3,8 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -58,6 +60,9 @@ type JavaFoundMsg struct {
 type ProcessExitedMsg struct {
 	Generation uint64
 	Err        error
+	ExitCode   int
+	StartedAt  time.Time
+	ExitedAt   time.Time
 }
 
 type FatalMsg struct {
@@ -69,6 +74,7 @@ type ServerRestartingMsg struct{}
 
 type ServerStartedMsg struct {
 	Generation uint64
+	StartedAt  time.Time
 }
 
 type ServerAddressMsg struct {
@@ -117,6 +123,44 @@ type Model struct {
 	settings          Settings
 	settingsOpen      bool
 	settingCursor     int
+	exit              *exitState
+	restart           restartTracker
+	restarting        bool
+	restartPhase      int
+}
+
+// restartTickMsg は再起動待ちの点を進める。停止から起動まで数十秒かかるので、
+// 押した操作が生きていることを点の数で見せる。
+type restartTickMsg struct{}
+
+const restartTickInterval = 400 * time.Millisecond
+
+func (model *Model) beginRestart() tea.Cmd {
+	model.restartPhase = 0
+	// すでに動いていれば tick を二重に走らせない。
+	if model.restarting {
+		return nil
+	}
+	model.restarting = true
+	return restartTick()
+}
+
+func (model *Model) endRestart() {
+	model.restarting = false
+	model.restartPhase = 0
+}
+
+func restartTick() tea.Cmd {
+	return tea.Tick(restartTickInterval, func(time.Time) tea.Msg {
+		return restartTickMsg{}
+	})
+}
+
+// restartDots は "." → ".." → "..." を返す。幅は常に 3 桁で、隣の表示が
+// 点の数で揺れないようにする。
+func (model *Model) restartDots() string {
+	count := model.restartPhase%3 + 1
+	return strings.Repeat(".", count) + strings.Repeat(" ", 3-count)
 }
 
 func New(
@@ -126,6 +170,7 @@ func New(
 	settings Settings,
 ) *Model {
 	applyTheme(settings)
+	startedAt := time.Now()
 	return &Model{
 		status:     "starting",
 		actions:    actions,
@@ -135,6 +180,7 @@ func New(
 		mode:     modeFocus,
 		panel:    panelConsole,
 		settings: settings,
+		restart:  restartTracker{startedAt: startedAt},
 	}
 }
 
@@ -171,11 +217,18 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ServerRestartingMsg:
 		model.status = "restarting"
 		model.busy = true
+		return model, model.beginRestart()
 	case ServerStartedMsg:
 		model.generation = message.Generation
 		model.resetServerState()
+		model.exit = nil
+		model.restart.startedAt = message.StartedAt
+		if model.restart.startedAt.IsZero() {
+			model.restart.startedAt = time.Now()
+		}
 		model.status = "starting"
 		model.busy = false
+		model.endRestart()
 	case ServerAddressMsg:
 		if !model.accepts(message.Generation) {
 			break
@@ -184,7 +237,12 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ActionResultMsg:
 		model.busy = false
 		if message.Err != nil {
+			model.endRestart()
 			model.status = msg.ActionFailed(message.Err)
+			// 終了モーダルには status 行がないので、失敗の理由をここへ移す。
+			if model.exit != nil {
+				model.exit.notice = model.status
+			}
 			break
 		}
 		if message.Action.Kind == ActionSendCommand {
@@ -198,7 +256,7 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if model.runErr == nil {
 			model.runErr = message.Err
 		}
-		return model, tea.Quit
+		return model, model.setProcessExit(message)
 	case FatalMsg:
 		if !model.accepts(message.Generation) {
 			break
@@ -207,7 +265,15 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if model.runErr == nil {
 			model.runErr = message.Err
 		}
-		return model, tea.Quit
+		model.setFatalExit(message.Err)
+	case exitCountdownMsg:
+		return model.handleExitCountdown(message)
+	case restartTickMsg:
+		if !model.restarting {
+			break
+		}
+		model.restartPhase++
+		return model, restartTick()
 	}
 	return model, nil
 }

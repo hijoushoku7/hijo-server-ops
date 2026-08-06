@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,6 +50,7 @@ func (pipe outputPipe) close() {
 type serverRuntime struct {
 	server       *process.Process
 	generation   uint64
+	startedAt    time.Time
 	javaFound    atomic.Bool
 	expectedExit atomic.Bool
 	cancel       context.CancelFunc
@@ -69,6 +72,8 @@ type serverController struct {
 	operation sync.Mutex
 	currentMu sync.Mutex
 	current   *serverRuntime
+	// runtime を手放した後も、次の起動世代を決められるよう保持する。
+	lastGeneration uint64
 }
 
 func newServerController(
@@ -101,16 +106,21 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 	runtime := &serverRuntime{
 		server:     server,
 		generation: generation,
+		startedAt:  time.Now(),
 		cancel:     runtimeCancel,
 		stdout:     stdout,
 		stderr:     stderr,
 	}
 	controller.currentMu.Lock()
 	controller.current = runtime
+	controller.lastGeneration = generation
 	controller.currentMu.Unlock()
 
 	if announce {
-		controller.program.Send(ui.ServerStartedMsg{Generation: generation})
+		controller.program.Send(ui.ServerStartedMsg{
+			Generation: generation,
+			StartedAt:  runtime.startedAt,
+		})
 	}
 
 	logs := make(chan serverlog.Entry, logQueueSize)
@@ -171,7 +181,10 @@ func (controller *serverController) restart() {
 
 	runtime := controller.currentRuntime()
 	if runtime == nil {
-		controller.sendRestartResult(msg.ErrServerStopped)
+		controller.program.Send(ui.ServerRestartingMsg{})
+		if err := controller.start(controller.latestGeneration()+1, true); err != nil {
+			controller.program.Send(ui.FatalMsg{Err: msg.RestartFailed(err)})
+		}
 		return
 	}
 	if !runtime.javaFound.Load() {
@@ -230,12 +243,26 @@ func (controller *serverController) waitForServer(runtime *serverRuntime) {
 	}
 	controller.program.Send(ui.ProcessExitedMsg{
 		Generation: runtime.generation,
+		ExitCode:   processExitCode(waitErr),
+		StartedAt:  runtime.startedAt,
+		ExitedAt:   time.Now(),
 		Err: serverExitError(
 			waitErr,
 			runtime.javaFound.Load(),
 			runtime.expectedExit.Load(),
 		),
 	})
+}
+
+func processExitCode(waitErr error) int {
+	if waitErr == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 func serverExitError(waitErr error, javaFound, expected bool) error {
@@ -252,6 +279,12 @@ func (controller *serverController) currentRuntime() *serverRuntime {
 	controller.currentMu.Lock()
 	defer controller.currentMu.Unlock()
 	return controller.current
+}
+
+func (controller *serverController) latestGeneration() uint64 {
+	controller.currentMu.Lock()
+	defer controller.currentMu.Unlock()
+	return controller.lastGeneration
 }
 
 func (controller *serverController) detachCurrent() *serverRuntime {

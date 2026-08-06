@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -295,13 +296,193 @@ func TestModelBoundsCurrentMetricError(t *testing.T) {
 func TestModelReturnsProcessError(t *testing.T) {
 	model := newTestModel()
 	want := errors.New("server failed")
-	_, command := model.Update(ProcessExitedMsg{Err: want})
+	startedAt := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	exitedAt := startedAt.Add(90 * time.Second)
+	_, command := model.Update(ProcessExitedMsg{
+		Err:       want,
+		ExitCode:  1,
+		StartedAt: startedAt,
+		ExitedAt:  exitedAt,
+	})
 
 	if !errors.Is(model.Err(), want) {
 		t.Fatalf("Err = %v", model.Err())
 	}
+	if command != nil {
+		t.Fatalf("unexpected command = %T", command())
+	}
+	if model.exit == nil || !model.exit.crashed || model.exit.exitCode != 1 ||
+		model.exit.uptime != 90*time.Second || model.exit.button != 0 {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+func TestModelSnapshotsExitMetricsAndErrorLines(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	_, _ = model.Update(MetricsMsg{
+		JVM: hsperfdata.Metrics{Heap: hsperfdata.Memory{
+			Used:      hsperfdata.Number{Value: 10, Available: true},
+			Committed: hsperfdata.Number{Value: 20, Available: true},
+		}},
+		Memory: procstats.Memory{
+			RSS: procstats.Number{Value: 30, Available: true},
+		},
+	})
+	model.gcStats.Collections = 4
+	for _, line := range []string{
+		"old ERROR one",
+		"ignored info",
+		"Exception two",
+		"FATAL three",
+		"Caused by four",
+	} {
+		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+			Kind: serverlog.KindOther, Message: line,
+		}})
+	}
+
+	wantErr := errors.New("process failed")
+	_, _ = model.Update(ProcessExitedMsg{Err: wantErr, ExitCode: 7})
+	state := model.exit
+	if state.snapshot.heap.Used.Value != 10 ||
+		state.snapshot.heap.Committed.Value != 20 ||
+		state.snapshot.rss.Value != 30 || state.snapshot.gc.Collections != 4 {
+		t.Fatalf("snapshot = %#v", state.snapshot)
+	}
+	wantLines := []string{
+		"process failed", "Exception two", "FATAL three", "Caused by four",
+	}
+	if !slices.Equal(state.errorLines, wantLines) {
+		t.Fatalf("errorLines = %#v, want %#v", state.errorLines, wantLines)
+	}
+
+	// 終了後に元の状態が変わっても、モーダルのスナップショットは変えない。
+	_, _ = model.Update(MetricsMsg{Memory: procstats.Memory{
+		RSS: procstats.Number{Value: 99, Available: true},
+	}})
+	if state.snapshot.rss.Value != 30 {
+		t.Fatalf("snapshot RSS = %d", state.snapshot.rss.Value)
+	}
+}
+
+func TestModelNormalExitCountsDownAndAnyKeyCancelsIt(t *testing.T) {
+	model := newTestModel()
+	_, command := model.Update(ProcessExitedMsg{ExitCode: 0})
+	if command == nil || model.exit == nil || model.exit.crashed ||
+		!model.exit.autoQuit {
+		t.Fatalf("exit = %#v, command = %T", model.exit, command)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	if model.exit.autoQuit || model.settingsOpen || model.exit.closed {
+		t.Fatalf("key did not only cancel countdown: %#v", model.exit)
+	}
+	_, command = model.Update(exitCountdownMsg{state: model.exit})
+	if command != nil {
+		t.Fatalf("cancelled countdown returned command %T", command)
+	}
+}
+
+func TestModelFatalMessageOpensCrashModalWithoutQuitting(t *testing.T) {
+	model := newTestModel()
+	model.busy = true
+	want := errors.New("fatal monitor error")
+	_, command := model.Update(FatalMsg{Err: want})
+	if command != nil || model.exit == nil || !model.exit.crashed ||
+		model.exit.exitCode != unknownExitCode || model.busy ||
+		!errors.Is(model.Err(), want) {
+		t.Fatalf("exit = %#v, Err = %v, command = %T",
+			model.exit, model.Err(), command)
+	}
+}
+
+func TestModelNormalExitCountdownQuitsAfterDeadline(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(ProcessExitedMsg{})
+	model.exit.autoQuitAt = time.Now().Add(-time.Second)
+	_, command := model.Update(exitCountdownMsg{state: model.exit})
 	if _, ok := command().(tea.QuitMsg); !ok {
 		t.Fatalf("command = %T", command())
+	}
+}
+
+func TestModelExitModalKeysAndStoppedMode(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings())
+	model.resize(80, 24)
+	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
+
+	// モーダルの既定はログで、G を含む無関係なキーは設定へ流さない。
+	if model.exit.button != 0 {
+		t.Fatalf("button = %d", model.exit.button)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if model.exit.button != 1 {
+		t.Fatalf("button = %d", model.exit.button)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	if model.settingsOpen || model.exit.button != 1 {
+		t.Fatalf("modal leaked key: settings = %t, button = %d",
+			model.settingsOpen, model.exit.button)
+	}
+
+	model.exit.button = 0
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if command != nil || !model.exit.closed || model.panel != panelLog {
+		t.Fatalf("exit = %#v, panel = %d, command = %T",
+			model.exit, model.panel, command)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'R', Text: "R"})
+	if action := <-actions; action.Kind != ActionRestart {
+		t.Fatalf("action = %#v", action)
+	}
+	_, command = model.Update(tea.KeyPressMsg{Code: 'Q', Text: "Q"})
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
+	}
+}
+
+func TestModelExitViewIsFullScreenLogAndRectangular(t *testing.T) {
+	model := newTestModel()
+	model.resize(72, 21)
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind: serverlog.KindOther, Message: "last useful log",
+	}})
+	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
+
+	content := stripANSI(model.View().Content)
+	if !strings.Contains(content, "Log · ") ||
+		!strings.Contains(content, "exit 1") ||
+		!strings.Contains(content, "last useful log") {
+		t.Fatalf("stopped view:\n%s", content)
+	}
+	for _, title := range []string{"Meters", "Players", "Chat", "Console"} {
+		if strings.Contains(content, title) {
+			t.Fatalf("stopped view still contains %s:\n%s", title, content)
+		}
+	}
+	lines := strings.Split(model.View().Content, "\n")
+	if len(lines) != 21 {
+		t.Fatalf("height = %d", len(lines))
+	}
+	for index, line := range lines {
+		if width := stringWidth(line); width != 72 {
+			t.Fatalf("line %d width = %d: %q", index, width, stripANSI(line))
+		}
+	}
+}
+
+func TestModelServerStartedClearsExitAndUpdatesRestartTracker(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
+	startedAt := time.Date(2026, time.August, 6, 12, 0, 0, 0, time.UTC)
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: startedAt})
+	if model.exit != nil || model.restart.startedAt != startedAt || model.generation != 2 {
+		t.Fatalf("model = %#v", model)
 	}
 }
 
@@ -1029,5 +1210,70 @@ func TestGraphRangeAddsMarginAndReportsUnavailable(t *testing.T) {
 	model.samples.Add(memorySample{heap: 1, heapKnown: true})
 	if low, _, ok := model.graphRange(); !ok || low != 0 {
 		t.Fatalf("low = %d, ok = %t", low, ok)
+	}
+}
+
+func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings())
+	model.resize(80, 24)
+	model.consoleFocus = consoleRestart
+
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action := <-actions; action.Kind != ActionRestart {
+		t.Fatalf("action = %#v", action)
+	}
+	if !model.restarting || command == nil {
+		t.Fatalf("restarting = %t, command = %T", model.restarting, command)
+	}
+	// 点は 3 桁に揃え、コンソールのボタン幅を揺らさない。
+	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restarting.  ]") {
+		t.Fatalf("console = %q", console)
+	}
+	_, _ = model.Update(restartTickMsg{})
+	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restarting.. ]") {
+		t.Fatalf("console = %q", console)
+	}
+
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+	if model.restarting {
+		t.Fatal("animation outlived the restart")
+	}
+	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restart]") {
+		t.Fatalf("console = %q", console)
+	}
+	// 止まった後の tick では再武装しない。
+	if _, command := model.Update(restartTickMsg{}); command != nil {
+		t.Fatalf("command = %T", command)
+	}
+}
+
+func TestModelExitModalShowsRestartProgressAndFailure(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings())
+	model.resize(80, 24)
+	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
+
+	model.exit.button = 1
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action := <-actions; action.Kind != ActionRestart {
+		t.Fatalf("action = %#v", action)
+	}
+	box, _, _ := model.exitModal()
+	if !strings.Contains(stripANSI(box), msg.ExitStateRestarting(model.restartDots())) {
+		t.Fatalf("modal = %q", stripANSI(box))
+	}
+
+	// 失敗はモーダルへ出す。status 行がないので、ここで出さないと消える。
+	_, _ = model.Update(ActionResultMsg{
+		Action: Action{Kind: ActionRestart},
+		Err:    errors.New("no server"),
+	})
+	if model.restarting {
+		t.Fatal("animation outlived the failure")
+	}
+	box, _, _ = model.exitModal()
+	if !strings.Contains(stripANSI(box), "no server") {
+		t.Fatalf("modal = %q", stripANSI(box))
 	}
 }
