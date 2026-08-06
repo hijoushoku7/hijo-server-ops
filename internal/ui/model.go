@@ -127,6 +127,9 @@ type Model struct {
 	restart           restartTracker
 	restarting        bool
 	restartPhase      int
+	// logsAdded は Log ペインへ足した累計。バッファから押し出された分を
+	// 差し引いて、世代の境目が今どの位置かを割り出す。
+	logsAdded uint64
 }
 
 // restartTickMsg は再起動待ちの点を進める。停止から起動まで数十秒かかるので、
@@ -226,6 +229,10 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if model.restart.startedAt.IsZero() {
 			model.restart.startedAt = time.Now()
 		}
+		model.restart.logMark = model.logsAdded
+		// 新しい世代が立ち上がった時点で復旧とみなす。前世代のクラッシュを
+		// 抱えたままだと、その後に正常停止しても hso が失敗で終わる。
+		model.runErr = nil
 		model.status = "starting"
 		model.busy = false
 		model.endRestart()

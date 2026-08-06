@@ -28,15 +28,16 @@ type exitSnapshot struct {
 }
 
 type exitState struct {
-	crashed    bool
-	err        error
-	exitCode   int
-	exitedAt   time.Time
-	uptime     time.Duration
-	errorLines []string
-	snapshot   exitSnapshot
-	button     int
-	closed     bool
+	crashed     bool
+	err         error
+	exitCode    int
+	exitedAt    time.Time
+	uptime      time.Duration
+	uptimeKnown bool
+	errorLines  []string
+	snapshot    exitSnapshot
+	button      int
+	closed      bool
 	// notice は再起動を試みて失敗したときの理由。モーダルには status 行が
 	// ないので、握り潰さずここへ出す。
 	notice string
@@ -47,7 +48,10 @@ type exitState struct {
 
 type restartTracker struct {
 	startedAt time.Time
-	attempts  []restartAttempt
+	// logMark は現世代が始まった時点の累計ログ件数。エラー行の抜粋を
+	// この世代に限り、前回のクラッシュの残骸を原因として出さない。
+	logMark  uint64
+	attempts []restartAttempt
 }
 
 // restartAttempt はフェーズ 2 の短命再起動判定で記録する 1 回分の枠だけを
@@ -84,17 +88,15 @@ func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
 	return model.exitCountdownCmd(state)
 }
 
+// setFatalExit は hso 側の失敗（起動できなかった等）でモーダルを出す。
+// 前世代の稼働時間やメモリは引き継がない。停止後にログを読んでいた時間まで
+// uptime に足され、死んだサーバーの RSS が今の値として出てしまう。
 func (model *Model) setFatalExit(err error) {
 	model.busy = false
 	model.endRestart()
-	exitedAt := time.Now()
-	model.exit = model.newExitState(
-		true,
-		err,
-		unknownExitCode,
-		model.restart.startedAt,
-		exitedAt,
-	)
+	state := model.newExitState(true, err, unknownExitCode, time.Time{}, time.Now())
+	state.snapshot = exitSnapshot{}
+	model.exit = state
 }
 
 func (model *Model) newExitState(
@@ -105,16 +107,18 @@ func (model *Model) newExitState(
 	exitedAt time.Time,
 ) *exitState {
 	uptime := time.Duration(0)
-	if !startedAt.IsZero() && !exitedAt.Before(startedAt) {
+	known := !startedAt.IsZero() && !exitedAt.Before(startedAt)
+	if known {
 		uptime = exitedAt.Sub(startedAt)
 	}
 	return &exitState{
-		crashed:    crashed,
-		err:        err,
-		exitCode:   exitCode,
-		exitedAt:   exitedAt,
-		uptime:     uptime,
-		errorLines: model.exitErrorLines(err),
+		crashed:     crashed,
+		err:         err,
+		exitCode:    exitCode,
+		exitedAt:    exitedAt,
+		uptime:      uptime,
+		uptimeKnown: known,
+		errorLines:  model.exitErrorLines(err),
 		snapshot: exitSnapshot{
 			heap: model.metrics.Heap,
 			rss:  model.memory.RSS,
@@ -129,8 +133,9 @@ func (model *Model) exitErrorLines(err error) []string {
 		lines = append(lines, err.Error())
 	}
 
+	oldest := model.generationLogStart()
 	matches := make([]string, 0, exitErrorLineLimit)
-	for index := model.logs.Len() - 1; index >= 0 && len(matches) < exitErrorLineLimit; index-- {
+	for index := model.logs.Len() - 1; index >= oldest && len(matches) < exitErrorLineLimit; index-- {
 		line := model.logs.At(index).line()
 		if strings.Contains(line, "ERROR") || strings.Contains(line, "FATAL") ||
 			strings.Contains(line, "Exception") || strings.Contains(line, "Caused by") {
@@ -138,7 +143,7 @@ func (model *Model) exitErrorLines(err error) []string {
 		}
 	}
 	if len(matches) == 0 {
-		for index := model.logs.Len() - 1; index >= 0 && len(matches) < exitErrorLineLimit; index-- {
+		for index := model.logs.Len() - 1; index >= oldest && len(matches) < exitErrorLineLimit; index-- {
 			matches = append(matches, model.logs.At(index).line())
 		}
 	}
@@ -146,6 +151,16 @@ func (model *Model) exitErrorLines(err error) []string {
 		lines = append(lines, matches[index])
 	}
 	return lines
+}
+
+// generationLogStart は現世代の最初のログが今どの位置にいるかを返す。
+// バッファは再起動で消さないので、位置は古い行が押し出されるたびにずれる。
+func (model *Model) generationLogStart() int {
+	discarded := model.logsAdded - uint64(model.logs.Len())
+	if model.restart.logMark <= discarded {
+		return 0
+	}
+	return int(model.restart.logMark - discarded)
 }
 
 func (model *Model) exitCountdownCmd(state *exitState) tea.Cmd {
@@ -199,7 +214,7 @@ func (model *Model) exitModal() (string, int, int) {
 		msg.ExitSummary(
 			exitCode,
 			state.exitedAt.Format("2006-01-02 15:04:05"),
-			formatExitUptime(state.uptime),
+			formatExitUptime(state.uptime, state.uptimeKnown),
 		),
 		msg.ExitMemory(
 			formatProcBytes(state.snapshot.rss),
@@ -269,6 +284,6 @@ func formatExitCode(code int) string {
 	return strconv.Itoa(code)
 }
 
-func formatExitUptime(duration time.Duration) string {
-	return formatUptime(hsperfdata.Duration{Value: duration, Available: true})
+func formatExitUptime(duration time.Duration, known bool) string {
+	return formatUptime(hsperfdata.Duration{Value: duration, Available: known})
 }

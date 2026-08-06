@@ -368,3 +368,42 @@ func waitForFileLines(t *testing.T, path string, count int) {
 	}
 	t.Fatalf("%s did not contain %d lines", path, count)
 }
+
+func TestPumpLogsDrainsRemainingOutputBeforeDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	actions := make(chan ui.Action, 1)
+	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings())
+	program := tea.NewProgram(
+		model,
+		tea.WithContext(ctx),
+		tea.WithInput(nil),
+		tea.WithoutRenderer(),
+	)
+	programDone := make(chan struct{})
+	go func() {
+		_, _ = program.Run()
+		close(programDone)
+	}()
+
+	// クラッシュ直前のスタックトレースを模して、キューを埋めてから閉じる。
+	logs := make(chan serverlog.Entry, logQueueSize)
+	for index := 0; index < logQueueSize; index++ {
+		logs <- serverlog.Entry{Kind: serverlog.KindOther, Message: "crash tail"}
+	}
+	close(logs)
+
+	done := make(chan struct{})
+	go pumpLogs(ctx, program, logs, initialGeneration, done)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pumpLogs did not finish")
+	}
+	if remaining := len(logs); remaining != 0 {
+		t.Fatalf("dropped %d entries", remaining)
+	}
+
+	program.Quit()
+	<-programDone
+}

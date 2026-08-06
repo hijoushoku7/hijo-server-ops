@@ -1277,3 +1277,64 @@ func TestModelExitModalShowsRestartProgressAndFailure(t *testing.T) {
 		t.Fatalf("modal = %q", stripANSI(box))
 	}
 }
+
+func TestModelExitErrorLinesStayWithinCurrentGeneration(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind: serverlog.KindOther, Message: "[Server thread/ERROR]: 前世代の残骸",
+	}})
+
+	// 再起動でログは消さないので、世代の境目を覚えていないと前の
+	// クラッシュの ERROR を今回の原因として出してしまう。
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+	_, _ = model.Update(LogMsg{Generation: 2, Entry: serverlog.Entry{
+		Kind: serverlog.KindOther, Message: "Done (12.114s)!",
+	}})
+	_, _ = model.Update(ProcessExitedMsg{Generation: 2, ExitCode: 1})
+
+	joined := strings.Join(model.exit.errorLines, "\n")
+	if strings.Contains(joined, "前世代の残骸") {
+		t.Fatalf("errorLines = %q", joined)
+	}
+	if !strings.Contains(joined, "Done (12.114s)!") {
+		t.Fatalf("errorLines = %q", joined)
+	}
+}
+
+func TestModelFatalExitDoesNotReuseStaleUptimeAndMemory(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	model.restart.startedAt = time.Now().Add(-3 * time.Hour)
+	model.memory.RSS = procstats.Number{Value: 5 << 30, Available: true}
+
+	// 起動に失敗した世代には稼働時間もメモリもない。前の値を流用すると、
+	// ログを読んでいた時間まで uptime に足された嘘になる。
+	_, _ = model.Update(FatalMsg{Err: errors.New("start the start script")})
+	if model.exit.uptimeKnown || model.exit.snapshot.rss.Available {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	box, _, _ := model.exitModal()
+	if strings.Count(stripANSI(box), "n/a") < 2 {
+		t.Fatalf("modal = %q", stripANSI(box))
+	}
+}
+
+func TestModelClearsRunErrorAfterSuccessfulRestart(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
+	if model.Err() == nil {
+		t.Fatal("crash did not set the run error")
+	}
+
+	// 立ち上がり直した時点で復旧。以後の正常停止で hso は成功で終わる。
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+	if model.Err() != nil {
+		t.Fatalf("err = %v", model.Err())
+	}
+	_, _ = model.Update(ProcessExitedMsg{Generation: 2})
+	if model.Err() != nil {
+		t.Fatalf("err after normal stop = %v", model.Err())
+	}
+}

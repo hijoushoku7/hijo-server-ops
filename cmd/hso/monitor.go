@@ -200,12 +200,18 @@ func pumpLogs(
 	program *tea.Program,
 	logs <-chan serverlog.Entry,
 	generation uint64,
+	done chan<- struct{},
 ) {
+	defer close(done)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case entry := <-logs:
+		case entry, ok := <-logs:
+			// logs が閉じるのは出力を読み切ったとき。残りを送ってから抜ける。
+			if !ok {
+				return
+			}
 			program.Send(ui.LogMsg{Generation: generation, Entry: entry})
 		}
 	}

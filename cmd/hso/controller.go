@@ -56,6 +56,9 @@ type serverRuntime struct {
 	cancel       context.CancelFunc
 	stdout       outputPipe
 	stderr       outputPipe
+	// logsDone は pumpLogs が止まったことを知らせる。終了を UI へ告げる
+	// 前に、残っているログを送り切るために待つ。
+	logsDone chan struct{}
 }
 
 func (runtime *serverRuntime) close() {
@@ -110,6 +113,7 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 		cancel:     runtimeCancel,
 		stdout:     stdout,
 		stderr:     stderr,
+		logsDone:   make(chan struct{}),
 	}
 	controller.currentMu.Lock()
 	controller.current = runtime
@@ -123,10 +127,26 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 		})
 	}
 
+	// 出力の読み取りが両方とも EOF に達したら logs を閉じ、pumpLogs が
+	// 残りを送り切ってから logsDone を閉じる。クラッシュ時はスタック
+	// トレースが最後に固まって出るので、ここを待たずに終了を告げると
+	// いちばん読みたい行が捨てられる。
 	logs := make(chan serverlog.Entry, logQueueSize)
-	go pumpLogs(runtimeCtx, controller.program, logs, generation)
-	go readAndCloseServerOutput(stdout.reader, logs)
-	go readAndCloseServerOutput(stderr.reader, logs)
+	var readers sync.WaitGroup
+	readers.Add(2)
+	go pumpLogs(runtimeCtx, controller.program, logs, generation, runtime.logsDone)
+	go func() {
+		defer readers.Done()
+		readAndCloseServerOutput(stdout.reader, logs)
+	}()
+	go func() {
+		defer readers.Done()
+		readAndCloseServerOutput(stderr.reader, logs)
+	}()
+	go func() {
+		readers.Wait()
+		close(logs)
+	}()
 	go controller.waitForServer(runtime)
 	go findJava(runtimeCtx, server, &runtime.javaFound, controller.program, generation)
 	go streamGC(runtimeCtx, server.GCLogPath(), controller.program, generation)
@@ -237,6 +257,9 @@ func (controller *serverController) waitForServer(runtime *serverRuntime) {
 	waitErr := runtime.server.Wait()
 	_ = runtime.stdout.writer.Close()
 	_ = runtime.stderr.writer.Close()
+	// 最後の出力を送り切ってから止める。順番を逆にすると、クラッシュの
+	// 原因が書かれた末尾がそのまま消える。
+	<-runtime.logsDone
 	runtime.cancel()
 	if !controller.detach(runtime) {
 		return
