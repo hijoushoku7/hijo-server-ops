@@ -67,6 +67,7 @@ func settingsFrom(cfg config.Config) ui.Settings {
 	if value := cfg.UI.Theme.Log; value != "" {
 		settings.LogPreset = value
 	}
+	settings.AutoRestart = cfg.Server.AutoRestart
 	return settings
 }
 
@@ -79,5 +80,6 @@ func saveSettings(configPath string, cfg config.Config, settings ui.Settings) er
 		Selection: settings.SelectionPreset,
 		Log:       settings.LogPreset,
 	}
+	cfg.Server.AutoRestart = settings.AutoRestart
 	return config.Save(configPath, cfg)
 }

@@ -276,6 +276,8 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.setFatalExit(message.Err)
 	case exitCountdownMsg:
 		return model.handleExitCountdown(message)
+	case autoRestartMsg:
+		return model.handleAutoRestart(message)
 	case restartTickMsg:
 		if model.restartPhase == 0 {
 			break

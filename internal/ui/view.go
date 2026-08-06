@@ -20,7 +20,7 @@ func (model *Model) View() tea.View {
 			minimumWidth,
 			minimumHeight,
 		)
-	} else if model.exit != nil {
+	} else if model.exit != nil && !model.exit.autoRestart {
 		content = model.renderBufferPanelWithTitle(
 			msg.StoppedLogTitle(formatExitCode(model.exit.exitCode)),
 			panelLog,
@@ -69,6 +69,11 @@ func (model *Model) View() tea.View {
 		)
 		content = top + "\n" + body + "\n" + footer + "\n" + model.keybar()
 		switch {
+		// 自動再起動の最中はダッシュボードを背景のまま残す。ログ全面に
+		// 切り替えると、勝手に戻ってくる画面で操作を促すことになる。
+		case model.exit != nil:
+			box, x, y := model.exitModal()
+			content = overlay(content, box, x, y)
 		case model.settingsOpen:
 			box, x, y := model.settingsModal()
 			content = overlay(content, box, x, y)
@@ -251,6 +256,12 @@ func renderPanelLines(
 func (model *Model) keybar() string {
 	var keys [][2]string
 	switch {
+	case model.exit != nil && model.exit.autoRestart:
+		// 再起動を頼んだ後はやめられないので、案内も消す。
+		keys = [][2]string{{"^C", msg.BarExit}}
+		if !model.exit.autoRestartAt.IsZero() {
+			keys = append([][2]string{{"Esc", msg.BarStopAuto}}, keys...)
+		}
 	case model.exit != nil && !model.exit.closed:
 		keys = [][2]string{
 			{"←→/Tab", msg.BarExitButton},

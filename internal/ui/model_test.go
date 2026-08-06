@@ -1423,3 +1423,165 @@ func TestModelKeepsPartiallyAvailableHeapForExitModal(t *testing.T) {
 		t.Fatalf("used = %#v", heap.Used)
 	}
 }
+
+func newAutoRestartModel(actions chan Action) *Model {
+	settings := DefaultSettings()
+	settings.AutoRestart = true
+	model := New(actions, nil, 0, settings)
+	model.resize(80, 24)
+	return model
+}
+
+func crash(model *Model, err error, uptime time.Duration) {
+	exitedAt := time.Now()
+	_, _ = model.Update(ProcessExitedMsg{
+		Err:       err,
+		ExitCode:  1,
+		StartedAt: exitedAt.Add(-uptime),
+		ExitedAt:  exitedAt,
+	})
+}
+
+func TestModelAutoRestartKeepsDashboardAndRequestsRestart(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := newAutoRestartModel(actions)
+	crash(model, errors.New("crashed"), 2*time.Hour)
+
+	if !model.exit.autoRestart || model.exit.autoRestartAt.IsZero() {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	// 勝手に戻ってくる画面なので、背景はダッシュボードのまま残す。
+	content := stripANSI(model.View().Content)
+	if !strings.Contains(content, "Console") ||
+		!strings.Contains(content, msg.ExitTitleCrashed) ||
+		strings.Contains(content, "[ "+msg.ExitButtonRestart+" ]") {
+		t.Fatalf("view:\n%s", content)
+	}
+
+	model.exit.autoRestartAt = time.Now().Add(-time.Second)
+	state := model.exit
+	_, command := model.Update(autoRestartMsg{state: state})
+	if command == nil {
+		t.Fatal("no restart command")
+	}
+	if action := <-actions; action.Kind != ActionRestart {
+		t.Fatalf("action = %#v", action)
+	}
+	if model.restartPhase == 0 {
+		t.Fatalf("restartPhase = %d", model.restartPhase)
+	}
+
+	_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	if model.exit != nil {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+func TestModelAutoRestartGivesUpOnCrashLoop(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	for attempt := range shortRunGiveUp - 1 {
+		crash(model, errors.New("crashed"), time.Second)
+		if !model.exit.autoRestart {
+			t.Fatalf("attempt %d did not auto restart: %#v", attempt, model.exit)
+		}
+		_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	}
+
+	crash(model, errors.New("crashed"), time.Second)
+	if model.exit.autoRestart || model.exit.notice != msg.ExitAutoRestartStopped {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	// 打ち切った後はログ全面へ戻し、三択を出す。
+	content := stripANSI(model.View().Content)
+	if !strings.Contains(content, "[ "+msg.ExitButtonRestart+" ]") ||
+		!strings.Contains(content, msg.ExitAutoRestartStopped) {
+		t.Fatalf("view:\n%s", content)
+	}
+}
+
+func TestModelAutoRestartForgetsCrashesAfterLongRun(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 4))
+	for range shortRunGiveUp - 1 {
+		crash(model, errors.New("crashed"), time.Second)
+		_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	}
+	crash(model, errors.New("crashed"), shortRunLimit+time.Second)
+	if len(model.restart.attempts) != 0 || !model.exit.autoRestart {
+		t.Fatalf("attempts = %d, exit = %#v",
+			len(model.restart.attempts), model.exit)
+	}
+}
+
+// 起動スクリプトが java を立てないのは設定の誤りなので、待って叩き直しても
+// 直らない。1 回で人へ渡す。
+func TestModelAutoRestartSkipsScriptWithoutJava(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 1))
+	crash(model, msg.ErrScriptExitedWithoutJava, time.Second)
+	if model.exit.autoRestart || model.exit.notice != msg.ExitAutoRestartSkipped {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+func TestModelAutoRestartIgnoredWhenDisabledOrFatal(t *testing.T) {
+	model := newTestModel()
+	crash(model, errors.New("crashed"), time.Second)
+	if model.exit.autoRestart || model.exit.notice != "" {
+		t.Fatalf("disabled setting auto restarted: %#v", model.exit)
+	}
+
+	model = newAutoRestartModel(make(chan Action, 1))
+	_, command := model.Update(FatalMsg{Err: errors.New("hso failed")})
+	if command != nil || model.exit.autoRestart {
+		t.Fatalf("exit = %#v, command = %T", model.exit, command)
+	}
+}
+
+func TestModelAutoRestartStopsOnEscapeOnlyWhileWaiting(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := newAutoRestartModel(actions)
+	crash(model, errors.New("crashed"), time.Minute*10)
+
+	// 待っている間は他のキーを受けない。
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'R', Text: "R"})
+	if len(actions) != 0 || !model.exit.autoRestart {
+		t.Fatalf("modal leaked key: actions = %d, exit = %#v",
+			len(actions), model.exit)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.exit.autoRestart || !model.exit.autoRestartAt.IsZero() ||
+		model.exit.notice != msg.ExitAutoRestartCanceled {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	// やめた後は元の三択に戻る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if model.exit.button != 1 {
+		t.Fatalf("button = %d", model.exit.button)
+	}
+}
+
+// 再起動を頼んだ後は取り消せない。取り消せたつもりで裏の起動が進むと、
+// 画面と実際がずれる。
+func TestModelAutoRestartCannotBeStoppedAfterRequest(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 1))
+	crash(model, errors.New("crashed"), time.Minute*10)
+	model.exit.autoRestartAt = time.Now().Add(-time.Second)
+	_, _ = model.Update(autoRestartMsg{state: model.exit})
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !model.exit.autoRestart || model.exit.notice != "" {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+func TestModelAutoRestartReportsRejectedRequest(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 1))
+	crash(model, errors.New("crashed"), time.Minute*10)
+	model.exit.autoRestartAt = time.Now().Add(-time.Second)
+	model.busy = true
+	_, command := model.Update(autoRestartMsg{state: model.exit})
+	if command != nil || model.exit.autoRestart ||
+		model.exit.notice != msg.ExitAutoRestartRejected {
+		t.Fatalf("exit = %#v, command = %T", model.exit, command)
+	}
+}

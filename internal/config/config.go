@@ -22,6 +22,9 @@ type Config struct {
 type Server struct {
 	Command string `toml:"command"`
 	WorkDir string `toml:"workdir"`
+	// AutoRestart は異常終了したサーバーを hso が自動で立て直すか。配色では
+	// なく挙動なので [ui.theme] ではなくここに置く。既定は無効。
+	AutoRestart bool `toml:"auto_restart"`
 }
 
 type UI struct {
@@ -132,6 +135,9 @@ func render(cfg Config) string {
 	out.WriteString("command = " + quote(cfg.Server.Command) + "\n")
 	if cfg.Server.WorkDir != "" {
 		out.WriteString("workdir = " + quote(cfg.Server.WorkDir) + "\n")
+	}
+	if cfg.Server.AutoRestart {
+		out.WriteString("auto_restart = true\n")
 	}
 
 	if len(cfg.UI.Panes) > 0 {

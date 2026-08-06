@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
@@ -131,5 +133,41 @@ func TestApplyThemeFallsBackToDefaultsForUnknownPresets(t *testing.T) {
 	if logTimestampStyle.GetForeground() !=
 		color(logPresets[defaults.LogPreset].timestamp).GetForeground() {
 		t.Fatalf("log timestamp = %#v", logTimestampStyle)
+	}
+}
+
+// 自動再起動は配色ではないが、同じ項目の仕組みに乗せている。
+func TestSettingsToggleAutoRestart(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	var saved []Settings
+	save := func(settings Settings) error {
+		saved = append(saved, settings)
+		return nil
+	}
+	model := New(make(chan Action, 1), save, 0, DefaultSettings())
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+
+	if model.settings.AutoRestart {
+		t.Fatal("auto restart is enabled by default")
+	}
+	for range len(settingItems) - 1 {
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if !model.settings.AutoRestart {
+		t.Fatalf("settings = %#v", model.settings)
+	}
+	content := stripANSI(model.View().Content)
+	if !strings.Contains(content, msg.LabelAutoRestart) ||
+		!strings.Contains(content, msg.OptOn) {
+		t.Fatalf("view:\n%s", content)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if len(saved) != 1 || saved[0].AutoRestart {
+		t.Fatalf("saved = %#v", saved)
 	}
 }
