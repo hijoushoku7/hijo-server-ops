@@ -262,6 +262,9 @@ func (controller *serverController) shutdown() error {
 
 func (controller *serverController) waitForServer(runtime *serverRuntime) {
 	waitErr := runtime.server.Wait()
+	// 停止時刻はここで確定させる。ログを流し切ってから取ると、その排出に
+	// かかった時間まで稼働時間に足される。
+	exitedAt := time.Now()
 	// 監視はここで止める。ログを流し切るまでの間も /proc を引き続けると、
 	// 死んだ PID の結果でモーダルに出す最終 RSS / heap が n/a に化ける。
 	runtime.monitorCancel()
@@ -278,7 +281,7 @@ func (controller *serverController) waitForServer(runtime *serverRuntime) {
 		Generation: runtime.generation,
 		ExitCode:   processExitCode(waitErr),
 		StartedAt:  runtime.startedAt,
-		ExitedAt:   time.Now(),
+		ExitedAt:   exitedAt,
 		Err: serverExitError(
 			waitErr,
 			runtime.javaFound.Load(),

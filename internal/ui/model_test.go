@@ -1338,3 +1338,40 @@ func TestModelClearsRunErrorAfterSuccessfulRestart(t *testing.T) {
 		t.Fatalf("err after normal stop = %v", model.Err())
 	}
 }
+
+func TestModelExitKeepsLastKnownMemoryAndSkipsFallbackOnNormalStop(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	_, _ = model.Update(MetricsMsg{
+		JVM: hsperfdata.Metrics{Heap: hsperfdata.Memory{
+			Used:      hsperfdata.Number{Value: 3 << 30, Available: true},
+			Committed: hsperfdata.Number{Value: 4 << 30, Available: true},
+		}},
+		Memory: procstats.Memory{
+			RSS: procstats.Number{Value: 5 << 30, Available: true},
+		},
+	})
+	// プロセスが消えてから終了を検知するまでの隙間で走る、全部 n/a の採取。
+	_, _ = model.Update(MetricsMsg{})
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind: serverlog.KindOther, Message: "[Server thread/INFO]: Saving worlds",
+	}})
+	_, _ = model.Update(ProcessExitedMsg{})
+
+	if !model.exit.snapshot.rss.Available || !model.exit.snapshot.heap.Used.Available {
+		t.Fatalf("snapshot = %#v", model.exit.snapshot)
+	}
+	// 正常停止では、拾えるエラーがないのに末尾で埋めない。
+	if len(model.exit.errorLines) != 0 {
+		t.Fatalf("errorLines = %q", model.exit.errorLines)
+	}
+	if box := stripANSI(mustModal(t, model)); strings.Contains(box, msg.ExitErrorLines) {
+		t.Fatalf("modal = %q", box)
+	}
+}
+
+func mustModal(t *testing.T, model *Model) string {
+	t.Helper()
+	box, _, _ := model.exitModal()
+	return box
+}

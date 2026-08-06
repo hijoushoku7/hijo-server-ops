@@ -130,6 +130,9 @@ type Model struct {
 	// logsAdded は Log ペインへ足した累計。バッファから押し出された分を
 	// 差し引いて、世代の境目が今どの位置かを割り出す。
 	logsAdded uint64
+	// 終了モーダル用に、最後に取れたメモリの値を控える。
+	lastHeap hsperfdata.Memory
+	lastRSS  procstats.Number
 }
 
 // restartTickMsg は再起動待ちの点を進める。停止から起動まで数十秒かかるので、

@@ -118,16 +118,19 @@ func (model *Model) newExitState(
 		exitedAt:    exitedAt,
 		uptime:      uptime,
 		uptimeKnown: known,
-		errorLines:  model.exitErrorLines(err),
+		errorLines:  model.exitErrorLines(err, crashed),
 		snapshot: exitSnapshot{
-			heap: model.metrics.Heap,
-			rss:  model.memory.RSS,
+			heap: model.lastHeap,
+			rss:  model.lastRSS,
 			gc:   model.gcStats,
 		},
 	}
 }
 
-func (model *Model) exitErrorLines(err error) []string {
+// exitErrorLines は原因として読ませる行を集める。異常終了で 1 本も
+// 拾えなかったときだけ末尾で埋める。正常停止でこれをやると、保存完了の
+// INFO 行が「エラー行」の見出しで並ぶ。
+func (model *Model) exitErrorLines(err error, crashed bool) []string {
 	lines := make([]string, 0, exitErrorLineLimit+1)
 	if err != nil {
 		lines = append(lines, err.Error())
@@ -142,7 +145,7 @@ func (model *Model) exitErrorLines(err error) []string {
 			matches = append(matches, line)
 		}
 	}
-	if len(matches) == 0 {
+	if len(matches) == 0 && crashed {
 		for index := model.logs.Len() - 1; index >= oldest && len(matches) < exitErrorLineLimit; index-- {
 			matches = append(matches, model.logs.At(index).line())
 		}
