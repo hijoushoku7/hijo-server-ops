@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 )
@@ -116,6 +117,15 @@ func formatPause(duration time.Duration, available bool) string {
 	default:
 		return fmt.Sprintf("%.2fs", duration.Seconds())
 	}
+}
+
+// formatCollections は GC 回数を単位付きで返す。GC ログが 1 行も届いていない
+// 間は 0 回と区別が付かないので n/a にする。
+func formatCollections(count gclog.Count) string {
+	if !count.Available {
+		return "n/a"
+	}
+	return fmt.Sprintf("%d collections", count.Value)
 }
 
 func formatFrequency(value float64, available bool) string {

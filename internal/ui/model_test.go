@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
@@ -330,7 +331,7 @@ func TestModelSnapshotsExitMetricsAndErrorLines(t *testing.T) {
 			RSS: procstats.Number{Value: 30, Available: true},
 		},
 	})
-	model.gcStats.Collections = 4
+	model.gcStats.Collections = gclog.Count{Value: 4, Available: true}
 	for _, line := range []string{
 		"old ERROR one",
 		"ignored info",
@@ -348,7 +349,7 @@ func TestModelSnapshotsExitMetricsAndErrorLines(t *testing.T) {
 	state := model.exit
 	if state.snapshot.heap.Used.Value != 10 ||
 		state.snapshot.heap.Committed.Value != 20 ||
-		state.snapshot.rss.Value != 30 || state.snapshot.gc.Collections != 4 {
+		state.snapshot.rss.Value != 30 || state.snapshot.gc.Collections.Value != 4 {
 		t.Fatalf("snapshot = %#v", state.snapshot)
 	}
 	wantLines := []string{
@@ -1722,5 +1723,25 @@ func TestExitModalMessagesFitTheModal(t *testing.T) {
 		if width := stringWidth(line); width > exitModalWidth-2 {
 			t.Errorf("width %d > %d: %q", width, exitModalWidth-2, line)
 		}
+	}
+}
+
+func TestModelShowsGCCollectionsAsUnavailableUntilFirstEvent(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+
+	stats := strings.Join(model.statsLines(), "\n")
+	if !strings.Contains(stats, "GC   n/a  total") {
+		t.Fatalf("stats = %q", stats)
+	}
+
+	_, _ = model.Update(GCMsg{Event: gclog.Event{
+		ID:    1,
+		Pause: gclog.Duration{Value: time.Millisecond, Available: true},
+	}})
+
+	stats = strings.Join(model.statsLines(), "\n")
+	if !strings.Contains(stats, "GC   1 collections  total") {
+		t.Fatalf("stats = %q", stats)
 	}
 }

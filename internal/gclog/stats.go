@@ -7,8 +7,13 @@ type Rate struct {
 	Available bool
 }
 
+type Count struct {
+	Value     uint64
+	Available bool
+}
+
 type Stats struct {
-	Collections uint64
+	Collections Count
 	PostGC      Bytes
 	LastPause   Duration
 	TotalPause  time.Duration
@@ -23,7 +28,8 @@ type Stats struct {
 
 func (s *Stats) Add(event Event) {
 	if !s.hasCollectionID || event.ID > s.highestCollectionID {
-		s.Collections++
+		s.Collections.Value++
+		s.Collections.Available = true
 		s.highestCollectionID = event.ID
 		s.hasCollectionID = true
 

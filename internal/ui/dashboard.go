@@ -39,8 +39,8 @@ func (model *Model) statsLines() []string {
 		),
 		model.rssLine(),
 		fmt.Sprintf(
-			"GC   %d collections  total %s  last %s  freq %s",
-			model.gcStats.Collections,
+			"GC   %s  total %s  last %s  freq %s",
+			formatCollections(model.gcStats.Collections),
 			formatPause(
 				model.gcStats.TotalPause,
 				model.gcStats.LastPause.Available,
