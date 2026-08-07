@@ -83,6 +83,8 @@ const (
 	ExitAutoRestartSkipped  = "起動スクリプトがjavaを起動しないため、自動再起動しません。"
 	ExitAutoRestartRejected = "自動再起動を要求できませんでした。"
 	ExitAutoRestartFatal    = "hso 側の失敗のため、自動再起動しません。"
+	ExitAutoRestartDone     = "自動再起動しました。サーバーは動いています。"
+	ExitAutoRestartDoneHint = "Enter: 閉じる"
 )
 
 func StoppedLogTitle(code string) string {

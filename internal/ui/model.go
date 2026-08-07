@@ -226,7 +226,7 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ServerStartedMsg:
 		model.generation = message.Generation
 		model.resetServerState()
-		model.exit = nil
+		model.markRestarted()
 		model.restart.startedAt = message.StartedAt
 		if model.restart.startedAt.IsZero() {
 			model.restart.startedAt = time.Now()
