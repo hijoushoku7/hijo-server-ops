@@ -100,8 +100,12 @@ func ExitMemory(rss, heapUsed, heapCommitted, delta string) string {
 	)
 }
 
-func ExitGC(collections uint64, last string) string {
-	return fmt.Sprintf("GC  %d 回 · 最終停止 %s", collections, last)
+func ExitGC(collections uint64, available bool, last string) string {
+	count := "n/a"
+	if available {
+		count = fmt.Sprintf("%d 回", collections)
+	}
+	return fmt.Sprintf("GC  %s · 最終停止 %s", count, last)
 }
 
 func ExitStateRestarting(dots string) string {

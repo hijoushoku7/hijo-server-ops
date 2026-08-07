@@ -372,7 +372,8 @@ func (model *Model) exitModal() (string, int, int) {
 			formatDelta(state.snapshot.rss, state.snapshot.heap.Committed),
 		),
 		msg.ExitGC(
-			state.snapshot.gc.Collections,
+			state.snapshot.gc.Collections.Value,
+			state.snapshot.gc.Collections.Available,
 			formatPause(
 				state.snapshot.gc.LastPause.Value,
 				state.snapshot.gc.LastPause.Available,

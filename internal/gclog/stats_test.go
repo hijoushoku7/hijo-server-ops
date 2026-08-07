@@ -21,8 +21,8 @@ func TestStatsTracksPostGCAndPauses(t *testing.T) {
 		Pause:  Duration{Value: 20 * time.Millisecond, Available: true},
 	})
 
-	if stats.Collections != 2 {
-		t.Fatalf("Collections = %d", stats.Collections)
+	if stats.Collections.Value != 2 || !stats.Collections.Available {
+		t.Fatalf("Collections = %#v", stats.Collections)
 	}
 	assertBytes(t, stats.PostGC, 300)
 	assertDuration(t, stats.LastPause, 20*time.Millisecond)
@@ -47,8 +47,8 @@ func TestStatsDoesNotCountSameCollectionTwice(t *testing.T) {
 		Pause: Duration{Value: time.Millisecond, Available: true},
 	})
 
-	if stats.Collections != 1 {
-		t.Fatalf("Collections = %d", stats.Collections)
+	if stats.Collections.Value != 1 || !stats.Collections.Available {
+		t.Fatalf("Collections = %#v", stats.Collections)
 	}
 	assertBytes(t, stats.PostGC, 400)
 	assertDuration(t, stats.LastPause, time.Millisecond)
@@ -65,8 +65,8 @@ func TestStatsCountsPauseOnlyCollection(t *testing.T) {
 		Pause:  Duration{Value: time.Millisecond, Available: true},
 	})
 
-	if stats.Collections != 1 {
-		t.Fatalf("Collections = %d", stats.Collections)
+	if stats.Collections.Value != 1 || !stats.Collections.Available {
+		t.Fatalf("Collections = %#v", stats.Collections)
 	}
 	if stats.PostGC.Available {
 		t.Fatalf("PostGC = %#v", stats.PostGC)
