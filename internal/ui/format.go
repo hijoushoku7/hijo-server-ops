@@ -119,7 +119,7 @@ func formatPause(duration time.Duration, available bool) string {
 	}
 }
 
-// formatCollections は GC 回数を単位ごと返す。GC ログが 1 行も届いていない
+// formatCollections は GC 回数を単位付きで返す。GC ログが 1 行も届いていない
 // 間は 0 回と区別が付かないので n/a にする。
 func formatCollections(count gclog.Count) string {
 	if !count.Available {
