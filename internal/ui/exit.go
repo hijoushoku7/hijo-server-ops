@@ -342,10 +342,10 @@ func (model *Model) cancelAutoRestart() {
 	model.exit.notice = msg.ExitAutoRestartCanceled
 }
 
-// markRestarted は新しい世代が立ち上がったときにモーダルを畳む。ただし
-// 自動再起動で立ち直った場合だけは残す。人が見ていない間に落ちて戻った
-// 事実が、画面から消えてしまわないようにする。
-func (model *Model) markRestarted() {
+// onServerStarted は自動再起動で立ち直ったモーダルを残し、それ以外は畳む。
+// 人が見ていない間に落ちて戻ったことが画面から消えないよう、残した分は
+// Enter を押すまで出したままにする。
+func (model *Model) onServerStarted() {
 	state := model.exit
 	if state == nil {
 		return
