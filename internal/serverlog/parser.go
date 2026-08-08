@@ -166,7 +166,8 @@ func Parse(line string) Entry {
 	return entry
 }
 
-// stoppingNotice はサーバーが停止処理に入ったときに必ず出る行。
+// stoppingNotice は /stop のコマンドフィードバック。シャットダウン処理
+// そのものが出す `Stopping server` とは別の行。
 const stoppingNotice = "Stopping the server"
 
 // IsStopping は「これから止まる」と告げる行かどうかを返す。コンソールから
@@ -174,6 +175,10 @@ const stoppingNotice = "Stopping the server"
 // ワールドで /stop を実行した場合は sendCommandFeedback により
 // `[名前: Stopping the server]` の形になる。どちらも意図された停止なので、
 // クラッシュとして自動再起動に回さないための目印にする。
+//
+// プレイヤー実行の側は gamerule sendCommandFeedback に依存する。false の
+// 環境では行が出ないので拾えない（従来どおりクラッシュ扱いになるだけで、
+// 悪化はしない）。コンソール実行は gamerule の影響を受けない。
 func IsStopping(entry Entry) bool {
 	switch entry.Kind {
 	case KindCommand:

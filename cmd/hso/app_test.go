@@ -156,8 +156,10 @@ func TestStopServerReturnsSignalError(t *testing.T) {
 	}
 }
 
-// 停止の目印は logs が詰まっていても拾えないといけない。offerLog は
-// 溢れた行を捨てるので、そこを通す前に observe が呼ばれることを確かめる。
+// 停止の目印は logs が詰まっていても拾えないといけない。offerLog は溢れた
+// 行を古いものから捨てるので、ここでは停止の行がキューに残らない。それでも
+// 印が立つこと＝キューに入った行だけを observe する実装に戻っていないこと
+// を見る。
 func TestReadServerOutputObservesEveryLineEvenWhenLogsAreFull(t *testing.T) {
 	logs := make(chan serverlog.Entry, 1)
 	var runtime serverRuntime
@@ -167,6 +169,12 @@ func TestReadServerOutputObservesEveryLineEvenWhenLogsAreFull(t *testing.T) {
 			"[12:00:02] [Server thread/INFO]: Saving worlds\n",
 	), logs, runtime.noteStopping)
 
+	if len(logs) != 1 {
+		t.Fatalf("queued lines = %d", len(logs))
+	}
+	if entry := <-logs; entry.Message != "Saving worlds" {
+		t.Fatalf("the stop notice survived the queue: %#v", entry)
+	}
 	if !runtime.expectedExit.Load() {
 		t.Fatal("stop notice was not observed")
 	}
@@ -188,7 +196,7 @@ func TestIsStopCommand(t *testing.T) {
 			t.Fatalf("%q was not treated as stop", command)
 		}
 	}
-	for _, command := range []string{"stopall", "say stop", "//stop", ""} {
+	for _, command := range []string{"stopall", "say stop", "//stop", "/ stop", ""} {
 		if isStopCommand(command) {
 			t.Fatalf("%q was treated as stop", command)
 		}

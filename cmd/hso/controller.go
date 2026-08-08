@@ -217,8 +217,7 @@ func (controller *serverController) sendCommand(action ui.Action) {
 // 誤認して自動再起動が走る。
 func isStopCommand(command string) bool {
 	trimmed := strings.TrimSpace(command)
-	trimmed = strings.TrimPrefix(trimmed, "/")
-	return strings.EqualFold(strings.TrimSpace(trimmed), "stop")
+	return strings.EqualFold(strings.TrimPrefix(trimmed, "/"), "stop")
 }
 
 func (controller *serverController) restart() {
