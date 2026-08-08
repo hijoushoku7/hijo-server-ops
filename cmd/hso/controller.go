@@ -48,11 +48,15 @@ func (pipe outputPipe) close() {
 }
 
 type serverRuntime struct {
-	server       *process.Process
-	generation   uint64
-	startedAt    time.Time
-	javaFound    atomic.Bool
-	expectedExit atomic.Bool
+	server     *process.Process
+	generation uint64
+	startedAt  time.Time
+	javaFound  atomic.Bool
+	// stopCommandSent と shutdownNoticed は、意図された停止を確認した経路を
+	// 分けて持つ。送信失敗時に取り消すのは前者だけにし、ログ側の確認を
+	// 消さない。
+	stopCommandSent atomic.Bool
+	shutdownNoticed atomic.Bool
 	// crashNoticed はクラッシュの標識をログで見たか。整然と畳まれること
 	// 自体はクラッシュでも同じなので、これで区別する。
 	crashNoticed atomic.Bool
@@ -88,8 +92,33 @@ func (runtime *serverRuntime) noteShutdown(entry serverlog.Entry) {
 	case serverlog.IsCrashNotice(entry):
 		runtime.crashNoticed.Store(true)
 	case serverlog.IsShutdownStart(entry) && !runtime.crashNoticed.Load():
-		runtime.expectedExit.Store(true)
+		runtime.shutdownNoticed.Store(true)
 	}
+}
+
+// expectedExit は、クラッシュの標識がなく、停止コマンドの送信またはログで
+// 整然とした停止を確認できた場合にだけ true を返す。クラッシュの標識は
+// 確定状態なので、後から停止コマンドやシャットダウン告知が来ても覆さない。
+func (runtime *serverRuntime) expectedExit() bool {
+	expected := runtime.stopCommandSent.Load() || runtime.shutdownNoticed.Load()
+	return expected && !runtime.crashNoticed.Load()
+}
+
+// sendCommand は停止コマンドの送信状態だけを管理する。送信失敗時もログ側が
+// 立てた shutdownNoticed には触れない。
+func (runtime *serverRuntime) sendCommand(
+	command string,
+	send func(string) error,
+) error {
+	isStop := isStopCommand(command)
+	if isStop {
+		runtime.stopCommandSent.Store(true)
+	}
+	err := send(command)
+	if err != nil && isStop {
+		runtime.stopCommandSent.Store(false)
+	}
+	return err
 }
 
 func (runtime *serverRuntime) close() {
@@ -219,14 +248,7 @@ func (controller *serverController) sendCommand(action ui.Action) {
 		controller.program.Send(ui.ActionResultMsg{Action: action, Err: msg.ErrServerStopped})
 		return
 	}
-	isStop := isStopCommand(action.Command)
-	if isStop {
-		runtime.expectedExit.Store(true)
-	}
-	err := runtime.server.Send(action.Command)
-	if err != nil && isStop {
-		runtime.expectedExit.Store(false)
-	}
+	err := runtime.sendCommand(action.Command, runtime.server.Send)
 	controller.program.Send(ui.ActionResultMsg{Action: action, Err: err})
 }
 
@@ -322,7 +344,7 @@ func (controller *serverController) waitForServer(runtime *serverRuntime) {
 		Err: serverExitError(
 			waitErr,
 			runtime.javaFound.Load(),
-			runtime.expectedExit.Load(),
+			runtime.expectedExit(),
 		),
 	})
 }

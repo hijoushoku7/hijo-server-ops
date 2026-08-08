@@ -175,7 +175,7 @@ func TestReadServerOutputObservesEveryLineEvenWhenLogsAreFull(t *testing.T) {
 	if entry := <-logs; entry.Message != "Saving worlds" {
 		t.Fatalf("the shutdown notice survived the queue: %#v", entry)
 	}
-	if !runtime.expectedExit.Load() {
+	if !runtime.expectedExit() {
 		t.Fatal("shutdown notice was not observed")
 	}
 }
@@ -191,7 +191,7 @@ func TestRuntimeNoteShutdownDetectsPlayerStopWithoutAdminLog(t *testing.T) {
 	} {
 		runtime.noteShutdown(serverlog.Parse(line))
 	}
-	if !runtime.expectedExit.Load() {
+	if !runtime.expectedExit() {
 		t.Fatal("an orderly shutdown was not treated as expected")
 	}
 }
@@ -208,8 +208,56 @@ func TestRuntimeNoteShutdownKeepsCrashUnexpected(t *testing.T) {
 	} {
 		runtime.noteShutdown(serverlog.Parse(line))
 	}
-	if runtime.expectedExit.Load() {
+	if runtime.expectedExit() {
 		t.Fatal("a crash was treated as an expected exit")
+	}
+}
+
+// クラッシュ標識は確定状態として扱う。後始末中に hso から stop を正常に
+// 送れて、その後にシャットダウン告知が来ても正常停止へ戻してはいけない。
+// ErrServerExited は UI 側で異常終了として扱われ、自動再起動の対象になる。
+func TestRuntimeStopCommandDoesNotOverrideCrashNotice(t *testing.T) {
+	var runtime serverRuntime
+	runtime.noteShutdown(serverlog.Parse(
+		"[12:00:00] [Server thread/ERROR]: Encountered an unexpected exception",
+	))
+	if err := runtime.sendCommand("stop", func(command string) error {
+		if command != "stop" {
+			t.Fatalf("command = %q", command)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.noteShutdown(serverlog.Parse(
+		"[12:00:01] [Server thread/INFO]: Stopping server",
+	))
+
+	err := serverExitError(nil, true, runtime.expectedExit())
+	if !errors.Is(err, msg.ErrServerExited) {
+		t.Fatalf("clean crash error = %v", err)
+	}
+}
+
+// ログで整然とした停止を確認した後なら、終了済みプロセスへの stop 送信が
+// 失敗してもログ側の印を消さず、正常停止のままにする。
+func TestRuntimeFailedStopCommandKeepsShutdownNotice(t *testing.T) {
+	var runtime serverRuntime
+	runtime.noteShutdown(serverlog.Parse(
+		"[12:00:00] [Server thread/INFO]: Stopping server",
+	))
+	sendErr := errors.New("server process has exited")
+	err := runtime.sendCommand("stop", func(command string) error {
+		if command != "stop" {
+			t.Fatalf("command = %q", command)
+		}
+		return sendErr
+	})
+	if !errors.Is(err, sendErr) {
+		t.Fatalf("send error = %v", err)
+	}
+	if err := serverExitError(nil, true, runtime.expectedExit()); err != nil {
+		t.Fatalf("orderly shutdown error = %v", err)
 	}
 }
 
@@ -221,7 +269,7 @@ func TestRuntimeNoteShutdownIgnoresChat(t *testing.T) {
 	} {
 		runtime.noteShutdown(serverlog.Parse(line))
 	}
-	if runtime.expectedExit.Load() || runtime.crashNoticed.Load() {
+	if runtime.expectedExit() || runtime.crashNoticed.Load() {
 		t.Fatal("chat was treated as a server notice")
 	}
 }
