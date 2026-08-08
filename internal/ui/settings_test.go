@@ -115,16 +115,17 @@ func TestSettingsModalShowsSectionHeadings(t *testing.T) {
 	preferences := strings.Index(content, msg.SectionPreferences)
 	advanced := strings.Index(content, msg.SectionAdvanced)
 	autoRestart := strings.Index(content, msg.LabelAutoRestart)
+	timezone := strings.Index(content, msg.LabelTimezone)
 	frame := strings.Index(content, msg.LabelFrame)
 	switch {
 	case preferences < 0 || advanced < 0:
 		t.Fatalf("見出しがない:\n%s", content)
-	case !(preferences < frame && frame < advanced && advanced < autoRestart):
+	case !(preferences < frame && frame < advanced && advanced < autoRestart && autoRestart < timezone):
 		t.Fatalf("見出しの位置が違う:\n%s", content)
 	}
 
 	// 見出しの分だけカーソルがずれていないか。
-	for range len(settingItems) - 1 {
+	for range len(settingItems) - 2 {
 		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
@@ -184,7 +185,7 @@ func TestSettingsToggleAutoRestart(t *testing.T) {
 	if model.settings.AutoRestart {
 		t.Fatal("auto restart is enabled by default")
 	}
-	for range len(settingItems) - 1 {
+	for range len(settingItems) - 2 {
 		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})

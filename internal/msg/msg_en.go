@@ -36,6 +36,15 @@ const (
 	LabelLog       = "log"
 
 	LabelAutoRestart = "auto restart"
+	LabelTimezone    = "time zone"
+	LabelCurrentTime = "current time"
+	LabelTimeDrift   = "offset"
+)
+
+const (
+	OptSystemTime     = "system time"
+	TimeSettingButton = "set"
+	TimeModalTitle    = "Set current time"
 )
 
 // Color preset names.
@@ -156,6 +165,9 @@ const (
 	BarEnds         = "first/last"
 	BarRestart      = "restart"
 	BarStopAuto     = "stop auto restart"
+	BarTimeField    = "hour/minute"
+	BarTimeAdjust   = "change"
+	BarCancel       = "cancel"
 )
 
 // Setup wizard screens.

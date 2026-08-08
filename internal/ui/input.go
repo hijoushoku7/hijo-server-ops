@@ -18,6 +18,9 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if model.exit != nil {
 		return model.handleExitKey(message)
 	}
+	if model.timeModal != nil {
+		return model.handleTimeModalKey(key)
+	}
 	if model.settingsOpen {
 		return model.handleSettingsKey(key)
 	}

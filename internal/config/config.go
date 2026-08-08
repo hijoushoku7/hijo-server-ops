@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -30,6 +31,11 @@ type Server struct {
 type UI struct {
 	Panes []string `toml:"panes"`
 	Theme Theme    `toml:"theme"`
+	Time  Time     `toml:"time"`
+}
+
+type Time struct {
+	OffsetMinutes int `toml:"offset_minutes"`
 }
 
 // Theme は設定モーダルで選んだ配色プリセットの名前。空なら既定を使う。
@@ -52,6 +58,7 @@ func Load(path string) (Config, error) {
 	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
 		return cfg, msg.UnknownConfigKeys(joinKeys(undecoded), path)
 	}
+	cfg.UI.Time.OffsetMinutes = normalizeTimeOffset(cfg.UI.Time.OffsetMinutes)
 
 	cfg.Server.Command = strings.TrimSpace(cfg.Server.Command)
 	if cfg.Server.Command == "" {
@@ -164,7 +171,25 @@ func render(cfg Config) string {
 			}
 		}
 	}
+
+	if cfg.UI.Time.OffsetMinutes != 0 {
+		out.WriteString("\n[ui.time]\n")
+		out.WriteString("offset_minutes = " +
+			strconv.Itoa(cfg.UI.Time.OffsetMinutes) + "\n")
+	}
 	return out.String()
+}
+
+// normalizeTimeOffset は手書きの値を表示で扱える 30 分刻みへ寄せる。
+// -720 は有効範囲 (-720, 720] の外なので、下限側の -690 にクランプする。
+// 丸める前に範囲へ収めるのは、int の端に近い値で足し算が回り込んで
+// 反対側へ振れるのを避けるため。
+func normalizeTimeOffset(minutes int) int {
+	minutes = max(-690, min(720, minutes))
+	if minutes >= 0 {
+		return ((minutes + 15) / 30) * 30
+	}
+	return -(((-minutes + 15) / 30) * 30)
 }
 
 // quote は TOML の基本文字列にする。次の起動で読めない設定ファイルを

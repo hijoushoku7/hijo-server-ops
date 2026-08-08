@@ -12,13 +12,14 @@ import (
 // フィールドを 1 つ足して settingItems に 1 エントリ足すだけでよい。
 // モーダル側は項目の中身を知らない。
 type Settings struct {
-	FramePreset     string
-	GraphPreset     string
-	MeterPreset     string
-	TitlePreset     string
-	SelectionPreset string
-	LogPreset       string
-	AutoRestart     bool
+	FramePreset       string
+	GraphPreset       string
+	MeterPreset       string
+	TitlePreset       string
+	SelectionPreset   string
+	LogPreset         string
+	AutoRestart       bool
+	TimeOffsetMinutes int
 }
 
 func DefaultSettings() Settings {
@@ -48,6 +49,9 @@ type settingItem struct {
 	options []settingOption
 	get     func(Settings) string
 	set     func(*Settings, string)
+	// options が空の項目では、get は現在値の表示だけに使う。Enter で
+	// open を呼び、設定モーダルを残したまま追加のモーダルを開く。
+	open func(*Model)
 }
 
 var settingItems = []settingItem{
@@ -153,6 +157,16 @@ var settingItems = []settingItem{
 			settings.AutoRestart = value == settingOn
 		},
 	},
+	{
+		label: msg.LabelTimezone,
+		get: func(settings Settings) string {
+			if settings.TimeOffsetMinutes == 0 {
+				return msg.OptSystemTime
+			}
+			return formatTimeOffset(settings.TimeOffsetMinutes)
+		},
+		open: func(model *Model) { model.openTimeModal() },
+	},
 }
 
 const (
@@ -191,6 +205,11 @@ func (item settingItem) shift(settings *Settings, step int) {
 }
 
 func (model *Model) handleSettingsKey(key tea.Key) (tea.Model, tea.Cmd) {
+	item := settingItems[model.settingCursor]
+	if (key.Code == tea.KeyEnter || key.Code == tea.KeyKpEnter) && item.open != nil {
+		item.open(model)
+		return model, nil
+	}
 	switch key.Code {
 	case tea.KeyEscape, tea.KeyEnter, tea.KeyKpEnter:
 		model.settingsOpen = false
@@ -200,11 +219,15 @@ func (model *Model) handleSettingsKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyDown:
 		model.settingCursor = min(len(settingItems)-1, model.settingCursor+1)
 	case tea.KeyLeft:
-		settingItems[model.settingCursor].shift(&model.settings, -1)
-		applyTheme(model.settings)
+		if item.open == nil {
+			item.shift(&model.settings, -1)
+			applyTheme(model.settings)
+		}
 	case tea.KeyRight:
-		settingItems[model.settingCursor].shift(&model.settings, 1)
-		applyTheme(model.settings)
+		if item.open == nil {
+			item.shift(&model.settings, 1)
+			applyTheme(model.settings)
+		}
 	}
 	return model, nil
 }
@@ -226,14 +249,18 @@ func (model *Model) settingsModal() (string, int, int) {
 	labelWidth := 0
 	valueWidth := 0
 	sectionWidth := 0
+	actionWidth := 0
 	for _, item := range settingItems {
 		labelWidth = max(labelWidth, stringWidth(item.label))
 		valueWidth = max(valueWidth, stringWidth(item.valueLabel(model.settings)))
 		sectionWidth = max(sectionWidth, stringWidth(item.section))
+		if item.open != nil {
+			actionWidth = stringWidth(msg.TimeSettingButton) + 4
+		}
 	}
 	// " ラベル  ‹ 値 › " の飾りと枠の 2 列を足した幅。見出しが長ければそちらに
 	// 合わせる。
-	width := max(labelWidth+valueWidth+10, sectionWidth+4)
+	width := max(labelWidth+valueWidth+actionWidth+10, sectionWidth+4)
 	width = min(width, model.layout.width)
 
 	lines := make([]string, 0, len(settingItems)+2)
@@ -250,6 +277,11 @@ func (model *Model) settingsModal() (string, int, int) {
 		line := " " + fitLine(item.label, labelWidth) + "  ‹ " +
 			strings.Repeat(" ", max(0, valueWidth-stringWidth(value))) +
 			value + " ›"
+		if item.open != nil {
+			button := "[" + msg.TimeSettingButton + "]"
+			line += strings.Repeat(" ", max(2, width-2-stringWidth(line)-stringWidth(button))) +
+				button
+		}
 		line = fitLine(line, width-2)
 		if index == model.settingCursor {
 			line = selectedStyle.Render(line)

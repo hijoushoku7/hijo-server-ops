@@ -378,6 +378,31 @@ func TestCalculateCPU(t *testing.T) {
 	}
 }
 
+func TestSettingsRoundTripTimeOffset(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	cfg := config.Config{
+		Server: config.Server{Command: "./run.sh", WorkDir: dir},
+		UI:     config.UI{Time: config.Time{OffsetMinutes: -90}},
+	}
+
+	settings := settingsFrom(cfg)
+	if settings.TimeOffsetMinutes != -90 {
+		t.Fatalf("settings = %#v", settings)
+	}
+	settings.TimeOffsetMinutes = 120
+	if err := saveSettings(path, cfg, settings); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.UI.Time.OffsetMinutes != 120 {
+		t.Fatalf("loaded = %#v", loaded.UI.Time)
+	}
+}
+
 func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
 	dir := t.TempDir()
 	javaPath := filepath.Join(dir, "java")

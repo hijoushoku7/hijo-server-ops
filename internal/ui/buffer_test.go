@@ -83,12 +83,12 @@ func TestLineBufferKeepsRecordAnchorAcrossWidthChange(t *testing.T) {
 
 	narrow := bufferViewport{width: 12, height: 3}
 	buffer.ScrollToStart(narrow)
-	firstLines := len(wrapLogRecord(buffer.At(0), narrow.width))
+	firstLines := len(wrapLogRecord(buffer.At(0), narrow.width, 0))
 	buffer.Scroll(-firstLines-1, narrow)
 	wantAnchor := buffer.itemAt(1).number
 	want := logAnchor{
 		record: wantAnchor,
-		offset: wrapLogRecord(buffer.At(1), narrow.width)[1].bodyOffset,
+		offset: wrapLogRecord(buffer.At(1), narrow.width, 0)[1].bodyOffset,
 	}
 	if buffer.anchor != want {
 		t.Fatalf("anchor = %#v, want %#v", buffer.anchor, want)
@@ -153,7 +153,7 @@ func TestLineBufferKeepsFollowingTailAcrossWidthChange(t *testing.T) {
 	wide := bufferViewport{width: 16, height: 2}
 	window := buffer.Window(wide)
 	lastRecord := buffer.At(buffer.Len() - 1)
-	lastLines := wrapLogRecord(lastRecord, wide.width)
+	lastLines := wrapLogRecord(lastRecord, wide.width, 0)
 	if buffer.anchor.record != 0 {
 		t.Fatalf("tail following anchor = %#v", buffer.anchor)
 	}

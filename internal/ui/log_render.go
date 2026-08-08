@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -26,7 +27,7 @@ type logLine struct {
 	timestamp  bool
 }
 
-func wrapLogRecord(record logRecord, width int) []logLine {
+func wrapLogRecord(record logRecord, width, offsetMinutes int) []logLine {
 	body := strings.ReplaceAll(record.line(), "\t", " ")
 	firstWidth := width
 	continuationWidth := width
@@ -35,7 +36,7 @@ func wrapLogRecord(record logRecord, width int) []logLine {
 	if width >= timestampGutterWidth {
 		firstWidth -= timestampGutterWidth
 		indent = timestampGutterWidth
-		prefix = formatLogTimestamp(record) + " "
+		prefix = formatLogTimestamp(record, offsetMinutes) + " "
 	}
 
 	segments := wrapPlainText(body, firstWidth, continuationWidth, indent)
@@ -148,7 +149,7 @@ func whitespaceBreak(value string, start, end int) (int, int) {
 }
 
 func renderLogRecord(record logRecord, width int) string {
-	lines := wrapLogRecord(record, width)
+	lines := wrapLogRecord(record, width, 0)
 	return renderLogLine(lines[0], width)
 }
 
@@ -193,11 +194,11 @@ func renderLogLine(line logLine, width int) string {
 	return result.String()
 }
 
-func formatLogTimestamp(record logRecord) string {
+func formatLogTimestamp(record logRecord, offsetMinutes int) string {
 	if record.timestamp.IsZero() || record.timestampSource == serverlog.TimestampUnknown {
 		return "n/a  "
 	}
-	return record.timestamp.Format("15:04")
+	return record.timestamp.Add(time.Duration(offsetMinutes) * time.Minute).Format("15:04")
 }
 
 func timestampStyle(source serverlog.TimestampSource) lipgloss.Style {
