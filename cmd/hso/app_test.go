@@ -261,6 +261,61 @@ func TestRuntimeFailedStopCommandKeepsShutdownNotice(t *testing.T) {
 	}
 }
 
+// 送信に失敗した stop で印を立てない。送信の前に立てる書き方だと、
+// 失敗が確定する前に終了判定が走ったときクラッシュを正常停止と読み違える。
+func TestRuntimeFailedStopCommandLeavesNoMark(t *testing.T) {
+	var runtime serverRuntime
+	sendErr := errors.New("server process has exited")
+	var marked bool
+	err := runtime.sendCommand("stop", func(string) error {
+		marked = runtime.expectedExit()
+		return sendErr
+	})
+	if !errors.Is(err, sendErr) {
+		t.Fatalf("send error = %v", err)
+	}
+	// 送信中に読まれても印は立っていない。
+	if marked {
+		t.Fatal("the mark was set before the send finished")
+	}
+	if err := serverExitError(nil, true, runtime.expectedExit()); !errors.Is(err, msg.ErrServerExited) {
+		t.Fatalf("failed stop error = %v", err)
+	}
+}
+
+// 2 回目の stop が失敗しても 1 回目の成功を消さない。印は単調に立つだけ。
+func TestRuntimeFailedStopCommandKeepsEarlierSuccess(t *testing.T) {
+	var runtime serverRuntime
+	if err := runtime.sendCommand("stop", func(string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	sendErr := errors.New("server process has exited")
+	if err := runtime.sendCommand("/stop", func(string) error {
+		return sendErr
+	}); !errors.Is(err, sendErr) {
+		t.Fatalf("send error = %v", err)
+	}
+	if err := serverExitError(nil, true, runtime.expectedExit()); err != nil {
+		t.Fatalf("expected exit error = %v", err)
+	}
+}
+
+// 標識が告知より後に届いても結論は変わらない。読み手が stdout と stderr に
+// 分かれているので、順序に頼った判定にはしていない。
+func TestRuntimeCrashNoticeAfterShutdownNoticeStillCrashes(t *testing.T) {
+	var runtime serverRuntime
+	for _, line := range []string{
+		"[12:00:00] [Server thread/INFO]: Stopping server",
+		"[12:00:00] [Server thread/ERROR]: Encountered an unexpected exception",
+	} {
+		runtime.noteShutdown(serverlog.Parse(line))
+	}
+	err := serverExitError(nil, true, runtime.expectedExit())
+	if !errors.Is(err, msg.ErrServerExited) {
+		t.Fatalf("late crash notice error = %v", err)
+	}
+}
+
 func TestRuntimeNoteShutdownIgnoresChat(t *testing.T) {
 	var runtime serverRuntime
 	for _, line := range []string{
