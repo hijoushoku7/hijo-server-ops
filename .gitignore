@@ -3,6 +3,7 @@
 /hso_en
 /dist/
 /mc-server-test/
+/scripts/test.sh
 *.test
 *.out
 
