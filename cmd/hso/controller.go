@@ -53,6 +53,9 @@ type serverRuntime struct {
 	startedAt    time.Time
 	javaFound    atomic.Bool
 	expectedExit atomic.Bool
+	// crashNoticed はクラッシュの標識をログで見たか。整然と畳まれること
+	// 自体はクラッシュでも同じなので、これで区別する。
+	crashNoticed atomic.Bool
 	cancel       context.CancelFunc
 	// monitorCancel はメトリクス・GC・アドレス解決だけを止める。ログの
 	// 排出は cancel まで生かし、終了直前の行を落とさない。
@@ -64,11 +67,27 @@ type serverRuntime struct {
 	logsDone chan struct{}
 }
 
-// noteStopping はサーバー自身が停止を告げた行を拾い、意図された終了として
-// 印を付ける。印を付けるだけで hso は畳まない。実際にプロセスが終わった
-// ときに waitForServer がこれを読み、クラッシュ扱いを外す。
-func (runtime *serverRuntime) noteStopping(entry serverlog.Entry) {
-	if serverlog.IsStopping(entry) {
+// noteShutdown は畳まれ方をログから見て、整然と止まったなら意図された終了
+// として印を付ける。クラッシュの標識はシャットダウンの告知より先に出るので、
+// 先に見えていたらこの停止はクラッシュの後始末とみなし、印を付けない。
+//
+// 誰が止めたかは見ない。/stop のコマンドフィードバックを見る手もあるが、
+// プレイヤーがワールドで実行した場合は gamerule logAdminCommands に依存し、
+// 切られている環境では拾えない。
+//
+// 印を付けるだけで hso は畳まない。実際にプロセスが終わったときに
+// waitForServer がこれを読み、終了コードが 0 ならクラッシュ扱いを外す。
+// 印が立っていても終了コードが 0 でなければクラッシュのままなので、
+// SIGTERM で畳まれた場合（143）は自動再起動の対象に残る。
+//
+// 順序の前提は 1 本のストリーム内でしか保証されない。標識も告知も log4j の
+// コンソールアペンダから stdout に出るので今は成り立つが、標識だけが
+// stderr に回る作りに変わると逆転しうる。
+func (runtime *serverRuntime) noteShutdown(entry serverlog.Entry) {
+	switch {
+	case serverlog.IsCrashNotice(entry):
+		runtime.crashNoticed.Store(true)
+	case serverlog.IsShutdownStart(entry) && !runtime.crashNoticed.Load():
 		runtime.expectedExit.Store(true)
 	}
 }
@@ -153,11 +172,11 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 	go pumpLogs(runtimeCtx, controller.program, logs, generation, runtime.logsDone)
 	go func() {
 		defer readers.Done()
-		readAndCloseServerOutput(stdout.reader, logs, runtime.noteStopping)
+		readAndCloseServerOutput(stdout.reader, logs, runtime.noteShutdown)
 	}()
 	go func() {
 		defer readers.Done()
-		readAndCloseServerOutput(stderr.reader, logs, runtime.noteStopping)
+		readAndCloseServerOutput(stderr.reader, logs, runtime.noteShutdown)
 	}()
 	go func() {
 		readers.Wait()

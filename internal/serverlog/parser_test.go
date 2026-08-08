@@ -266,28 +266,50 @@ func assertLag(
 	}
 }
 
-func TestIsStopping(t *testing.T) {
-	stopping := []string{
-		// コンソールから stop を打った場合。
-		"[12:00:00] [Server thread/INFO]: Stopping the server",
-		// プレイヤーがワールドで /stop を実行した場合。
-		"[12:00:00] [Server thread/INFO]: [alice: Stopping the server]",
-	}
-	for _, line := range stopping {
-		if !IsStopping(Parse(line)) {
-			t.Errorf("IsStopping(%q) = false", line)
-		}
+// 期待する行は mc-server-test の実ログ 41 本から取った。整然停止 34 本
+// すべてに `Stopping server` があり、クラッシュ 5 本には標識が先に付く。
+// 残り 2 本は強制終了でどちらも出ない。
+func TestIsShutdownStart(t *testing.T) {
+	shutdown := "[08:40:21] [Server thread/INFO]: Stopping server"
+	if !IsShutdownStart(Parse(shutdown)) {
+		t.Errorf("IsShutdownStart(%q) = false", shutdown)
 	}
 
 	running := []string{
-		"[12:00:00] [Server thread/INFO]: <alice> Stopping the server",
-		"[12:00:00] [Server thread/INFO]: alice issued server command: /help",
-		"[12:00:00] [Server thread/INFO]: Stopping the server soon",
-		"[12:00:00] [Server thread/INFO]: Saving worlds",
+		// /stop のコマンドフィードバック。畳み始めた行ではない。
+		"[08:40:21] [Server thread/INFO]: Stopping the server",
+		"[08:40:21] [Server thread/INFO]: [alice: Stopping the server]",
+		"[08:40:21] [Server thread/INFO]: <alice> Stopping server",
+		"[08:40:21] [Server thread/INFO]: Stopping server thread",
+		"[08:40:21] [Server thread/INFO]: Saving worlds",
 	}
 	for _, line := range running {
-		if IsStopping(Parse(line)) {
-			t.Errorf("IsStopping(%q) = true", line)
+		if IsShutdownStart(Parse(line)) {
+			t.Errorf("IsShutdownStart(%q) = true", line)
+		}
+	}
+}
+
+func TestIsCrashNotice(t *testing.T) {
+	crashes := []string{
+		"[10:35:48] [Server thread/ERROR]: Encountered an unexpected exception",
+		"[10:35:48] [Server thread/ERROR]: This crash report has been saved to: " +
+			"/srv/mc/crash-reports/crash-2026-07-28_10.35.48-server.txt",
+	}
+	for _, line := range crashes {
+		if !IsCrashNotice(Parse(line)) {
+			t.Errorf("IsCrashNotice(%q) = false", line)
+		}
+	}
+
+	healthy := []string{
+		"[10:35:46] [Yggdrasil Key Fetcher/ERROR]: Failed to request yggdrasil public key",
+		"[10:35:48] [Server thread/INFO]: <alice> Encountered an unexpected exception",
+		"[10:35:48] [Server thread/INFO]: Stopping server",
+	}
+	for _, line := range healthy {
+		if IsCrashNotice(Parse(line)) {
+			t.Errorf("IsCrashNotice(%q) = true", line)
 		}
 	}
 }
