@@ -20,6 +20,12 @@ import (
 	"fmt"
 )
 
+// Settings modal section headings.
+const (
+	SectionPreferences = "Preferences"
+	SectionAdvanced    = "Advanced"
+)
+
 // Settings modal item names.
 const (
 	LabelFrame     = "border"

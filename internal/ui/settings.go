@@ -39,7 +39,11 @@ type settingOption struct {
 
 // settingItem は設定 1 項目。値の出し入れだけを持たせることで、モーダルは
 // ↑↓ で項目、←→ で値を動かす操作だけを知っていればよくなる。
+//
+// section が空でない項目は、その手前に見出しを 1 行挟む。見出しはカーソルの
+// 止まらない飾りなので、項目の並びとカーソル位置の対応は変わらない。
 type settingItem struct {
+	section string
 	label   string
 	options []settingOption
 	get     func(Settings) string
@@ -48,7 +52,8 @@ type settingItem struct {
 
 var settingItems = []settingItem{
 	{
-		label: msg.LabelFrame,
+		section: msg.SectionPreferences,
+		label:   msg.LabelFrame,
 		options: []settingOption{
 			{label: msg.OptDefault, value: "dracula"},
 			{label: msg.OptMono, value: "mono"},
@@ -130,7 +135,8 @@ var settingItems = []settingItem{
 		},
 	},
 	{
-		label: msg.LabelAutoRestart,
+		section: msg.SectionAdvanced,
+		label:   msg.LabelAutoRestart,
 		// 値は文字列で持たせる。項目 1 つのために get/set を型で分けると、
 		// モーダルが項目の中身を知らずに済む今の形が崩れる。
 		options: []settingOption{
@@ -219,17 +225,27 @@ func (model *Model) saveSettings() {
 func (model *Model) settingsModal() (string, int, int) {
 	labelWidth := 0
 	valueWidth := 0
+	sectionWidth := 0
 	for _, item := range settingItems {
 		labelWidth = max(labelWidth, stringWidth(item.label))
 		valueWidth = max(valueWidth, stringWidth(item.valueLabel(model.settings)))
+		sectionWidth = max(sectionWidth, stringWidth(item.section))
 	}
-	// " ラベル  ‹ 値 › " の飾りと枠の 2 列を足した幅。
-	width := labelWidth + valueWidth + 10
+	// " ラベル  ‹ 値 › " の飾りと枠の 2 列を足した幅。見出しが長ければそちらに
+	// 合わせる。
+	width := max(labelWidth+valueWidth+10, sectionWidth+4)
 	width = min(width, model.layout.width)
-	height := len(settingItems) + 2
 
-	lines := make([]string, 0, len(settingItems))
+	lines := make([]string, 0, len(settingItems)+2)
 	for index, item := range settingItems {
+		if item.section != "" {
+			// 先頭の見出し以外は、区切りとして 1 行空ける。
+			if len(lines) > 0 {
+				lines = append(lines, "")
+			}
+			lines = append(lines,
+				titleStyle.Render(fitLine(" "+item.section, width-2)))
+		}
 		value := item.valueLabel(model.settings)
 		line := " " + fitLine(item.label, labelWidth) + "  ‹ " +
 			strings.Repeat(" ", max(0, valueWidth-stringWidth(value))) +
@@ -240,6 +256,7 @@ func (model *Model) settingsModal() (string, int, int) {
 		}
 		lines = append(lines, line)
 	}
+	height := len(lines) + 2
 
 	x := max(0, (model.layout.width-width)/2)
 	y := max(0, (model.layout.height-height)/2)

@@ -97,6 +97,8 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 	sample := errors.New("boom")
 
 	messages := map[string]string{
+		"SectionPreferences":    SectionPreferences,
+		"SectionAdvanced":       SectionAdvanced,
 		"LabelFrame":            LabelFrame,
 		"LabelGraphLine":        LabelGraphLine,
 		"LabelMeterBar":         LabelMeterBar,
