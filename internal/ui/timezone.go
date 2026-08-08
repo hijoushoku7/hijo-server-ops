@@ -9,6 +9,8 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
+const dayMinutes = 24 * 60
+
 type timeModalState struct {
 	hour   int
 	minute int
@@ -22,16 +24,14 @@ type timeModalState struct {
 
 func (model *Model) openTimeModal() {
 	base := clockBase(time.Now())
-	minutes := ((base+model.settings.TimeOffsetMinutes)%dayMinutes + dayMinutes) %
-		dayMinutes
+	// base は 0 以上、オフセットは -12 時間より大きいので、1 日足せば正になる。
+	minutes := (base + model.settings.TimeOffsetMinutes + dayMinutes) % dayMinutes
 	model.timeModal = &timeModalState{
 		hour:   minutes / 60,
 		minute: minutes % 60,
 		base:   base,
 	}
 }
-
-const dayMinutes = 24 * 60
 
 // clockBase は画面に出す時刻の基準を、システムの時計から 30 分刻みで返す。
 // 初期値の組み立てと確定時のずれ計算が同じ値（timeModalState.base）を使う
@@ -96,10 +96,8 @@ func timeOffsetFor(hour, minute, base int) int {
 
 func (model *Model) timeSettingsModal() (string, int, int) {
 	state := model.timeModal
-	hour := formatTwoDigits(state.hour)
-	minute := formatTwoDigits(state.minute)
-	hourField := "‹ " + hour + " ›"
-	minuteField := "‹ " + minute + " ›"
+	hourField := fmt.Sprintf("‹ %02d ›", state.hour)
+	minuteField := fmt.Sprintf("‹ %02d ›", state.minute)
 	if state.field == 0 {
 		hourField = selectedStyle.Render(hourField)
 	} else {
@@ -112,7 +110,7 @@ func (model *Model) timeSettingsModal() (string, int, int) {
 		"",
 		msg.LabelTimeDrift + ": " + formatTimeOffset(offset),
 	}
-	width := 34
+	width := stringWidth(msg.TimeModalTitle) + 4
 	for _, line := range lines {
 		width = max(width, stringWidth(line)+4)
 	}
@@ -123,6 +121,12 @@ func (model *Model) timeSettingsModal() (string, int, int) {
 	return renderPanel(msg.TimeModalTitle, lines, width, height, false, modalFrame), x, y
 }
 
-func formatTwoDigits(value int) string {
-	return fmt.Sprintf("%02d", value)
+// formatTimeOffset は設定モーダルの値欄とここのプレビューで使う ±hh:mm。
+func formatTimeOffset(minutes int) string {
+	sign := "+"
+	if minutes < 0 {
+		sign = "-"
+		minutes = -minutes
+	}
+	return fmt.Sprintf("%s%02d:%02d", sign, minutes/60, minutes%60)
 }

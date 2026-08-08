@@ -101,15 +101,16 @@ func TestConfirmIgnoresClockDriftWhileOpen(t *testing.T) {
 	model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, settings)
 	model.resize(100, 40)
 
-	model.openTimeModal()
-	// 30 分前に開いたことにする。画面の表示（hour・minute）は開いたときの
-	// ままなので、確定が基準を読み直せば 30 分の差として現れる。
-	model.timeModal.base = (model.timeModal.base - 30 + dayMinutes) % dayMinutes
-	shown := model.timeModal.hour*60 + model.timeModal.minute
+	// 30 分前に開いたモーダルを、そのときの openTimeModal が作るとおりに
+	// 組み立てる。基準も表示も 30 分前のものなので、確定が基準を読み直せば
+	// その 30 分がそのままずれになって出る。
+	base := (clockBase(time.Now()) - 30 + dayMinutes) % dayMinutes
+	shown := (base + settings.TimeOffsetMinutes) % dayMinutes
+	model.timeModal = &timeModalState{hour: shown / 60, minute: shown % 60, base: base}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	if model.settings.TimeOffsetMinutes != 90 {
-		t.Fatalf("表示 %02d:%02d・基準 30 分前で offset = %d, want 90",
+	if model.settings.TimeOffsetMinutes != 60 {
+		t.Fatalf("表示 %02d:%02d・基準 30 分前で offset = %d, want 60",
 			shown/60, shown%60, model.settings.TimeOffsetMinutes)
 	}
 }

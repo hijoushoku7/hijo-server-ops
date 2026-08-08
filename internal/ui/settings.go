@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -25,13 +24,12 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
-		FramePreset:       "dracula",
-		GraphPreset:       "dracula",
-		MeterPreset:       "signal",
-		TitlePreset:       "cyan",
-		SelectionPreset:   "amber",
-		LogPreset:         "dracula",
-		TimeOffsetMinutes: 0,
+		FramePreset:     "dracula",
+		GraphPreset:     "dracula",
+		MeterPreset:     "signal",
+		TitlePreset:     "cyan",
+		SelectionPreset: "amber",
+		LogPreset:       "dracula",
 	}
 }
 
@@ -257,7 +255,7 @@ func (model *Model) settingsModal() (string, int, int) {
 		valueWidth = max(valueWidth, stringWidth(item.valueLabel(model.settings)))
 		sectionWidth = max(sectionWidth, stringWidth(item.section))
 		if item.open != nil {
-			actionWidth = max(actionWidth, stringWidth(msg.TimeSettingButton)+4)
+			actionWidth = stringWidth(msg.TimeSettingButton) + 4
 		}
 	}
 	// " ラベル  ‹ 値 › " の飾りと枠の 2 列を足した幅。見出しが長ければそちらに
@@ -296,13 +294,4 @@ func (model *Model) settingsModal() (string, int, int) {
 	y := max(0, (model.layout.height-height)/2)
 	box := renderPanel("Settings", lines, width, height, false, modalFrame)
 	return box, x, y
-}
-
-func formatTimeOffset(minutes int) string {
-	sign := "+"
-	if minutes < 0 {
-		sign = "-"
-		minutes = -minutes
-	}
-	return fmt.Sprintf("%s%02d:%02d", sign, minutes/60, minutes%60)
 }
