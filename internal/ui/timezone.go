@@ -16,21 +16,29 @@ type timeModalState struct {
 }
 
 func (model *Model) openTimeModal() {
-	now := time.Now().Add(time.Duration(model.settings.TimeOffsetMinutes) * time.Minute)
-	hour, minute := roundedClock(now)
+	minutes := clockBase(time.Now()) + model.settings.TimeOffsetMinutes
+	minutes = ((minutes % dayMinutes) + dayMinutes) % dayMinutes
 	model.timeModal = &timeModalState{
-		hour:   hour,
-		minute: minute,
+		hour:   minutes / 60,
+		minute: minutes % 60,
 	}
 }
 
-func roundedClock(value time.Time) (int, int) {
+const dayMinutes = 24 * 60
+
+// clockBase は画面に出す時刻の基準を、システムの時計から 30 分刻みで返す。
+// 初期値の組み立てと確定時のずれ計算が同じ基準を使うので、開いてそのまま
+// OK を押してもオフセットは変わらない。丸めをどちらか一方だけに掛けると、
+// 12:15 のような半端な時刻で押すたびに 30 分ずつ動く。
+//
+// 絶対時刻ではなく画面上の時計を丸めるので、システムの地域オフセットが
+// 30 分刻みでなくても結果は変わらない。
+func clockBase(value time.Time) int {
 	sinceMidnight := time.Duration(value.Hour())*time.Hour +
 		time.Duration(value.Minute())*time.Minute +
 		time.Duration(value.Second())*time.Second +
 		time.Duration(value.Nanosecond())
-	minutes := int(sinceMidnight.Round(30*time.Minute)/time.Minute) % (24 * 60)
-	return minutes / 60, minutes % 60
+	return int(sinceMidnight.Round(30*time.Minute)/time.Minute) % dayMinutes
 }
 
 func (model *Model) handleTimeModalKey(key tea.Key) (tea.Model, tea.Cmd) {
@@ -66,24 +74,16 @@ func (state *timeModalState) change(step int) {
 }
 
 // timeOffsetFor は日付を入力させない時計同士の差を、最も近い日付として
-// (-12h, +12h] へ収める。保存値は 30 分刻みなので差も同じ単位へ丸める。
+// (-12h, +12h] へ収める。入力も基準も 30 分刻みなので、ここでの丸めは要らない。
 func timeOffsetFor(hour, minute int, now time.Time) int {
-	offset := hour*60 + minute - (now.Hour()*60 + now.Minute())
-	offset = roundOffsetMinutes(offset)
-	for offset <= -720 {
-		offset += 24 * 60
+	offset := hour*60 + minute - clockBase(now)
+	for offset <= -dayMinutes/2 {
+		offset += dayMinutes
 	}
-	for offset > 720 {
-		offset -= 24 * 60
+	for offset > dayMinutes/2 {
+		offset -= dayMinutes
 	}
 	return offset
-}
-
-func roundOffsetMinutes(minutes int) int {
-	if minutes >= 0 {
-		return ((minutes + 15) / 30) * 30
-	}
-	return -(((-minutes + 15) / 30) * 30)
 }
 
 func (model *Model) timeSettingsModal() (string, int, int) {

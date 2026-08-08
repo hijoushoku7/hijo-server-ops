@@ -48,13 +48,55 @@ func TestTimeOffsetForRoundsAndUsesNearestDate(t *testing.T) {
 	}
 }
 
-func TestRoundedClockUsesDisplayedClockTime(t *testing.T) {
+func TestClockBaseUsesDisplayedClockTime(t *testing.T) {
 	// UTC から 5:45 ずれたローカル時刻でも、絶対時刻ではなく画面上の
 	// 14:20 を丸めるので 14:30 になる。
 	clock := time.Date(2026, 8, 8, 14, 20, 0, 0, time.FixedZone("test", 5*3600+45*60))
-	hour, minute := roundedClock(clock)
-	if hour != 14 || minute != 30 {
-		t.Fatalf("rounded clock = %02d:%02d", hour, minute)
+	if got := clockBase(clock); got != 14*60+30 {
+		t.Fatalf("clock base = %d", got)
+	}
+	// 23:45 は日をまたいで 00:00 へ折り返す。24:00 のまま返すと、初期値の
+	// 時が 24 になって表示も次の計算も壊れる。
+	if got := clockBase(time.Date(2026, 8, 8, 23, 45, 0, 0, time.UTC)); got != 0 {
+		t.Fatalf("clock base at 23:45 = %d", got)
+	}
+}
+
+// TestReopenAndConfirmKeepsOffset は開いてそのまま OK を押しただけで
+// オフセットが動かないことを見る。初期値と確定時の丸めが揃っていないと、
+// 12:15 のような半端な時刻で押すたびに 30 分ずつずれていく。
+func TestReopenAndConfirmKeepsOffset(t *testing.T) {
+	clocks := []time.Time{
+		time.Date(2026, 8, 8, 12, 15, 30, 0, time.UTC),
+		time.Date(2026, 8, 8, 12, 45, 1, 0, time.UTC),
+		time.Date(2026, 8, 8, 23, 50, 0, 0, time.UTC),
+		time.Date(2026, 8, 8, 0, 5, 0, 0, time.UTC),
+	}
+	offsets := []int{0, 30, 60, 90, -90, -690, 720}
+	for _, now := range clocks {
+		for _, offset := range offsets {
+			minutes := ((clockBase(now)+offset)%dayMinutes + dayMinutes) % dayMinutes
+			got := timeOffsetFor(minutes/60, minutes%60, now)
+			if got != offset {
+				t.Errorf("now %s / offset %d: 表示 %02d:%02d から %d に変わった",
+					now.Format("15:04:05"), offset, minutes/60, minutes%60, got)
+			}
+		}
+	}
+}
+
+// TestTimeOffsetForStaysInRange は正規化の境界を見る。(-720, 720] の外へ
+// 出ると、同じずれが日付をまたいだ別の値としても表せてしまう。
+func TestTimeOffsetForStaysInRange(t *testing.T) {
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	for minutes := 0; minutes < dayMinutes; minutes += 30 {
+		got := timeOffsetFor(minutes/60, minutes%60, now)
+		if got <= -720 || got > 720 {
+			t.Fatalf("%02d:%02d -> %d", minutes/60, minutes%60, got)
+		}
+		if got%30 != 0 {
+			t.Fatalf("%02d:%02d -> %d は 30 分刻みでない", minutes/60, minutes%60, got)
+		}
 	}
 }
 
