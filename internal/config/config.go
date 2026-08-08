@@ -182,13 +182,14 @@ func render(cfg Config) string {
 
 // normalizeTimeOffset は手書きの値を表示で扱える 30 分刻みへ寄せる。
 // -720 は有効範囲 (-720, 720] の外なので、下限側の -690 にクランプする。
+// 丸める前に範囲へ収めるのは、int の端に近い値で足し算が回り込んで
+// 反対側へ振れるのを避けるため。
 func normalizeTimeOffset(minutes int) int {
+	minutes = max(-690, min(720, minutes))
 	if minutes >= 0 {
-		minutes = ((minutes + 15) / 30) * 30
-	} else {
-		minutes = -(((-minutes + 15) / 30) * 30)
+		return ((minutes + 15) / 30) * 30
 	}
-	return max(-690, min(720, minutes))
+	return -(((-minutes + 15) / 30) * 30)
 }
 
 // quote は TOML の基本文字列にする。次の起動で読めない設定ファイルを

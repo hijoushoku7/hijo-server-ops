@@ -41,7 +41,8 @@ func TestTimeOffsetForRoundsAndUsesNearestDate(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := timeOffsetFor(test.hour, test.minute, test.now); got != test.want {
+			base := clockBase(test.now)
+			if got := timeOffsetFor(test.hour, test.minute, base); got != test.want {
 				t.Fatalf("offset = %d, want %d", got, test.want)
 			}
 		})
@@ -63,25 +64,74 @@ func TestClockBaseUsesDisplayedClockTime(t *testing.T) {
 }
 
 // TestReopenAndConfirmKeepsOffset は開いてそのまま OK を押しただけで
-// オフセットが動かないことを見る。初期値と確定時の丸めが揃っていないと、
-// 12:15 のような半端な時刻で押すたびに 30 分ずつずれていく。
+// オフセットが動かないことを、実際にモーダルを開いて Enter を通して見る。
+// 初期値と確定時で基準が揃っていないと、押すたびに 30 分ずつずれていく。
+//
+// 実時計のどの瞬間に走っても結果が変わらないのは、確定側が開いた時点の
+// 基準（timeModalState.base）だけを見て time.Now() を読み直さないため。
+// 読み直す実装に戻すと、丸めの境目をまたいだ実行で落ちる。
 func TestReopenAndConfirmKeepsOffset(t *testing.T) {
-	clocks := []time.Time{
-		time.Date(2026, 8, 8, 12, 15, 30, 0, time.UTC),
-		time.Date(2026, 8, 8, 12, 45, 1, 0, time.UTC),
-		time.Date(2026, 8, 8, 23, 50, 0, 0, time.UTC),
-		time.Date(2026, 8, 8, 0, 5, 0, 0, time.UTC),
-	}
-	offsets := []int{0, 30, 60, 90, -90, -690, 720}
-	for _, now := range clocks {
-		for _, offset := range offsets {
-			minutes := ((clockBase(now)+offset)%dayMinutes + dayMinutes) % dayMinutes
-			got := timeOffsetFor(minutes/60, minutes%60, now)
-			if got != offset {
-				t.Errorf("now %s / offset %d: 表示 %02d:%02d から %d に変わった",
-					now.Format("15:04:05"), offset, minutes/60, minutes%60, got)
-			}
+	for _, offset := range []int{0, 30, 60, 90, -90, -690, 720} {
+		settings := DefaultSettings()
+		settings.TimeOffsetMinutes = offset
+		model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, settings)
+		model.resize(100, 40)
+
+		model.openTimeModal()
+		shown := model.timeModal.hour*60 + model.timeModal.minute
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+		if model.settings.TimeOffsetMinutes != offset {
+			t.Errorf("offset %d: 表示 %02d:%02d のまま OK を押して %d になった",
+				offset, shown/60, shown%60, model.settings.TimeOffsetMinutes)
 		}
+		if model.timeModal != nil {
+			t.Errorf("offset %d: OK でモーダルが閉じていない", offset)
+		}
+	}
+}
+
+// TestConfirmIgnoresClockDriftWhileOpen は、開いている間にシステムの時計が
+// 丸めの境目をまたいでも、無編集の OK が値を動かさないことを見る。開いた
+// 30 分前の基準を持ったまま確定する状況を作り、確定側が time.Now() を
+// 読み直していないことを確かめる。読み直す実装では 30 分ずれて落ちる。
+func TestConfirmIgnoresClockDriftWhileOpen(t *testing.T) {
+	settings := DefaultSettings()
+	settings.TimeOffsetMinutes = 60
+	model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, settings)
+	model.resize(100, 40)
+
+	model.openTimeModal()
+	// 30 分前に開いたことにする。画面の表示（hour・minute）は開いたときの
+	// ままなので、確定が基準を読み直せば 30 分の差として現れる。
+	model.timeModal.base = (model.timeModal.base - 30 + dayMinutes) % dayMinutes
+	shown := model.timeModal.hour*60 + model.timeModal.minute
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if model.settings.TimeOffsetMinutes != 90 {
+		t.Fatalf("表示 %02d:%02d・基準 30 分前で offset = %d, want 90",
+			shown/60, shown%60, model.settings.TimeOffsetMinutes)
+	}
+}
+
+// TestConfirmAppliesEditedHours は編集した分だけがオフセットに乗ることを
+// 見る。↑ 1 回で 1 時間、分のトグルで 30 分。
+func TestConfirmAppliesEditedHours(t *testing.T) {
+	model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, DefaultSettings())
+	model.resize(100, 40)
+
+	model.openTimeModal()
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	// 時を 2 つ進め、分を 00↔30 で 1 回トグルした分。トグルの向きは開いた
+	// ときの分によるので、+150 か +90 のどちらか。
+	got := model.settings.TimeOffsetMinutes
+	if got != 150 && got != 90 {
+		t.Fatalf("offset = %d", got)
 	}
 }
 
@@ -90,7 +140,7 @@ func TestReopenAndConfirmKeepsOffset(t *testing.T) {
 func TestTimeOffsetForStaysInRange(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	for minutes := 0; minutes < dayMinutes; minutes += 30 {
-		got := timeOffsetFor(minutes/60, minutes%60, now)
+		got := timeOffsetFor(minutes/60, minutes%60, clockBase(now))
 		if got <= -720 || got > 720 {
 			t.Fatalf("%02d:%02d -> %d", minutes/60, minutes%60, got)
 		}
@@ -168,15 +218,18 @@ func TestTimeModalOKSavesAndInvalidatesExistingLogTimestamps(t *testing.T) {
 	_ = model.logs.Window(viewport)
 	_ = model.chat.Window(viewport)
 
-	target := time.Now().Add(2 * time.Hour).Round(30 * time.Minute)
-	model.timeModal = &timeModalState{hour: target.Hour(), minute: target.Minute()}
+	// 2 時間先の時刻を入れた状態から確定する。基準を明示するので、走った
+	// 時刻によらず結果は +120 分に決まる。
+	base := clockBase(time.Now())
+	target := (base + 120) % dayMinutes
+	model.timeModal = &timeModalState{hour: target / 60, minute: target % 60, base: base}
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	offset := model.settings.TimeOffsetMinutes
 	if model.timeModal != nil || len(saved) != 1 || saved[0].TimeOffsetMinutes != offset {
 		t.Fatalf("timeModal = %#v, saved = %#v", model.timeModal, saved)
 	}
-	if offset == 0 || model.logs.wrapValid || model.chat.wrapValid {
+	if offset != 120 || model.logs.wrapValid || model.chat.wrapValid {
 		t.Fatalf("offset = %d, logs valid = %t, chat valid = %t",
 			offset, model.logs.wrapValid, model.chat.wrapValid)
 	}

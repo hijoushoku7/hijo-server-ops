@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,10 +234,20 @@ func TestNormalizeTimeOffset(t *testing.T) {
 		{input: -705, want: -690},
 		{input: -720, want: -690},
 		{input: -1000, want: -690},
+		// 手書きの設定ファイルには int の端の値も書ける。丸めを先に
+		// 掛けると足し算が回り込んで反対側へ振れる。
+		{input: math.MaxInt, want: 720},
+		{input: math.MinInt, want: -690},
 	}
 	for _, test := range tests {
 		if got := normalizeTimeOffset(test.input); got != test.want {
 			t.Errorf("normalizeTimeOffset(%d) = %d, want %d", test.input, got, test.want)
+		}
+	}
+	// 正規化した値をもう一度通しても動かない（Load を繰り返しても安定する）。
+	for offset := -690; offset <= 720; offset += 30 {
+		if got := normalizeTimeOffset(offset); got != offset {
+			t.Errorf("normalizeTimeOffset(%d) = %d, 不動点でない", offset, got)
 		}
 	}
 }
