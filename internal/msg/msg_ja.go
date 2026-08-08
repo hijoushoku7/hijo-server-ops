@@ -18,6 +18,12 @@ import (
 	"fmt"
 )
 
+// 設定モーダルの見出し。
+const (
+	SectionPreferences = "プリファレンス"
+	SectionAdvanced    = "詳細設定"
+)
+
 // 設定モーダルの項目名。
 const (
 	LabelFrame     = "枠"

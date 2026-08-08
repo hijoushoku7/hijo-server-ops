@@ -101,6 +101,38 @@ func TestSettingsSaveFailureShowsStatus(t *testing.T) {
 	}
 }
 
+// 見出しはカーソルの止まらない飾りなので、↓ の回数と項目の対応は
+// 見出しを挟んでも変わらない。
+func TestSettingsModalShowsSectionHeadings(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	model := New(make(chan Action, 1), func(Settings) error { return nil },
+		0, DefaultSettings())
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+
+	content := stripANSI(model.View().Content)
+	preferences := strings.Index(content, msg.SectionPreferences)
+	advanced := strings.Index(content, msg.SectionAdvanced)
+	autoRestart := strings.Index(content, msg.LabelAutoRestart)
+	frame := strings.Index(content, msg.LabelFrame)
+	switch {
+	case preferences < 0 || advanced < 0:
+		t.Fatalf("見出しがない:\n%s", content)
+	case !(preferences < frame && frame < advanced && advanced < autoRestart):
+		t.Fatalf("見出しの位置が違う:\n%s", content)
+	}
+
+	// 見出しの分だけカーソルがずれていないか。
+	for range len(settingItems) - 1 {
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if !model.settings.AutoRestart {
+		t.Fatalf("settings = %#v", model.settings)
+	}
+}
+
 func TestSettingItemsWrapAroundAndKeepUnknownValues(t *testing.T) {
 	item := settingItems[0]
 	settings := Settings{FramePreset: item.options[0].value}
