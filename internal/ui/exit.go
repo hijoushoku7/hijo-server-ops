@@ -57,6 +57,9 @@ type exitState struct {
 	autoRestart bool
 	// autoRestartAt はバックオフの明け時刻。0 なら待ちは終わっている。
 	autoRestartAt time.Time
+	// restarted は自動再起動で新しい世代が立ち上がった状態。落ちたことを
+	// 見落とさないよう、モーダルは勝手に消さず Enter を待つ。
+	restarted bool
 	// fatal は hso 自身の失敗で開いたモーダル。findJava の失敗のように
 	// hso が SIGTERM を送る経路では、後から同じ世代の終了通知が届いて
 	// 状態を作り直すので、自動再起動の対象外であることを引き継ぐ。
@@ -339,6 +342,23 @@ func (model *Model) cancelAutoRestart() {
 	model.exit.notice = msg.ExitAutoRestartCanceled
 }
 
+// onServerStarted は自動再起動で立ち直ったモーダルを残し、それ以外は畳む。
+// 人が見ていない間に落ちて戻ったことが画面から消えないよう、残した分は
+// Enter を押すまで出したままにする。
+func (model *Model) onServerStarted() {
+	state := model.exit
+	if state == nil {
+		return
+	}
+	if !state.autoRestart {
+		model.exit = nil
+		return
+	}
+	state.restarted = true
+	state.autoRestartAt = time.Time{}
+	state.notice = ""
+}
+
 func (model *Model) closeExitModal() {
 	model.exit.autoQuitAt = time.Time{}
 	model.exit.closed = true
@@ -389,6 +409,8 @@ func (model *Model) exitModal() (string, int, int) {
 		lines = append(lines, "")
 	}
 	switch {
+	case state.restarted:
+		lines = append(lines, msg.ExitAutoRestartDone)
 	case model.restartPhase != 0:
 		lines = append(lines, msg.ExitStateRestarting(model.restartDots()))
 	case state.autoRestart:
@@ -409,6 +431,8 @@ func (model *Model) exitModal() (string, int, int) {
 	// 自動再起動の最中はボタンを出さない。押せる操作が無いのに三択を
 	// 見せると、選ばないと進まない画面に見える。
 	switch {
+	case state.restarted:
+		lines = append(lines, "", dimStyle.Render(msg.ExitAutoRestartDoneHint))
 	case !state.autoRestart:
 		lines = append(lines, "", model.exitButtons(width-2))
 	case !state.autoRestartAt.IsZero():

@@ -41,6 +41,15 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := message.Key()
+	// 立ち直った後は Enter で閉じるだけ。裏で復旧していても、落ちた事実を
+	// 読んで消す操作を挟ませる。表示側（exitModal・keybar）も restarted を
+	// 最初に見るので、判定の順番を合わせる。
+	if model.exit.restarted {
+		if key.Code == tea.KeyEnter || key.Code == tea.KeyKpEnter {
+			model.exit = nil
+		}
+		return model, nil
+	}
 	// 自動再起動の最中は、やめる操作だけを受ける。裏で立ち直る途中に
 	// 再起動や終了を重ねられると、どちらが効いたのか分からなくなる。
 	if model.exit.autoRestart {

@@ -85,6 +85,8 @@ const (
 	ExitAutoRestartRejected = "Could not request the auto restart."
 	ExitAutoRestartSkipped  = "No auto restart: the start script never started java."
 	ExitAutoRestartFatal    = "No auto restart: hso itself failed."
+	ExitAutoRestartDone     = "Auto restart done. The server is running."
+	ExitAutoRestartDoneHint = "Enter: close"
 )
 
 func StoppedLogTitle(code string) string {

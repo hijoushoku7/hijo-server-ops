@@ -1480,7 +1480,22 @@ func TestModelAutoRestartKeepsDashboardAndRequestsRestart(t *testing.T) {
 		t.Fatalf("restartPhase = %d", model.restartPhase)
 	}
 
+	// 立ち直っても、落ちたことを読ませるためモーダルは Enter まで残す。
 	_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	if model.exit == nil || !model.exit.restarted {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	content = stripANSI(model.View().Content)
+	if !strings.Contains(content, msg.ExitAutoRestartDone) ||
+		!strings.Contains(content, "Console") {
+		t.Fatalf("view:\n%s", content)
+	}
+	// Enter 以外では消えない。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.exit == nil {
+		t.Fatal("escape closed the modal")
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if model.exit != nil {
 		t.Fatalf("exit = %#v", model.exit)
 	}
