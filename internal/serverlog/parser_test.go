@@ -266,8 +266,9 @@ func assertLag(
 	}
 }
 
-// 期待する行は mc-server-test の実ログから取った。整然停止 34 本すべてに
-// `Stopping server` があり、クラッシュ 6 本すべてに標識が付いている。
+// 期待する行は mc-server-test の実ログ 41 本から取った。整然停止 34 本
+// すべてに `Stopping server` があり、クラッシュ 5 本には標識が先に付く。
+// 残り 2 本は強制終了でどちらも出ない。
 func TestIsShutdownStart(t *testing.T) {
 	shutdown := "[08:40:21] [Server thread/INFO]: Stopping server"
 	if !IsShutdownStart(Parse(shutdown)) {

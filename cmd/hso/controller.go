@@ -76,7 +76,13 @@ type serverRuntime struct {
 // 切られている環境では拾えない。
 //
 // 印を付けるだけで hso は畳まない。実際にプロセスが終わったときに
-// waitForServer がこれを読み、クラッシュ扱いを外す。
+// waitForServer がこれを読み、終了コードが 0 ならクラッシュ扱いを外す。
+// 印が立っていても終了コードが 0 でなければクラッシュのままなので、
+// SIGTERM で畳まれた場合（143）は自動再起動の対象に残る。
+//
+// 順序の前提は 1 本のストリーム内でしか保証されない。標識も告知も log4j の
+// コンソールアペンダから stdout に出るので今は成り立つが、標識だけが
+// stderr に回る作りに変わると逆転しうる。
 func (runtime *serverRuntime) noteShutdown(entry serverlog.Entry) {
 	switch {
 	case serverlog.IsCrashNotice(entry):
