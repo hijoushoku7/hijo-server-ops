@@ -382,7 +382,8 @@ func (model *Model) exitModal() (string, int, int) {
 	lines := []string{
 		msg.ExitSummary(
 			exitCode,
-			state.exitedAt.Format("2006-01-02 15:04:05"),
+			state.exitedAt.Add(time.Duration(model.settings.TimeOffsetMinutes)*time.Minute).
+				Format("2006-01-02 15:04:05"),
 			formatUptime(state.uptime),
 		),
 		msg.ExitMemory(

@@ -74,6 +74,12 @@ func (model *Model) View() tea.View {
 		case model.exit != nil:
 			box, x, y := model.exitModal()
 			content = overlay(content, box, x, y)
+		case model.timeModal != nil:
+			// 時刻入力は設定モーダルを閉じず、その上へ重ねる。
+			box, x, y := model.settingsModal()
+			content = overlay(content, box, x, y)
+			box, x, y = model.timeSettingsModal()
+			content = overlay(content, box, x, y)
 		case model.settingsOpen:
 			box, x, y := model.settingsModal()
 			content = overlay(content, box, x, y)
@@ -277,6 +283,14 @@ func (model *Model) keybar() string {
 			{"Home/End", msg.BarEnds},
 			{"R", msg.BarRestart},
 			{"Q/Enter", msg.BarExit},
+		}
+	case model.timeModal != nil:
+		keys = [][2]string{
+			{"←→", msg.BarTimeField},
+			{"↑↓", msg.BarTimeAdjust},
+			{"Enter", msg.BarConfirm},
+			{"Esc", msg.BarCancel},
+			{"^C", msg.BarExit},
 		}
 	case model.settingsOpen:
 		keys = [][2]string{

@@ -217,3 +217,80 @@ func TestSaveRoundTripsAutoRestart(t *testing.T) {
 		t.Fatalf("written:\n%s", written)
 	}
 }
+
+func TestNormalizeTimeOffset(t *testing.T) {
+	tests := []struct {
+		input int
+		want  int
+	}{
+		{input: 14, want: 0},
+		{input: 15, want: 30},
+		{input: -14, want: 0},
+		{input: -15, want: -30},
+		{input: 734, want: 720},
+		{input: 735, want: 720},
+		{input: -704, want: -690},
+		{input: -705, want: -690},
+		{input: -720, want: -690},
+		{input: -1000, want: -690},
+	}
+	for _, test := range tests {
+		if got := normalizeTimeOffset(test.input); got != test.want {
+			t.Errorf("normalizeTimeOffset(%d) = %d, want %d", test.input, got, test.want)
+		}
+	}
+}
+
+func TestLoadNormalizesTimeOffset(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	writeConfig(t, path, "[server]\ncommand = \"./run.sh\"\n\n"+
+		"[ui.time]\noffset_minutes = 94\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.Time.OffsetMinutes != 90 {
+		t.Fatalf("OffsetMinutes = %d", cfg.UI.Time.OffsetMinutes)
+	}
+}
+
+func TestSaveRoundTripsTimeOffsetAndOmitsZero(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	cfg := Config{
+		Server: Server{Command: "./run.sh", WorkDir: dir},
+		UI:     UI{Time: Time{OffsetMinutes: 90}},
+	}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.UI.Time.OffsetMinutes != 90 {
+		t.Fatalf("loaded = %#v", loaded.UI.Time)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "[ui.time]\noffset_minutes = 90") {
+		t.Fatalf("written:\n%s", written)
+	}
+
+	loaded.UI.Time.OffsetMinutes = 0
+	if err := Save(path, loaded); err != nil {
+		t.Fatal(err)
+	}
+	written, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(written), "[ui.time]") {
+		t.Fatalf("written:\n%s", written)
+	}
+}

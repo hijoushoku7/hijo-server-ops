@@ -69,9 +69,10 @@ type lineBuffer struct {
 	// record が 0 の間は、幅が変わっても末尾への追従を続ける。
 	anchor logAnchor
 
-	wrapWidth int
-	wrapValid bool
-	wrapped   []wrappedLogRecord
+	wrapWidth     int
+	wrapValid     bool
+	wrapped       []wrappedLogRecord
+	offsetMinutes int
 }
 
 func (buffer *lineBuffer) Add(record logRecord) {
@@ -97,7 +98,7 @@ func (buffer *lineBuffer) Add(record logRecord) {
 	}
 	wrapped := wrappedLogRecord{
 		number: item.number,
-		lines:  wrapLogRecord(item.record, buffer.wrapWidth),
+		lines:  wrapLogRecord(item.record, buffer.wrapWidth, buffer.offsetMinutes),
 	}
 	if !full {
 		buffer.wrapped = append(buffer.wrapped, wrapped)
@@ -105,6 +106,15 @@ func (buffer *lineBuffer) Add(record logRecord) {
 	}
 	copy(buffer.wrapped, buffer.wrapped[1:])
 	buffer.wrapped[len(buffer.wrapped)-1] = wrapped
+}
+
+// SetTimeOffset は保存済みレコードを変えず、表示用の折り返しだけを作り直す。
+func (buffer *lineBuffer) SetTimeOffset(minutes int) {
+	if buffer.offsetMinutes == minutes {
+		return
+	}
+	buffer.offsetMinutes = minutes
+	buffer.invalidateWrap()
 }
 
 func (buffer *lineBuffer) SetLimit(limit int) {
@@ -267,7 +277,7 @@ func (buffer *lineBuffer) ensureWrapped(width int) {
 		item := buffer.itemAt(index)
 		wrapped = append(wrapped, wrappedLogRecord{
 			number: item.number,
-			lines:  wrapLogRecord(item.record, width),
+			lines:  wrapLogRecord(item.record, width, buffer.offsetMinutes),
 		})
 	}
 	buffer.wrapWidth = width

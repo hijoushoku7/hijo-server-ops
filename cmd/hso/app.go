@@ -68,6 +68,7 @@ func settingsFrom(cfg config.Config) ui.Settings {
 		settings.LogPreset = value
 	}
 	settings.AutoRestart = cfg.Server.AutoRestart
+	settings.TimeOffsetMinutes = cfg.UI.Time.OffsetMinutes
 	return settings
 }
 
@@ -81,5 +82,6 @@ func saveSettings(configPath string, cfg config.Config, settings ui.Settings) er
 		Log:       settings.LogPreset,
 	}
 	cfg.Server.AutoRestart = settings.AutoRestart
+	cfg.UI.Time.OffsetMinutes = settings.TimeOffsetMinutes
 	return config.Save(configPath, cfg)
 }

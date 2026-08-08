@@ -125,6 +125,7 @@ type Model struct {
 	settings          Settings
 	settingsOpen      bool
 	settingCursor     int
+	timeModal         *timeModalState
 	exit              *exitState
 	restart           restartTracker
 	// 0 は停止中、1..3 は表示する点の数。
@@ -175,7 +176,7 @@ func New(
 ) *Model {
 	applyTheme(settings)
 	startedAt := time.Now()
-	return &Model{
+	model := &Model{
 		status:     "starting",
 		actions:    actions,
 		save:       save,
@@ -186,6 +187,9 @@ func New(
 		settings: settings,
 		restart:  restartTracker{startedAt: startedAt},
 	}
+	model.chat.SetTimeOffset(settings.TimeOffsetMinutes)
+	model.logs.SetTimeOffset(settings.TimeOffsetMinutes)
+	return model
 }
 
 func (model *Model) Init() tea.Cmd {

@@ -32,7 +32,7 @@ func TestWrapPlainTextUsesCellWidthForWideCharacters(t *testing.T) {
 
 func TestWrapLogRecordIndentsContinuationLines(t *testing.T) {
 	record := logRecord{kind: serverlog.KindOther, text: "abcdefghij"}
-	lines := wrapLogRecord(record, 10)
+	lines := wrapLogRecord(record, 10, 0)
 	got := make([]string, len(lines))
 	for index, line := range lines {
 		got[index] = stripANSI(renderLogLine(line, 10))

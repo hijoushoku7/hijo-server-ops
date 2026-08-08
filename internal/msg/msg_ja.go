@@ -34,6 +34,15 @@ const (
 	LabelLog       = "ログ"
 
 	LabelAutoRestart = "自動再起動"
+	LabelTimezone    = "タイムゾーン"
+	LabelCurrentTime = "現在時刻"
+	LabelTimeDrift   = "ずれ"
+)
+
+const (
+	OptSystemTime     = "システム時刻"
+	TimeSettingButton = "設定"
+	TimeModalTitle    = "現在時刻の設定"
 )
 
 // 配色プリセットの表示名。
@@ -155,6 +164,9 @@ const (
 	BarEnds         = "先頭/末尾"
 	BarRestart      = "再起動"
 	BarStopAuto     = "自動再起動をやめる"
+	BarTimeField    = "時/分"
+	BarTimeAdjust   = "変更"
+	BarCancel       = "取消"
 )
 
 // セットアップウィザードの画面。

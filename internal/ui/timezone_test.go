@@ -1,0 +1,163 @@
+package ui
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
+)
+
+func TestTimeOffsetForRoundsAndUsesNearestDate(t *testing.T) {
+	tests := []struct {
+		name         string
+		now          time.Time
+		hour, minute int
+		want         int
+	}{
+		{
+			name: "next day",
+			now:  time.Date(2026, 8, 8, 23, 10, 0, 0, time.UTC),
+			hour: 1, minute: 30, want: 150,
+		},
+		{
+			name: "previous day",
+			now:  time.Date(2026, 8, 8, 0, 10, 0, 0, time.UTC),
+			hour: 23, minute: 30, want: -30,
+		},
+		{
+			name: "positive rounding",
+			now:  time.Date(2026, 8, 8, 12, 16, 0, 0, time.UTC),
+			hour: 13, minute: 30, want: 60,
+		},
+		{
+			name: "negative twelve hour tie",
+			now:  time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC),
+			hour: 0, minute: 0, want: 720,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := timeOffsetFor(test.hour, test.minute, test.now); got != test.want {
+				t.Fatalf("offset = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRoundedClockUsesDisplayedClockTime(t *testing.T) {
+	// UTC から 5:45 ずれたローカル時刻でも、絶対時刻ではなく画面上の
+	// 14:20 を丸めるので 14:30 になる。
+	clock := time.Date(2026, 8, 8, 14, 20, 0, 0, time.FixedZone("test", 5*3600+45*60))
+	hour, minute := roundedClock(clock)
+	if hour != 14 || minute != 30 {
+		t.Fatalf("rounded clock = %02d:%02d", hour, minute)
+	}
+}
+
+func TestTimeModalOpensFromSettingsAndHandlesKeys(t *testing.T) {
+	model := New(make(chan Action, 1), nil, 0, DefaultSettings())
+	model.resize(100, 40)
+	model.settingsOpen = true
+	model.settingCursor = len(settingItems) - 1
+	settingsView := stripANSI(model.View().Content)
+	if !strings.Contains(settingsView, msg.OptSystemTime) ||
+		!strings.Contains(settingsView, "["+msg.TimeSettingButton+"]") {
+		t.Fatalf("settings view:\n%s", settingsView)
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if model.timeModal != nil {
+		t.Fatal("right opened the time modal")
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.timeModal == nil || !model.settingsOpen {
+		t.Fatalf("timeModal = %#v, settingsOpen = %t", model.timeModal, model.settingsOpen)
+	}
+	if model.timeModal.minute != 0 && model.timeModal.minute != 30 {
+		t.Fatalf("minute = %d", model.timeModal.minute)
+	}
+	content := stripANSI(model.View().Content)
+	if !strings.Contains(content, msg.TimeModalTitle) ||
+		!strings.Contains(content, msg.LabelTimezone) {
+		t.Fatalf("view:\n%s", content)
+	}
+
+	model.timeModal = &timeModalState{hour: 23}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if model.timeModal.hour != 0 {
+		t.Fatalf("hour after up = %d", model.timeModal.hour)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if model.timeModal.hour != 23 || model.timeModal.field != 1 || model.timeModal.minute != 30 {
+		t.Fatalf("timeModal = %#v", model.timeModal)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if model.timeModal.field != 0 || model.timeModal.minute != 0 {
+		t.Fatalf("timeModal = %#v", model.timeModal)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.timeModal != nil || !model.settingsOpen {
+		t.Fatalf("timeModal = %#v, settingsOpen = %t", model.timeModal, model.settingsOpen)
+	}
+}
+
+func TestTimeModalOKSavesAndInvalidatesExistingLogTimestamps(t *testing.T) {
+	var saved []Settings
+	model := New(make(chan Action, 1), func(settings Settings) error {
+		saved = append(saved, settings)
+		return nil
+	}, 0, DefaultSettings())
+	model.resize(100, 40)
+	timestamp := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	record := logRecord{
+		timestamp: timestamp, timestampSource: serverlog.TimestampLog,
+		kind: serverlog.KindOther, text: "line",
+	}
+	model.logs.Add(record)
+	model.chat.Add(record)
+	viewport := bufferViewport{width: 30, height: 1}
+	_ = model.logs.Window(viewport)
+	_ = model.chat.Window(viewport)
+
+	target := time.Now().Add(2 * time.Hour).Round(30 * time.Minute)
+	model.timeModal = &timeModalState{hour: target.Hour(), minute: target.Minute()}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	offset := model.settings.TimeOffsetMinutes
+	if model.timeModal != nil || len(saved) != 1 || saved[0].TimeOffsetMinutes != offset {
+		t.Fatalf("timeModal = %#v, saved = %#v", model.timeModal, saved)
+	}
+	if offset == 0 || model.logs.wrapValid || model.chat.wrapValid {
+		t.Fatalf("offset = %d, logs valid = %t, chat valid = %t",
+			offset, model.logs.wrapValid, model.chat.wrapValid)
+	}
+	want := timestamp.Add(time.Duration(offset) * time.Minute).Format("15:04")
+	for name, buffer := range map[string]*lineBuffer{"logs": &model.logs, "chat": &model.chat} {
+		line := buffer.Window(viewport)[0]
+		if !strings.HasPrefix(line.prefix, want) {
+			t.Errorf("%s prefix = %q, want %q", name, line.prefix, want)
+		}
+	}
+}
+
+func TestExitModalUsesTimeOffset(t *testing.T) {
+	settings := DefaultSettings()
+	settings.TimeOffsetMinutes = 90
+	model := New(make(chan Action, 1), nil, 0, settings)
+	model.resize(100, 40)
+	model.exit = &exitState{
+		exitedAt: time.Date(2026, 8, 8, 23, 15, 0, 0, time.UTC),
+	}
+
+	box, _, _ := model.exitModal()
+	if content := stripANSI(box); !strings.Contains(content, "2026-08-09 00:45:00") {
+		t.Fatalf("modal:\n%s", content)
+	}
+}
