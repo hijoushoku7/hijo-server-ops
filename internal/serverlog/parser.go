@@ -166,28 +166,43 @@ func Parse(line string) Entry {
 	return entry
 }
 
-// stoppingNotice は /stop のコマンドフィードバック。シャットダウン処理
-// そのものが出す `Stopping server` とは別の行。
-const stoppingNotice = "Stopping the server"
+// shutdownNotice はシャットダウン処理そのものが出す行。/stop のコマンド
+// フィードバック `Stopping the server`（"the" が入る）とは別の行で、止まり
+// 方に関係なく整然と畳まれるときは必ず出る。
+const shutdownNotice = "Stopping server"
 
-// IsStopping は「これから止まる」と告げる行かどうかを返す。コンソールから
-// stop を打つと `Stopping the server` がそのまま出るが、プレイヤーが
-// ワールドで /stop を実行した場合は sendCommandFeedback により
-// `[名前: Stopping the server]` の形になる。どちらも意図された停止なので、
-// クラッシュとして自動再起動に回さないための目印にする。
+// crashNotices はサーバーがクラッシュとして畳まれたときに出る行。
+// クラッシュでもシャットダウン処理は走るので、これが出ていたかどうかが
+// 整然停止とクラッシュの唯一の区別になる。終了コードは当てにならない
+// （クラッシュレポートを書いた後、正常終了の経路を通って 0 で終わる）。
+var crashNotices = []string{
+	"Encountered an unexpected exception",
+	"This crash report has been saved to",
+}
+
+// IsShutdownStart はサーバーが整然と畳まれ始めた行かを返す。
 //
-// プレイヤー実行の側は gamerule sendCommandFeedback に依存する。false の
-// 環境では行が出ないので拾えない（従来どおりクラッシュ扱いになるだけで、
-// 悪化はしない）。コンソール実行は gamerule の影響を受けない。
-func IsStopping(entry Entry) bool {
-	switch entry.Kind {
-	case KindCommand:
-		return strings.TrimSpace(entry.Command) == stoppingNotice
-	case KindOther:
-		return strings.TrimSpace(entry.Message) == stoppingNotice
-	default:
+// 誰が止めたかは見ない。/stop のコマンドフィードバックを見る手もあるが、
+// プレイヤーがワールドで実行した場合の `[名前: Stopping the server]` は
+// gamerule logAdminCommands に依存し、切られている環境では出ない。
+// シャットダウン処理自身が出すこの行はゲームルールの影響を受けない。
+func IsShutdownStart(entry Entry) bool {
+	return entry.Kind == KindOther && strings.TrimSpace(entry.Message) == shutdownNotice
+}
+
+// IsCrashNotice はクラッシュとして畳まれたと分かる行かを返す。チャットで
+// 同じ文字列を打たれても拾わないよう、サーバー自身の行だけを見る。
+func IsCrashNotice(entry Entry) bool {
+	if entry.Kind != KindOther {
 		return false
 	}
+	message := strings.TrimSpace(entry.Message)
+	for _, notice := range crashNotices {
+		if strings.HasPrefix(message, notice) {
+			return true
+		}
+	}
+	return false
 }
 
 func SentCommand(command string) Entry {

@@ -157,7 +157,7 @@ func TestStopServerReturnsSignalError(t *testing.T) {
 }
 
 // 停止の目印は logs が詰まっていても拾えないといけない。offerLog は溢れた
-// 行を古いものから捨てるので、ここでは停止の行がキューに残らない。それでも
+// 行を古いものから捨てるので、ここでは告知の行がキューに残らない。それでも
 // 印が立つこと＝キューに入った行だけを observe する実装に戻っていないこと
 // を見る。
 func TestReadServerOutputObservesEveryLineEvenWhenLogsAreFull(t *testing.T) {
@@ -165,28 +165,64 @@ func TestReadServerOutputObservesEveryLineEvenWhenLogsAreFull(t *testing.T) {
 	var runtime serverRuntime
 	readServerOutput(strings.NewReader(
 		"[12:00:00] [Server thread/INFO]: <alice> hello\n"+
-			"[12:00:01] [Server thread/INFO]: [alice: Stopping the server]\n"+
+			"[12:00:01] [Server thread/INFO]: Stopping server\n"+
 			"[12:00:02] [Server thread/INFO]: Saving worlds\n",
-	), logs, runtime.noteStopping)
+	), logs, runtime.noteShutdown)
 
 	if len(logs) != 1 {
 		t.Fatalf("queued lines = %d", len(logs))
 	}
 	if entry := <-logs; entry.Message != "Saving worlds" {
-		t.Fatalf("the stop notice survived the queue: %#v", entry)
+		t.Fatalf("the shutdown notice survived the queue: %#v", entry)
 	}
 	if !runtime.expectedExit.Load() {
-		t.Fatal("stop notice was not observed")
+		t.Fatal("shutdown notice was not observed")
 	}
 }
 
-func TestRuntimeNoteStoppingIgnoresOtherLines(t *testing.T) {
+// プレイヤーがワールドで /stop を実行した場合。gamerule logAdminCommands が
+// 切られていて `[名前: Stopping the server]` が出なくても、整然と畳まれた
+// ことは分かる。
+func TestRuntimeNoteShutdownDetectsPlayerStopWithoutAdminLog(t *testing.T) {
 	var runtime serverRuntime
-	runtime.noteStopping(serverlog.Parse(
-		"[12:00:00] [Server thread/INFO]: <alice> Stopping the server",
-	))
+	for _, line := range []string{
+		"[12:00:00] [Server thread/INFO]: Stopping server",
+		"[12:00:00] [Server thread/INFO]: Saving worlds",
+	} {
+		runtime.noteShutdown(serverlog.Parse(line))
+	}
+	if !runtime.expectedExit.Load() {
+		t.Fatal("an orderly shutdown was not treated as expected")
+	}
+}
+
+// クラッシュでもシャットダウン処理は走る。標識が先に出ているので、
+// 意図された停止と取り違えない。
+func TestRuntimeNoteShutdownKeepsCrashUnexpected(t *testing.T) {
+	var runtime serverRuntime
+	for _, line := range []string{
+		"[12:00:00] [Server thread/ERROR]: Encountered an unexpected exception",
+		"[12:00:00] [Server thread/ERROR]: This crash report has been saved to: " +
+			"/srv/mc/crash-reports/crash-2026-08-08_12.00.00-server.txt",
+		"[12:00:00] [Server thread/INFO]: Stopping server",
+	} {
+		runtime.noteShutdown(serverlog.Parse(line))
+	}
 	if runtime.expectedExit.Load() {
-		t.Fatal("chat was treated as a stop notice")
+		t.Fatal("a crash was treated as an expected exit")
+	}
+}
+
+func TestRuntimeNoteShutdownIgnoresChat(t *testing.T) {
+	var runtime serverRuntime
+	for _, line := range []string{
+		"[12:00:00] [Server thread/INFO]: <alice> Encountered an unexpected exception",
+		"[12:00:01] [Server thread/INFO]: <alice> Stopping server",
+	} {
+		runtime.noteShutdown(serverlog.Parse(line))
+	}
+	if runtime.expectedExit.Load() || runtime.crashNoticed.Load() {
+		t.Fatal("chat was treated as a server notice")
 	}
 }
 
