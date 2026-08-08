@@ -39,7 +39,7 @@ func TestReadServerOutputParsesLines(t *testing.T) {
 	readServerOutput(strings.NewReader(
 		"[12:00:00] [Server thread/INFO]: <alice> hello\n"+
 			"[12:00:01] [Server thread/INFO]: alice joined the game\n",
-	), logs)
+	), logs, nil)
 
 	first := <-logs
 	second := <-logs
@@ -60,7 +60,7 @@ func TestReadServerOutputParsesLines(t *testing.T) {
 
 func TestReadServerOutputUsesReceiveTimeWithoutLogTimestamp(t *testing.T) {
 	logs := make(chan serverlog.Entry, 1)
-	readServerOutput(strings.NewReader("plain output\n"), logs)
+	readServerOutput(strings.NewReader("plain output\n"), logs, nil)
 
 	entry := <-logs
 	if entry.Timestamp.IsZero() ||
@@ -74,7 +74,7 @@ func TestReadServerOutputBoundsLongLinesAndContinues(t *testing.T) {
 	input := bytes.Repeat([]byte("x"), maxOutputLineBytes+100)
 	input = append(input, '\n')
 	input = append(input, []byte("next\n")...)
-	readServerOutput(bytes.NewReader(input), logs)
+	readServerOutput(bytes.NewReader(input), logs, nil)
 
 	first := <-logs
 	second := <-logs
@@ -153,6 +153,53 @@ func TestStopServerReturnsSignalError(t *testing.T) {
 
 	if err := stopServer(server, false, time.Second); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+// 停止の目印は logs が詰まっていても拾えないといけない。offerLog は溢れた
+// 行を古いものから捨てるので、ここでは停止の行がキューに残らない。それでも
+// 印が立つこと＝キューに入った行だけを observe する実装に戻っていないこと
+// を見る。
+func TestReadServerOutputObservesEveryLineEvenWhenLogsAreFull(t *testing.T) {
+	logs := make(chan serverlog.Entry, 1)
+	var runtime serverRuntime
+	readServerOutput(strings.NewReader(
+		"[12:00:00] [Server thread/INFO]: <alice> hello\n"+
+			"[12:00:01] [Server thread/INFO]: [alice: Stopping the server]\n"+
+			"[12:00:02] [Server thread/INFO]: Saving worlds\n",
+	), logs, runtime.noteStopping)
+
+	if len(logs) != 1 {
+		t.Fatalf("queued lines = %d", len(logs))
+	}
+	if entry := <-logs; entry.Message != "Saving worlds" {
+		t.Fatalf("the stop notice survived the queue: %#v", entry)
+	}
+	if !runtime.expectedExit.Load() {
+		t.Fatal("stop notice was not observed")
+	}
+}
+
+func TestRuntimeNoteStoppingIgnoresOtherLines(t *testing.T) {
+	var runtime serverRuntime
+	runtime.noteStopping(serverlog.Parse(
+		"[12:00:00] [Server thread/INFO]: <alice> Stopping the server",
+	))
+	if runtime.expectedExit.Load() {
+		t.Fatal("chat was treated as a stop notice")
+	}
+}
+
+func TestIsStopCommand(t *testing.T) {
+	for _, command := range []string{"stop", "/stop", " /Stop ", "STOP"} {
+		if !isStopCommand(command) {
+			t.Fatalf("%q was not treated as stop", command)
+		}
+	}
+	for _, command := range []string{"stopall", "say stop", "//stop", "/ stop", ""} {
+		if isStopCommand(command) {
+			t.Fatalf("%q was treated as stop", command)
+		}
 	}
 }
 
