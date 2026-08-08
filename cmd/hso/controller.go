@@ -53,8 +53,8 @@ type serverRuntime struct {
 	startedAt  time.Time
 	javaFound  atomic.Bool
 	// stopCommandSent と shutdownNoticed は、意図された停止を確認した経路を
-	// 分けて持つ。送信失敗時に取り消すのは前者だけにし、ログ側の確認を
-	// 消さない。
+	// 分けて持つ。1 つの印を両方から書くと、片方の都合による取り消しが
+	// もう片方の確認を消す。3 つとも一度立てたら降ろさない。
 	stopCommandSent atomic.Bool
 	shutdownNoticed atomic.Bool
 	// crashNoticed はクラッシュの標識をログで見たか。整然と畳まれること
@@ -72,8 +72,8 @@ type serverRuntime struct {
 }
 
 // noteShutdown は畳まれ方をログから見て、整然と止まったなら意図された終了
-// として印を付ける。クラッシュの標識はシャットダウンの告知より先に出るので、
-// 先に見えていたらこの停止はクラッシュの後始末とみなし、印を付けない。
+// として印を付ける。クラッシュの後始末でも同じ告知が出るので、標識を先に
+// 見ていたらこの告知では印を付けない。
 //
 // 誰が止めたかは見ない。/stop のコマンドフィードバックを見る手もあるが、
 // プレイヤーがワールドで実行した場合は gamerule logAdminCommands に依存し、
@@ -111,9 +111,10 @@ func (runtime *serverRuntime) expectedExit() bool {
 // 送信が正常停止に見え、2 回目の送信失敗が 1 回目の成功を消す。
 //
 // 送信が成功してから印が立つまでの隙間に終了判定が走ると、意図した停止を
-// 取りこぼす。ただし今書いた stop が効くまでには JVM の停止処理が要るので、
-// その間にプロセスが消えてログも流し切っていることは実際には起こらない。
-// 起きたとしてもログ側の shutdownNoticed が同じ停止を拾う。
+// 取りこぼす。この隙間はプリエンプトされれば伸びるので短さは当てにしない。
+// 頼りにしているのは順番のほうで、今書いた stop が効くには JVM の停止処理を
+// 待つ必要があり、その間にプロセスが消えてログも流し切っていることはない。
+// 仮に成り立っても、その停止は告知を出すので shutdownNoticed が拾う。
 func (runtime *serverRuntime) sendCommand(
 	command string,
 	send func(string) error,
