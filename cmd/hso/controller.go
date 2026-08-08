@@ -64,6 +64,15 @@ type serverRuntime struct {
 	logsDone chan struct{}
 }
 
+// noteStopping はサーバー自身が停止を告げた行を拾い、意図された終了として
+// 印を付ける。印を付けるだけで hso は畳まない。実際にプロセスが終わった
+// ときに waitForServer がこれを読み、クラッシュ扱いを外す。
+func (runtime *serverRuntime) noteStopping(entry serverlog.Entry) {
+	if serverlog.IsStopping(entry) {
+		runtime.expectedExit.Store(true)
+	}
+}
+
 func (runtime *serverRuntime) close() {
 	runtime.cancel()
 	runtime.stdout.close()
@@ -144,11 +153,11 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 	go pumpLogs(runtimeCtx, controller.program, logs, generation, runtime.logsDone)
 	go func() {
 		defer readers.Done()
-		readAndCloseServerOutput(stdout.reader, logs)
+		readAndCloseServerOutput(stdout.reader, logs, runtime.noteStopping)
 	}()
 	go func() {
 		defer readers.Done()
-		readAndCloseServerOutput(stderr.reader, logs)
+		readAndCloseServerOutput(stderr.reader, logs, runtime.noteStopping)
 	}()
 	go func() {
 		readers.Wait()
@@ -191,7 +200,7 @@ func (controller *serverController) sendCommand(action ui.Action) {
 		controller.program.Send(ui.ActionResultMsg{Action: action, Err: msg.ErrServerStopped})
 		return
 	}
-	isStop := strings.EqualFold(strings.TrimSpace(action.Command), "stop")
+	isStop := isStopCommand(action.Command)
 	if isStop {
 		runtime.expectedExit.Store(true)
 	}
@@ -200,6 +209,16 @@ func (controller *serverController) sendCommand(action ui.Action) {
 		runtime.expectedExit.Store(false)
 	}
 	controller.program.Send(ui.ActionResultMsg{Action: action, Err: err})
+}
+
+// isStopCommand はコンソールに打たれた行が停止コマンドかを見る。サーバー
+// コンソールでは `stop` だが、ゲーム内の感覚で `/stop` と打つ人もいて、
+// どちらも同じように止まる。片方だけ見ていると、意図した停止をクラッシュと
+// 誤認して自動再起動が走る。
+func isStopCommand(command string) bool {
+	trimmed := strings.TrimSpace(command)
+	trimmed = strings.TrimPrefix(trimmed, "/")
+	return strings.EqualFold(strings.TrimSpace(trimmed), "stop")
 }
 
 func (controller *serverController) restart() {

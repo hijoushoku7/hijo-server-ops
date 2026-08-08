@@ -15,12 +15,23 @@ const (
 	maxOutputLineBytes = 16 << 10
 )
 
-func readAndCloseServerOutput(input *io.PipeReader, logs chan serverlog.Entry) {
+func readAndCloseServerOutput(
+	input *io.PipeReader,
+	logs chan serverlog.Entry,
+	observe func(serverlog.Entry),
+) {
 	defer input.Close()
-	readServerOutput(input, logs)
+	readServerOutput(input, logs, observe)
 }
 
-func readServerOutput(input io.Reader, logs chan serverlog.Entry) {
+// readServerOutput は 1 行ごとに observe を呼んでから logs へ流す。observe を
+// 通す位置がここなのは、logs が詰まると offerLog が行を捨てるため。停止の
+// 目印を落とすと、正常な停止がクラッシュ扱いになる。
+func readServerOutput(
+	input io.Reader,
+	logs chan serverlog.Entry,
+	observe func(serverlog.Entry),
+) {
 	reader := bufio.NewReaderSize(input, outputBufferSize)
 	line := make([]byte, 0, outputBufferSize)
 	truncated := false
@@ -36,14 +47,14 @@ func readServerOutput(input io.Reader, logs chan serverlog.Entry) {
 
 		switch {
 		case err == nil:
-			offerLog(logs, parseOutputLine(line, truncated))
+			emitLog(logs, parseOutputLine(line, truncated), observe)
 			line = line[:0]
 			truncated = false
 		case errors.Is(err, bufio.ErrBufferFull):
 			continue
 		case errors.Is(err, io.EOF):
 			if len(line) > 0 {
-				offerLog(logs, parseOutputLine(line, truncated))
+				emitLog(logs, parseOutputLine(line, truncated), observe)
 			}
 			return
 		default:
@@ -65,6 +76,17 @@ func parseOutputLine(line []byte, truncated bool) serverlog.Entry {
 	}
 	entry.Raw = ""
 	return entry
+}
+
+func emitLog(
+	logs chan serverlog.Entry,
+	entry serverlog.Entry,
+	observe func(serverlog.Entry),
+) {
+	if observe != nil {
+		observe(entry)
+	}
+	offerLog(logs, entry)
 }
 
 func offerLog(logs chan serverlog.Entry, entry serverlog.Entry) {

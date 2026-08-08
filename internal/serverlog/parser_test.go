@@ -265,3 +265,29 @@ func assertLag(
 		t.Fatalf("Lag.TicksBehind = %#v, want %d", entry.Lag, wantTicks)
 	}
 }
+
+func TestIsStopping(t *testing.T) {
+	stopping := []string{
+		// コンソールから stop を打った場合。
+		"[12:00:00] [Server thread/INFO]: Stopping the server",
+		// プレイヤーがワールドで /stop を実行した場合。
+		"[12:00:00] [Server thread/INFO]: [alice: Stopping the server]",
+	}
+	for _, line := range stopping {
+		if !IsStopping(Parse(line)) {
+			t.Errorf("IsStopping(%q) = false", line)
+		}
+	}
+
+	running := []string{
+		"[12:00:00] [Server thread/INFO]: <alice> Stopping the server",
+		"[12:00:00] [Server thread/INFO]: alice issued server command: /help",
+		"[12:00:00] [Server thread/INFO]: Stopping the server soon",
+		"[12:00:00] [Server thread/INFO]: Saving worlds",
+	}
+	for _, line := range running {
+		if IsStopping(Parse(line)) {
+			t.Errorf("IsStopping(%q) = true", line)
+		}
+	}
+}
