@@ -48,11 +48,15 @@ func (pipe outputPipe) close() {
 }
 
 type serverRuntime struct {
-	server       *process.Process
-	generation   uint64
-	startedAt    time.Time
-	javaFound    atomic.Bool
-	expectedExit atomic.Bool
+	server     *process.Process
+	generation uint64
+	startedAt  time.Time
+	javaFound  atomic.Bool
+	// stopCommandSent と shutdownNoticed は、意図された停止を確認した経路を
+	// 分けて持つ。送信失敗時に取り消すのは前者だけにし、ログ側の確認を
+	// 消さない。
+	stopCommandSent atomic.Bool
+	shutdownNoticed atomic.Bool
 	// crashNoticed はクラッシュの標識をログで見たか。整然と畳まれること
 	// 自体はクラッシュでも同じなので、これで区別する。
 	crashNoticed atomic.Bool
@@ -80,16 +84,45 @@ type serverRuntime struct {
 // 印が立っていても終了コードが 0 でなければクラッシュのままなので、
 // SIGTERM で畳まれた場合（143）は自動再起動の対象に残る。
 //
-// 順序の前提は 1 本のストリーム内でしか保証されない。標識も告知も log4j の
-// コンソールアペンダから stdout に出るので今は成り立つが、標識だけが
-// stderr に回る作りに変わると逆転しうる。
+// 標識が告知より後に届いても結論は変わらない。expectedExit がクラッシュの
+// 標識を最後に引くので、ここで告知の印を立てた後に標識が立っても覆る。
+// stdout と stderr で読み手が分かれており順序を保証できないため、順序に
+// 頼らない形にしてある。
 func (runtime *serverRuntime) noteShutdown(entry serverlog.Entry) {
 	switch {
 	case serverlog.IsCrashNotice(entry):
 		runtime.crashNoticed.Store(true)
 	case serverlog.IsShutdownStart(entry) && !runtime.crashNoticed.Load():
-		runtime.expectedExit.Store(true)
+		runtime.shutdownNoticed.Store(true)
 	}
+}
+
+// expectedExit は、クラッシュの標識がなく、停止コマンドの送信またはログで
+// 整然とした停止を確認できた場合にだけ true を返す。クラッシュの標識は
+// 確定状態なので、後から停止コマンドやシャットダウン告知が来ても覆さない。
+func (runtime *serverRuntime) expectedExit() bool {
+	expected := runtime.stopCommandSent.Load() || runtime.shutdownNoticed.Load()
+	return expected && !runtime.crashNoticed.Load()
+}
+
+// sendCommand は停止コマンドの送信状態だけを管理する。印を立てるのは送信が
+// 成功した後で、一度立てたら降ろさない。送信の前に立てて失敗したら降ろす、
+// という書き方だと 2 つの穴ができる。確定前に waitForServer が読むと失敗した
+// 送信が正常停止に見え、2 回目の送信失敗が 1 回目の成功を消す。
+//
+// 送信が成功してから印が立つまでの隙間に終了判定が走ると、意図した停止を
+// 取りこぼす。ただし今書いた stop が効くまでには JVM の停止処理が要るので、
+// その間にプロセスが消えてログも流し切っていることは実際には起こらない。
+// 起きたとしてもログ側の shutdownNoticed が同じ停止を拾う。
+func (runtime *serverRuntime) sendCommand(
+	command string,
+	send func(string) error,
+) error {
+	err := send(command)
+	if err == nil && isStopCommand(command) {
+		runtime.stopCommandSent.Store(true)
+	}
+	return err
 }
 
 func (runtime *serverRuntime) close() {
@@ -219,14 +252,7 @@ func (controller *serverController) sendCommand(action ui.Action) {
 		controller.program.Send(ui.ActionResultMsg{Action: action, Err: msg.ErrServerStopped})
 		return
 	}
-	isStop := isStopCommand(action.Command)
-	if isStop {
-		runtime.expectedExit.Store(true)
-	}
-	err := runtime.server.Send(action.Command)
-	if err != nil && isStop {
-		runtime.expectedExit.Store(false)
-	}
+	err := runtime.sendCommand(action.Command, runtime.server.Send)
 	controller.program.Send(ui.ActionResultMsg{Action: action, Err: err})
 }
 
@@ -322,7 +348,7 @@ func (controller *serverController) waitForServer(runtime *serverRuntime) {
 		Err: serverExitError(
 			waitErr,
 			runtime.javaFound.Load(),
-			runtime.expectedExit.Load(),
+			runtime.expectedExit(),
 		),
 	})
 }
