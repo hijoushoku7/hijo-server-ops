@@ -3,7 +3,7 @@
 > 管理 issue: hijoushoku7/life#24
 
 設計の決定と、**なぜそう決めたか**を残す文書。使い方は README、ビルド手順は
-[build.md](build.md)。
+[build.md](build.md)、CLI ツール化の設計は [cli.md](cli.md)。
 
 ## 概要
 
@@ -341,7 +341,8 @@ mod が開ける扉は TPS だけではなく、MSPT 分布（p95 / 最大）・
 Graph / Chat / Log / Console）、コマンド送信と restart / stop、パネル選択とスクロール、
 プレイヤーコマンドのモーダル、公開 IPv4 表示、amd64 / arm64 リリース。
 
-**v2**: Fabric mod による TPS / MSPT 取得、`hso install-mod`。
+**v2**: CLI ツール化（サブコマンド、サーバー一覧、自己更新 → [cli.md](cli.md)）、
+Fabric mod による TPS / MSPT 取得、`hso install-mod`。
 
 **v3 以降**: 表示要素・レイアウトのカスタマイズ、バニラ向け `-javaagent` 方式
 （マッピング取得基盤ごと）。Windows 対応は検討のみ — hsperfdata は
