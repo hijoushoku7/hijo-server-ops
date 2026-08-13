@@ -34,6 +34,30 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          # 既定のキャッシュは go.sum のハッシュだけをキーにする。go.sum が
+          # 変わらない限り新しく保存されないので、govulncheck 自身のビルド結果が
+          # 毎回捨てられる。下の actions/cache で自前で持つ。
+          cache: false
+
+      - name: キャッシュディレクトリの取得
+        id: go-cache-paths
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.go-cache-paths.outputs.build }}
+            ${{ steps.go-cache-paths.outputs.mod }}
+          # キーに SHA を入れて毎回 miss させ、その回の成果を必ず保存する。
+          # 復元は restore-keys で直近のものに前方一致でフォールバックする。
+          # test job とは別の名前空間にする（同じ SHA で保存が衝突するため）。
+          key: go-deps-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-deps-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-
+            go-deps-${{ runner.os }}-${{ hashFiles('go.mod') }}-
+            go-deps-${{ runner.os }}-
 
       - name: go mod tidy の差分チェック
         run: |
