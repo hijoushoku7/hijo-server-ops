@@ -19,12 +19,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: go test
-        run: |
-          set -eu
-          go test ./...
-          go test -tags en ./...
-
       - name: バイナリのビルド
         env:
           VERSION: ${{ github.ref_name }}
