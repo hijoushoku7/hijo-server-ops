@@ -257,6 +257,10 @@ func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))
 }
 
+func ValidateJavaConfigFailed(err error, path string) error {
+	return fmt.Errorf("Java 設定の更新内容を検証する: %s: %w", path, err)
+}
+
 func UnknownConfigKeys(keys, path string) error {
 	return fmt.Errorf("不明な設定項目: %s%s", keys, reinitialize(path))
 }

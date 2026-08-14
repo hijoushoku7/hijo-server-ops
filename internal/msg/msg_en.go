@@ -258,6 +258,10 @@ func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("read config file: %w%s", err, reinitialize(path))
 }
 
+func ValidateJavaConfigFailed(err error, path string) error {
+	return fmt.Errorf("validate the updated Java config: %s: %w", path, err)
+}
+
 func UnknownConfigKeys(keys, path string) error {
 	return fmt.Errorf("unknown config keys: %s%s", keys, reinitialize(path))
 }

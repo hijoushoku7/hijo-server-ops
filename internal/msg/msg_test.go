@@ -305,8 +305,9 @@ func TestConfigErrorsAttachTheHint(t *testing.T) {
 	sample := errors.New("boom")
 
 	withHint := map[string]error{
-		"ReadConfigFailed":  ReadConfigFailed(sample, path),
-		"UnknownConfigKeys": UnknownConfigKeys("server.commnad", path),
+		"ReadConfigFailed":         ReadConfigFailed(sample, path),
+		"ValidateJavaConfigFailed": ValidateJavaConfigFailed(sample, path),
+		"UnknownConfigKeys":        UnknownConfigKeys("server.commnad", path),
 	}
 
 	for name, err := range withHint {

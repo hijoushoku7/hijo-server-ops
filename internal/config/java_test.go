@@ -128,3 +128,40 @@ func TestLoadContinuesWithBrokenJavaAndSetJavaRepairsIt(t *testing.T) {
 		})
 	}
 }
+
+func TestSetJavaReplacesMultilineJavaAndPreservesDocument(t *testing.T) {
+	dir := t.TempDir()
+	java := filepath.Join(dir, "jdk-21")
+	makeConfigJava(t, java)
+	path := filepath.Join(dir, "hso.toml")
+	original := "# top\n[server]\ncommand = \"./run.sh\"\njava = \"\"\"\n/missing/java-21\n\"\"\" # keep\n\n[ui.theme]\nframe = '''\njava = fake\n'''\n"
+	writeConfig(t, path, original)
+	if err := SetJava(path, java); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(original, "java = \"\"\"\n/missing/java-21\n\"\"\" # keep", `java = "`+java+`" # keep`, 1)
+	if string(written) != want {
+		t.Fatalf("written:\n%s\nwant:\n%s", written, want)
+	}
+}
+
+func TestLoadJavaUpdateErrorHidesTemporaryPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	temporaryPath := filepath.Join(dir, ".hso-java-temporary")
+	writeConfig(t, temporaryPath, "not valid TOML =")
+	_, err := loadJavaUpdate(path, temporaryPath)
+	if err == nil {
+		t.Fatal("不正な更新内容を受理した")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("error = %q, want original path %q", err, path)
+	}
+	if strings.Contains(err.Error(), temporaryPath) {
+		t.Errorf("error leaked temporary path: %q", err)
+	}
+}

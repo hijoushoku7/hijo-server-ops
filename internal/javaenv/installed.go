@@ -19,6 +19,11 @@ type Installation struct {
 	OSArch      string
 }
 
+type installationCandidate struct {
+	installation Installation
+	symlink      bool
+}
+
 // Installed は root 直下の JVM を列挙する。root は通常 /usr/lib/jvm を渡す。
 func Installed(root string) ([]Installation, error) {
 	entries, err := os.ReadDir(root)
@@ -29,7 +34,7 @@ func Installed(root string) ([]Installation, error) {
 		return nil, err
 	}
 
-	byRealPath := make(map[string]Installation)
+	byRealPath := make(map[string]installationCandidate)
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "default-java" || name == "default-java-runtime" {
@@ -53,14 +58,15 @@ func Installed(root string) ([]Installation, error) {
 		}
 		candidate := Installation{Home: home, Version: values["JAVA_VERSION"], Major: major,
 			Implementor: values["IMPLEMENTOR"], OSArch: values["OS_ARCH"]}
-		if current, exists := byRealPath[real]; !exists || prefer(candidate.Home, current.Home) {
-			byRealPath[real] = candidate
+		candidateInfo := installationCandidate{installation: candidate, symlink: entry.Type()&os.ModeSymlink != 0}
+		if current, exists := byRealPath[real]; !exists || prefer(candidateInfo, current) {
+			byRealPath[real] = candidateInfo
 		}
 	}
 
 	result := make([]Installation, 0, len(byRealPath))
-	for _, installation := range byRealPath {
-		result = append(result, installation)
+	for _, candidate := range byRealPath {
+		result = append(result, candidate.installation)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Major != result[j].Major {
@@ -142,8 +148,12 @@ func javaMajor(version string) (int, bool) {
 	return major, err == nil && major > 0
 }
 
-func prefer(candidate, current string) bool {
-	candidateName, currentName := filepath.Base(candidate), filepath.Base(current)
+func prefer(candidate, current installationCandidate) bool {
+	if candidate.symlink != current.symlink {
+		return candidate.symlink
+	}
+	candidateName := filepath.Base(candidate.installation.Home)
+	currentName := filepath.Base(current.installation.Home)
 	candidateVersioned := strings.IndexFunc(candidateName, unicode.IsDigit) >= 0
 	currentVersioned := strings.IndexFunc(currentName, unicode.IsDigit) >= 0
 	if candidateVersioned != currentVersioned {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ func SetJava(path, javaHome string) error {
 	if err != nil {
 		return msg.WriteConfigFailed(err)
 	}
-	after, err := Load(temporaryPath)
+	after, err := loadJavaUpdate(path, temporaryPath)
 	if err != nil {
 		return err
 	}
@@ -66,8 +67,20 @@ func SetJava(path, javaHome string) error {
 	return nil
 }
 
+func loadJavaUpdate(path, temporaryPath string) (Config, error) {
+	after, err := Load(temporaryPath)
+	if err != nil {
+		if cause := errors.Unwrap(err); cause != nil {
+			err = cause
+		}
+		return Config{}, msg.ValidateJavaConfigFailed(err, path)
+	}
+	return after, nil
+}
+
 type tomlLine struct {
 	start, contentEnd, end int
+	assignmentEnd          int
 	table                  []string
 	key                    []string
 	equal                  int
@@ -81,7 +94,7 @@ func replaceJava(data []byte, javaHome string) ([]byte, error) {
 		line := lines[i]
 		if (len(line.table) == 0 && equalKey(line.key, "server", "java")) ||
 			(equalKey(line.table, "server") && equalKey(line.key, "java")) {
-			valueStart, valueEnd := assignmentValueBounds(data, line.equal+1, line.contentEnd)
+			valueStart, valueEnd := assignmentValueBounds(data, line.equal+1, line.assignmentEnd)
 			return splice(data, valueStart, valueEnd, quote(javaHome)), nil
 		}
 		if line.header && equalKey(line.table, "server") {
@@ -126,6 +139,7 @@ func scanTOMLLines(data []byte) ([]tomlLine, string) {
 	var result []tomlLine
 	table := []string(nil)
 	multiline := byte(0)
+	multilineAssignment := -1
 	for start := 0; start < len(data); {
 		end := bytes.IndexByte(data[start:], '\n')
 		if end < 0 {
@@ -140,11 +154,13 @@ func scanTOMLLines(data []byte) ([]tomlLine, string) {
 		if contentEnd > start && data[contentEnd-1] == '\r' {
 			contentEnd--
 		}
-		line := tomlLine{start: start, contentEnd: contentEnd, end: end, table: append([]string(nil), table...), equal: -1}
+		line := tomlLine{start: start, contentEnd: contentEnd, end: end, assignmentEnd: contentEnd, table: append([]string(nil), table...), equal: -1}
 		text := data[start:contentEnd]
 		if multiline != 0 {
 			if closesMultiline(text, multiline) {
+				result[multilineAssignment].assignmentEnd = contentEnd
 				multiline = 0
+				multilineAssignment = -1
 			}
 		} else if parsed, ok := parseHeader(text); ok {
 			table = parsed
@@ -153,6 +169,9 @@ func scanTOMLLines(data []byte) ([]tomlLine, string) {
 		} else if key, equal, quote := parseAssignment(text); equal >= 0 {
 			line.key, line.equal = key, start+equal
 			multiline = quote
+			if multiline != 0 {
+				multilineAssignment = len(result)
+			}
 		}
 		result = append(result, line)
 		start = end
@@ -260,6 +279,13 @@ func closesMultiline(line []byte, quote byte) bool {
 func assignmentValueBounds(data []byte, start, end int) (int, int) {
 	for start < end && (data[start] == ' ' || data[start] == '\t') {
 		start++
+	}
+	if start+3 <= end && (bytes.Equal(data[start:start+3], []byte(`"""`)) ||
+		bytes.Equal(data[start:start+3], []byte(`'''`))) {
+		delimiter := data[start : start+3]
+		if closing := bytes.LastIndex(data[start+3:end], delimiter); closing >= 0 {
+			return start, start + 3 + closing + 3
+		}
 	}
 	quote, escaped := byte(0), false
 	comment := end

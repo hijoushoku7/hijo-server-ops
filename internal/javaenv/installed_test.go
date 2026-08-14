@@ -47,6 +47,24 @@ func TestInstalled(t *testing.T) {
 	}
 }
 
+func TestInstalledPrefersLongerSymlinkToShortRealDirectory(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "jdk-21")
+	makeInstalled(t, real, "21.0.4", "Eclipse Adoptium")
+	link := filepath.Join(root, "java-21-openjdk")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Installed(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Home != link {
+		t.Fatalf("Installed = %#v, want symlink %q", got, link)
+	}
+}
+
 func TestInstalledMissingRoot(t *testing.T) {
 	got, err := Installed(filepath.Join(t.TempDir(), "missing"))
 	if err != nil || len(got) != 0 {
