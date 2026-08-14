@@ -242,8 +242,32 @@ func CommandRequired() error {
 	return errors.New("server.command is required")
 }
 
+func JavaHomeInvalid(err error) error {
+	return fmt.Errorf("server.java is not a valid JAVA_HOME: %w", err)
+}
+
+// JavaInlineTableUnsupported は server = { ... } 形式の設定を断る。この形は
+// hso が生成しないので、書き換えに対応するより手で直してもらう方が安全。
+func JavaInlineTableUnsupported() error {
+	return errors.New(
+		"hso java change cannot edit a config written as server = { ... }. " +
+			"Add java = \"path to JAVA_HOME\" under [server] in hso.toml instead")
+}
+
+func JavaHomeReplaced(configured, actual string) string {
+	return fmt.Sprintf("The configured Java (%s) is unavailable; using %s found by rescanning. Run hso java change to choose Java again.", configured, actual)
+}
+
+func JavaHomeNotInjected(configured string) string {
+	return fmt.Sprintf("The configured Java (%s) is unavailable and no replacement was found; starting without adding Java to PATH. Run hso java change to choose Java again.", configured)
+}
+
 func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("read config file: %w%s", err, reinitialize(path))
+}
+
+func ValidateJavaConfigFailed(err error, path string) error {
+	return fmt.Errorf("validate the updated Java config: %s: %w", path, err)
 }
 
 func UnknownConfigKeys(keys, path string) error {
@@ -632,3 +656,42 @@ func UnknownCommand(command, available string) error {
 		command, available,
 	)
 }
+
+// Java コマンド。
+const (
+	JavaCommandHelp = `Java configuration and status:
+  hso java change [name]  Change the Java used by a server
+  hso java list           Show detected Java installations and servers using them`
+	JavaChangeTitle       = "Choose the Java used by the server"
+	JavaCurrentMark       = "(current setting)"
+	JavaRunningNotice     = "The server is running. This change takes effect the next time it starts."
+	JavaDetectionNote     = "Automatic detection only scans /usr/lib/jvm.\nJava installations managed by SDKMAN or asdf, or installed under /opt, are not shown.\nTo use one, set [server] java in hso.toml to the absolute JAVA_HOME path."
+	JavaNotFound          = "No Java installation was found under /usr/lib/jvm."
+	JavaHeader            = "JAVA"
+	JavaImplementorHeader = "IMPLEMENTOR"
+	JavaHomeHeader        = "JAVA_HOME"
+	JavaServersHeader     = "SERVERS"
+)
+
+func JavaChangeArgumentsNotAllowed() error {
+	return errors.New("java change accepts at most one server name")
+}
+func JavaListArgumentsNotAllowed() error { return errors.New("java list does not accept arguments") }
+func UnknownJavaCommand(command string) error {
+	return fmt.Errorf("unknown java subcommand: %s\navailable java subcommands: change, list", command)
+}
+func JavaChangeRequiresTerminal() error { return errors.New("run java change from a terminal") }
+func JavaScanFailed(err error) error    { return fmt.Errorf("scan /usr/lib/jvm: %w", err) }
+func JavaChanged(name, home string) string {
+	return fmt.Sprintf("Changed the Java used by server %s: %s", name, home)
+}
+func JavaConfigWarning(name string, err error) string {
+	return fmt.Sprintf("warning: server %s was not associated with Java because its config could not be read: %v", name, err)
+}
+func JavaNotConfiguredWarning(name string) string {
+	return fmt.Sprintf("warning: server %s was not associated with Java because it has no Java setting", name)
+}
+func JavaConfiguredNotDetectedWarning(name, home string) string {
+	return fmt.Sprintf("warning: server %s was not associated with the list because its configured Java was not detected: %s", name, home)
+}
+func WriteJavaListFailed(err error) error { return fmt.Errorf("write the Java list: %w", err) }

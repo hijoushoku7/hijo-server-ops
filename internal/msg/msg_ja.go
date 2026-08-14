@@ -241,8 +241,32 @@ func CommandRequired() error {
 	return errors.New("server.command は必須です")
 }
 
+func JavaHomeInvalid(err error) error {
+	return fmt.Errorf("server.java が有効な JAVA_HOME ではありません: %w", err)
+}
+
+// JavaInlineTableUnsupported は server = { ... } 形式の設定を断る。この形は
+// hso が生成しないので、書き換えに対応するより手で直してもらう方が安全。
+func JavaInlineTableUnsupported() error {
+	return errors.New(
+		"server = { ... } の形で書かれた設定は hso java change では変更できません。" +
+			"hso.toml の [server] に java = \"JAVA_HOME のパス\" を直接書いてください")
+}
+
+func JavaHomeReplaced(configured, actual string) string {
+	return fmt.Sprintf("設定された Java (%s) は使用できないため、再スキャンで見つけた %s を使用します。hso java change で Java を選び直してください。", configured, actual)
+}
+
+func JavaHomeNotInjected(configured string) string {
+	return fmt.Sprintf("設定された Java (%s) は使用できず、代わりの Java も見つからなかったため、Java の PATH を注入せずに起動します。hso java change で Java を選び直してください。", configured)
+}
+
 func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))
+}
+
+func ValidateJavaConfigFailed(err error, path string) error {
+	return fmt.Errorf("Java 設定の更新内容を検証する: %s: %w", path, err)
 }
 
 func UnknownConfigKeys(keys, path string) error {
@@ -629,4 +653,49 @@ func UnknownCommand(command, available string) error {
 		"未知のサブコマンドです: %s\n利用できるサブコマンド: %s",
 		command, available,
 	)
+}
+
+// Java コマンド。
+const (
+	JavaCommandHelp = `Java の設定と確認:
+  hso java change [name]  サーバーが使う Java を変更
+  hso java list           自動検出した Java と利用中サーバーを表示`
+	JavaChangeTitle       = "サーバーが使う Java を選ぶ"
+	JavaCurrentMark       = "（現在の設定）"
+	JavaRunningNotice     = "サーバーは起動中です。変更は次回起動から反映されます。"
+	JavaDetectionNote     = "自動検出の対象は /usr/lib/jvm だけです。\nSDKMAN、asdf、/opt などにある Java は表示されません。\n使用する場合は hso.toml の [server] java に JAVA_HOME の絶対パスを指定してください。"
+	JavaNotFound          = "/usr/lib/jvm には Java が見つかりませんでした。"
+	JavaHeader            = "JAVA"
+	JavaImplementorHeader = "IMPLEMENTOR"
+	JavaHomeHeader        = "JAVA_HOME"
+	JavaServersHeader     = "SERVERS"
+)
+
+func JavaChangeArgumentsNotAllowed() error {
+	return errors.New("java change に指定できるサーバー名は1つだけです")
+}
+func JavaListArgumentsNotAllowed() error {
+	return errors.New("java list に引数は指定できません")
+}
+func UnknownJavaCommand(command string) error {
+	return fmt.Errorf("未知の java サブコマンドです: %s\n利用できるサブコマンド: change, list", command)
+}
+func JavaChangeRequiresTerminal() error {
+	return errors.New("java change は端末から実行してください")
+}
+func JavaScanFailed(err error) error { return fmt.Errorf("/usr/lib/jvm を調べる: %w", err) }
+func JavaChanged(name, home string) string {
+	return fmt.Sprintf("サーバー %s が使う Java を変更しました: %s", name, home)
+}
+func JavaConfigWarning(name string, err error) string {
+	return fmt.Sprintf("警告: サーバー %s の設定を読めないため、Java と紐付けません: %v", name, err)
+}
+func JavaNotConfiguredWarning(name string) string {
+	return fmt.Sprintf("警告: サーバー %s には Java の設定がないため、Java と紐付けません", name)
+}
+func JavaConfiguredNotDetectedWarning(name, home string) string {
+	return fmt.Sprintf("警告: サーバー %s に設定された Java は自動検出されなかったため、一覧と紐付けません: %s", name, home)
+}
+func WriteJavaListFailed(err error) error {
+	return fmt.Errorf("Java の一覧を書き出す: %w", err)
 }

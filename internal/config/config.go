@@ -8,6 +8,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/hijoushoku7/hijo-server-ops/internal/javaenv"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
@@ -23,6 +24,7 @@ type Config struct {
 type Server struct {
 	Command string `toml:"command"`
 	WorkDir string `toml:"workdir"`
+	Java    string `toml:"java"`
 	// AutoRestart は異常終了したサーバーを hso が自動で立て直すか。配色では
 	// なく挙動なので [ui.theme] ではなくここに置く。既定は無効。
 	AutoRestart bool `toml:"auto_restart"`
@@ -63,6 +65,10 @@ func Load(path string) (Config, error) {
 	cfg.Server.Command = strings.TrimSpace(cfg.Server.Command)
 	if cfg.Server.Command == "" {
 		return cfg, msg.CommandRequired()
+	}
+	cfg.Server.Java = strings.TrimSpace(cfg.Server.Java)
+	if javaHome, normalizeErr := javaenv.NormalizeHome(cfg.Server.Java); normalizeErr == nil {
+		cfg.Server.Java = javaHome
 	}
 
 	configPath, err := filepath.Abs(path)
@@ -142,6 +148,9 @@ func render(cfg Config) string {
 	out.WriteString("command = " + quote(cfg.Server.Command) + "\n")
 	if cfg.Server.WorkDir != "" {
 		out.WriteString("workdir = " + quote(cfg.Server.WorkDir) + "\n")
+	}
+	if cfg.Server.Java != "" {
+		out.WriteString("java = " + quote(cfg.Server.Java) + "\n")
 	}
 	if cfg.Server.AutoRestart {
 		out.WriteString("auto_restart = true\n")

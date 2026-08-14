@@ -56,6 +56,15 @@ cd hso_v0.1.1_linux_amd64_en
 
 Pick `arm64` for arm64 machines, and the `_ja` archive if you want the Japanese interface.
 
+## Switching and checking Java
+
+```bash
+hso java change [name]
+hso java list
+```
+
+`change` picks the Java a registered server uses from the JVMs found under `/usr/lib/jvm` and stores it in that server's `hso.toml`. You can change it while the server is running; it takes effect on the next start. `list` shows the JVMs that were found and which registered servers use each one. Java installed through SDKMAN, asdf, `/opt` and the like is not detected, so set the absolute JAVA_HOME path in `[server] java` of `hso.toml` to use it.
+
 ## Update
 
 ```bash

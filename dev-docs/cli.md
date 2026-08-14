@@ -78,6 +78,9 @@ ja / en で 2 本という配布形態はそのまま。言語で実行ファイ
 | `hso setup` | ウィザードで `hso.toml` を作り、名前を付けて一覧へ登録する |
 | `hso start [name]` | 名前で起動。省略時は一覧から選ばせる |
 | `hso list` (alias): 'hso ls' | 登録済みサーバーの名前 / 状態 / 設定パス |
+| `hso java` | Java 関連コマンドの使い方を表示 |
+| `hso java change [name]` | 登録済みサーバーが使う Java を変更 |
+| `hso java list` | 自動検出した JVM と利用中サーバーを表示 |
 | `hso version` | バージョン・言語・アーキテクチャ |
 | `hso update` | 最新リリースへ自己更新 |
 | `hso uninstall` | 自分自身のバイナリを消す。`--purge` で設定と pidfile も |
@@ -235,6 +238,14 @@ Enter という操作がツール全体で揃う。番号を打たせるプロ�
 | 名前 | 登録名 |
 | 状態 | 起動中（PID）/ 停止 / 設定が見つからない |
 | パス | `hso.toml` の場所 |
+
+### `hso java`
+
+引数なしでは対話 UI を開かず、端末かどうかに関係なく `change` と `list` の使い方を stdout へ表示する。配下のサブコマンドはこの 2 つだけとし、`change` には登録済みサーバー名を 1 つまで指定できる。
+
+`hso java change [name]` は registry の登録済みサーバーだけを対象にし、サーバーと `/usr/lib/jvm` から自動検出した JVM を Bubble Tea で選択して、`config.SetJava` で `hso.toml` に保存する。現在値を初期選択にして印を付け、起動中なら変更が次回起動から反映されることを表示する。キャンセル、設定エラー、検出 0 件では変更しない。対話できる端末がなければエラーにする。
+
+`hso java list` は JVM をバージョン降順、同一ならパスの辞書順で表示し、正規化した JAVA_HOME が一致する登録済みサーバーを並べる。設定無し、ファイル無し、設定エラーは stderr に警告して紐付けず、一覧表示は続ける。両コマンドでは、自動検出が `/usr/lib/jvm` だけであり、SDKMAN、asdf、`/opt` などは対象外で、手動指定には `hso.toml` の `[server] java` へ JAVA_HOME の絶対パスを書くことを案内する。
 
 ### `hso version`
 
