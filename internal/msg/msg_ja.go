@@ -279,6 +279,103 @@ func ReplaceConfigFailed(err error) error {
 	return fmt.Errorf("設定ファイルを置き換える: %w", err)
 }
 
+// サーバー一覧。
+func RegistryPathFailed(err error) error {
+	return fmt.Errorf("サーバー一覧の場所を求める: %w", err)
+}
+
+func InvalidServerName(name string) error {
+	return fmt.Errorf(
+		"使えないサーバー名です: %q（1〜30バイトのASCII英数字と - _ . が使え、先頭は英数字です）",
+		name,
+	)
+}
+
+func DuplicateServerName(name string) error {
+	return fmt.Errorf("サーバー名が大文字小文字を区別せず重複しています: %s", name)
+}
+
+func ReadRegistryFailed(err error, path string) error {
+	return fmt.Errorf("サーバー一覧を読む (%s): %w", path, err)
+}
+
+func UnknownRegistryKeys(keys, path string) error {
+	return fmt.Errorf("サーバー一覧に不明な設定項目があります (%s): %s", path, keys)
+}
+
+func EncodeRegistryFailed(err error) error {
+	return fmt.Errorf("サーバー一覧をTOMLに変換する: %w", err)
+}
+
+func CreateRegistryDirectoryFailed(err error) error {
+	return fmt.Errorf("サーバー一覧のディレクトリを作る: %w", err)
+}
+
+func WriteRegistryFailed(err error) error {
+	return fmt.Errorf("サーバー一覧を書く: %w", err)
+}
+
+func RegistryPermissionFailed(err error) error {
+	return fmt.Errorf("サーバー一覧の権限を合わせる: %w", err)
+}
+
+func ReplaceRegistryFailed(err error) error {
+	return fmt.Errorf("サーバー一覧を置き換える: %w", err)
+}
+
+// pidfile。
+func CreatePIDDirectoryFailed(err error) error {
+	return fmt.Errorf("pidfileのディレクトリを作る: %w", err)
+}
+
+func CheckPIDDirectoryFailed(err error) error {
+	return fmt.Errorf("pidfileのディレクトリを確認する: %w", err)
+}
+
+func PIDDirectoryIsSymlink(path string) error {
+	return fmt.Errorf("pidfileのディレクトリはシンボリックリンクです: %s", path)
+}
+
+func PIDDirectoryWrongOwner(path string) error {
+	return fmt.Errorf("pidfileのディレクトリの所有者が現在のユーザーではありません: %s", path)
+}
+
+func PIDDirectoryWrongMode(path string, mode uint32) error {
+	return fmt.Errorf("pidfileのディレクトリの権限が0700ではありません: %s (%04o)", path, mode)
+}
+
+func ReadPIDStartTimeFailed(err error) error {
+	return fmt.Errorf("hsoの起動時刻を読む: %w", err)
+}
+
+func WritePIDFileFailed(err error, path string) error {
+	return fmt.Errorf("pidfileを書く (%s): %w", path, err)
+}
+
+func ReadPIDFileFailed(err error, path string) error {
+	return fmt.Errorf("pidfileを読む (%s): %w", path, err)
+}
+
+func CheckProcessFailed(err error, pid int) error {
+	return fmt.Errorf("プロセス%dを確認する: %w", pid, err)
+}
+
+func RemoveStalePIDFileFailed(err error, path string) error {
+	return fmt.Errorf("古いpidfileを消す (%s): %w", path, err)
+}
+
+func PIDFileWarning(err error) string {
+	return "警告: 起動状態を記録できません: " + err.Error()
+}
+
+func CheckRegisteredConfigFailed(err error, path string) error {
+	return fmt.Errorf("登録された設定ファイルを確認する (%s): %w", path, err)
+}
+
+func WriteServerListFailed(err error) error {
+	return fmt.Errorf("サーバー一覧を表示する: %w", err)
+}
+
 func WorkDirCheckFailed(err error) error {
 	return fmt.Errorf("server.workdir を確認する: %w", err)
 }
@@ -332,10 +429,24 @@ func FindJavaFailed(err error) error {
 
 // コマンドライン。
 const (
-	Lang            = "ja"
-	ConfigFlagUsage = "設定ファイルのパス"
-	Aborted         = "中止しました"
+	Lang             = "ja"
+	ConfigFlagUsage  = "設定ファイルのパス"
+	Aborted          = "中止しました"
+	ListNameHeader   = "名前"
+	ListStatusHeader = "状態"
+	ListPathHeader   = "パス"
+	ServerStopped    = "停止"
+	ConfigNotFound   = "設定が見つからない"
+	EmptyServerList  = "登録済みのサーバーはありません。hso setup で登録してください。"
 )
+
+func ServerRunning(pid int) string {
+	return fmt.Sprintf("起動中（PID %d）", pid)
+}
+
+func ListArgumentsNotAllowed() error {
+	return errors.New("list サブコマンドに引数は指定できません")
+}
 
 func VersionOutput(version, language, architecture string) string {
 	return fmt.Sprintf(

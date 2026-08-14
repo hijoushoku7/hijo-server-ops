@@ -20,7 +20,7 @@ import (
 
 var version = "dev"
 
-const availableSubcommands = "version"
+const availableSubcommands = "version, list (ls)"
 
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
@@ -49,6 +49,11 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 		}
 		fmt.Fprintln(output, msg.VersionOutput(version, msg.Lang, runtime.GOARCH))
 		return true, nil
+	case "list", "ls":
+		if len(args) != 1 {
+			return true, msg.ListArgumentsNotAllowed()
+		}
+		return true, runList(output)
 	default:
 		return true, msg.UnknownCommand(args[0], availableSubcommands)
 	}
@@ -75,6 +80,13 @@ func run() error {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
+	}
+	tracking, trackingErr := trackRegisteredServer(*configPath)
+	if trackingErr != nil {
+		fmt.Fprintln(os.Stderr, "hso: "+msg.PIDFileWarning(trackingErr))
+	}
+	if tracking != nil {
+		defer tracking.Close()
 	}
 	return runTUI(*configPath, cfg)
 }
