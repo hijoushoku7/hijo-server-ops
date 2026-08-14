@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/x/term"
@@ -21,7 +20,7 @@ import (
 
 var version = "dev"
 
-const availableSubcommands = "setup, start, list (ls), version"
+const availableSubcommands = "setup, start, list (ls), version, update"
 
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
@@ -62,8 +61,12 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 		if len(args) != 1 {
 			return true, msg.VersionArgumentsNotAllowed()
 		}
-		fmt.Fprintln(output, msg.VersionOutput(version, msg.Lang, runtime.GOARCH))
-		return true, nil
+		return true, runVersion(output)
+	case "update":
+		if len(args) != 1 {
+			return true, msg.UpdateArgumentsNotAllowed()
+		}
+		return true, runUpdate(output)
 	case "list", "ls":
 		if len(args) != 1 {
 			return true, msg.ListArgumentsNotAllowed()

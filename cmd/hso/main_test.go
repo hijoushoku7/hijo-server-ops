@@ -34,8 +34,13 @@ func TestDispatchCommandKeepsTUIArguments(t *testing.T) {
 
 func TestDispatchCommandRunsVersion(t *testing.T) {
 	previousVersion := version
+	previousURL := latestReleaseURL
 	version = "v1.2.3"
-	t.Cleanup(func() { version = previousVersion })
+	latestReleaseURL = "://通信失敗"
+	t.Cleanup(func() {
+		version = previousVersion
+		latestReleaseURL = previousURL
+	})
 
 	var output bytes.Buffer
 	handled, err := dispatchCommand([]string{"version"}, &output)
@@ -68,6 +73,13 @@ func TestDispatchCommandRejectsUnknownCommand(t *testing.T) {
 
 func TestDispatchVersionRejectsArguments(t *testing.T) {
 	handled, err := dispatchCommand([]string{"version", "extra"}, &bytes.Buffer{})
+	if !handled || err == nil {
+		t.Fatalf("handled = %t, err = %v", handled, err)
+	}
+}
+
+func TestDispatchUpdateRejectsArguments(t *testing.T) {
+	handled, err := dispatchCommand([]string{"update", "extra"}, &bytes.Buffer{})
 	if !handled || err == nil {
 		t.Fatalf("handled = %t, err = %v", handled, err)
 	}

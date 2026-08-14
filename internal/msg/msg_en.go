@@ -526,6 +526,106 @@ func VersionArgumentsNotAllowed() error {
 	return errors.New("the version subcommand does not accept arguments")
 }
 
+func UpdateAvailable(latest string) string {
+	return fmt.Sprintf("A new version, %s, is available. Run hso update to install it.", latest)
+}
+
+func UpdateArgumentsNotAllowed() error {
+	return errors.New("the update subcommand does not accept arguments")
+}
+
+func AlreadyLatest(current string) string {
+	return fmt.Sprintf("hso %s is already up to date.", current)
+}
+
+func LatestReleaseRequestFailed(err error) error {
+	return fmt.Errorf("fetch the latest release from GitHub: %w", err)
+}
+
+func LatestReleaseStatus(status string) error {
+	return fmt.Errorf("could not fetch the latest release from GitHub: %s", status)
+}
+
+func LatestReleaseDecodeFailed(err error) error {
+	return fmt.Errorf("read the latest release information from GitHub: %w", err)
+}
+
+func GitHubRateLimited(minutes int) error {
+	return fmt.Errorf("the GitHub API rate limit was reached; it resets in %d minutes", minutes)
+}
+
+func InvalidReleaseTag(tag string) error {
+	return fmt.Errorf("GitHub returned an invalid release tag: %s", tag)
+}
+
+func ReleaseAssetMissing(name string) error {
+	return fmt.Errorf("the latest release does not contain %s", name)
+}
+
+func ReleaseAssetURLMissing(name string) error {
+	return fmt.Errorf("the latest release asset has no download URL: %s", name)
+}
+
+func ExecutablePathFailed(err error) error {
+	return fmt.Errorf("find the running hso executable: %w", err)
+}
+
+func UpdateTemporaryDirectoryFailed(err error) error {
+	return fmt.Errorf("create a temporary directory for the update: %w", err)
+}
+
+func DownloadAssetFailed(name string, err error) error {
+	return fmt.Errorf("download %s: %w", name, err)
+}
+
+func DownloadAssetStatus(name, status string) error {
+	return fmt.Errorf("could not download %s: %s", name, status)
+}
+
+func ReadChecksumsFailed(err error) error {
+	return fmt.Errorf("read checksums.txt: %w", err)
+}
+
+func ReadArchiveFailed(name string, err error) error {
+	return fmt.Errorf("read %s: %w", name, err)
+}
+
+func ChecksumNotFound(name string) error {
+	return fmt.Errorf("checksums.txt does not contain a valid SHA-256 checksum for %s", name)
+}
+
+func CalculateChecksumFailed(name string, err error) error {
+	return fmt.Errorf("calculate the SHA-256 checksum for %s: %w", name, err)
+}
+
+func ChecksumMismatch(name string) error {
+	return fmt.Errorf("the SHA-256 checksum does not match for %s", name)
+}
+
+func ExtractArchiveFailed(err error) error {
+	return fmt.Errorf("extract hso from the update archive: %w", err)
+}
+
+func BinaryMissingFromArchive() error {
+	return errors.New("the update archive does not contain hso")
+}
+
+func PrivilegeAuthenticationFailed(tool string, err error) error {
+	return fmt.Errorf("could not authenticate with %s: %w", tool, err)
+}
+
+func PrivilegeToolMissing(path string) error {
+	return fmt.Errorf("updating %s requires root, but neither sudo nor doas is available; run hso update again as root", path)
+}
+
+func ReplaceExecutableFailed(path string, err error) error {
+	return fmt.Errorf("replace hso at %s: %w", path, err)
+}
+
+func UpdateComplete(latest, path string) string {
+	return fmt.Sprintf("Updated hso to %s: %s", latest, path)
+}
+
 func UnknownCommand(command, available string) error {
 	return fmt.Errorf(
 		"unknown subcommand: %s\navailable subcommands: %s",
