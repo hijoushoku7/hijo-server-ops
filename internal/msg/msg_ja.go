@@ -241,6 +241,18 @@ func CommandRequired() error {
 	return errors.New("server.command は必須です")
 }
 
+func JavaHomeInvalid(err error) error {
+	return fmt.Errorf("server.java が有効な JAVA_HOME ではありません: %w", err)
+}
+
+func JavaHomeReplaced(configured, actual string) string {
+	return fmt.Sprintf("設定された Java (%s) は使用できないため、再スキャンで見つけた %s を使用します。hso java change で Java を選び直してください。", configured, actual)
+}
+
+func JavaHomeNotInjected(configured string) string {
+	return fmt.Sprintf("設定された Java (%s) は使用できず、代わりの Java も見つからなかったため、Java の PATH を注入せずに起動します。hso java change で Java を選び直してください。", configured)
+}
+
 func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))
 }

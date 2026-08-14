@@ -242,6 +242,18 @@ func CommandRequired() error {
 	return errors.New("server.command is required")
 }
 
+func JavaHomeInvalid(err error) error {
+	return fmt.Errorf("server.java is not a valid JAVA_HOME: %w", err)
+}
+
+func JavaHomeReplaced(configured, actual string) string {
+	return fmt.Sprintf("The configured Java (%s) is unavailable; using %s found by rescanning. Run hso java change to choose Java again.", configured, actual)
+}
+
+func JavaHomeNotInjected(configured string) string {
+	return fmt.Sprintf("The configured Java (%s) is unavailable and no replacement was found; starting without adding Java to PATH. Run hso java change to choose Java again.", configured)
+}
+
 func ReadConfigFailed(err error, path string) error {
 	return fmt.Errorf("read config file: %w%s", err, reinitialize(path))
 }

@@ -219,9 +219,11 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 		"ErrScriptExitedWithoutJava": ErrScriptExitedWithoutJava.Error(),
 		"ErrServerExited":            ErrServerExited.Error(),
 
-		"EnterCommand":    EnterCommand().Error(),
-		"EnterDirectory":  EnterDirectory().Error(),
-		"CommandRequired": CommandRequired().Error(),
+		"EnterCommand":        EnterCommand().Error(),
+		"EnterDirectory":      EnterDirectory().Error(),
+		"JavaHomeReplaced":    JavaHomeReplaced("/old/jdk-21", "/new/jdk-21"),
+		"JavaHomeNotInjected": JavaHomeNotInjected("/old/jdk-21"),
+		"CommandRequired":     CommandRequired().Error(),
 	}
 
 	for name, message := range messages {
@@ -321,5 +323,21 @@ func TestConfigErrorsAttachTheHint(t *testing.T) {
 	}
 	if !strings.Contains(UnknownConfigKeys("server.commnad", path).Error(), "server.commnad") {
 		t.Error("UnknownConfigKeys に項目名がない")
+	}
+}
+
+func TestJavaHomeWarningsIncludeRecoveryDetails(t *testing.T) {
+	const configured = "/old/jdk-21"
+	const actual = "/new/jdk-21"
+	for name, warning := range map[string]string{
+		"代替":   JavaHomeReplaced(configured, actual),
+		"注入なし": JavaHomeNotInjected(configured),
+	} {
+		if !strings.Contains(warning, configured) || !strings.Contains(warning, "hso java change") {
+			t.Errorf("%sの警告に設定値または復旧方法がない: %s", name, warning)
+		}
+	}
+	if warning := JavaHomeReplaced(configured, actual); !strings.Contains(warning, actual) {
+		t.Errorf("代替警告に実際の Java がない: %s", warning)
 	}
 }
