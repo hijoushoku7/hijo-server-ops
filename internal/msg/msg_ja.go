@@ -524,6 +524,106 @@ func VersionArgumentsNotAllowed() error {
 	return errors.New("version サブコマンドに引数は指定できません")
 }
 
+func UpdateAvailable(latest string) string {
+	return fmt.Sprintf("新しいバージョン %s があります。hso update で更新できます。", latest)
+}
+
+func UpdateArgumentsNotAllowed() error {
+	return errors.New("update サブコマンドに引数は指定できません")
+}
+
+func AlreadyLatest(current string) string {
+	return fmt.Sprintf("hso %s は最新です。", current)
+}
+
+func LatestReleaseRequestFailed(err error) error {
+	return fmt.Errorf("GitHub から最新リリースを取得する: %w", err)
+}
+
+func LatestReleaseStatus(status string) error {
+	return fmt.Errorf("GitHub から最新リリースを取得できませんでした: %s", status)
+}
+
+func LatestReleaseDecodeFailed(err error) error {
+	return fmt.Errorf("GitHub の最新リリース情報を読む: %w", err)
+}
+
+func GitHubRateLimited(minutes int) error {
+	return fmt.Errorf("GitHub API のレート制限に達しました。あと %d 分で回復します", minutes)
+}
+
+func InvalidReleaseTag(tag string) error {
+	return fmt.Errorf("GitHub が不正なリリースタグを返しました: %s", tag)
+}
+
+func ReleaseAssetMissing(name string) error {
+	return fmt.Errorf("最新リリースにこの資産がありません: %s", name)
+}
+
+func ReleaseAssetURLMissing(name string) error {
+	return fmt.Errorf("最新リリースの資産にダウンロード先がありません: %s", name)
+}
+
+func ExecutablePathFailed(err error) error {
+	return fmt.Errorf("実行中の hso のパスを調べる: %w", err)
+}
+
+func UpdateTemporaryDirectoryFailed(err error) error {
+	return fmt.Errorf("更新用の一時ディレクトリを作る: %w", err)
+}
+
+func DownloadAssetFailed(name string, err error) error {
+	return fmt.Errorf("%s をダウンロードする: %w", name, err)
+}
+
+func DownloadAssetStatus(name, status string) error {
+	return fmt.Errorf("%s をダウンロードできませんでした: %s", name, status)
+}
+
+func ReadChecksumsFailed(err error) error {
+	return fmt.Errorf("checksums.txt を読む: %w", err)
+}
+
+func ReadArchiveFailed(name string, err error) error {
+	return fmt.Errorf("%s を読む: %w", name, err)
+}
+
+func ChecksumNotFound(name string) error {
+	return fmt.Errorf("checksums.txt に %s の有効な SHA-256 チェックサムがありません", name)
+}
+
+func CalculateChecksumFailed(name string, err error) error {
+	return fmt.Errorf("%s の SHA-256 チェックサムを計算する: %w", name, err)
+}
+
+func ChecksumMismatch(name string) error {
+	return fmt.Errorf("%s の SHA-256 チェックサムが一致しません", name)
+}
+
+func ExtractArchiveFailed(err error) error {
+	return fmt.Errorf("更新用アーカイブから hso を展開する: %w", err)
+}
+
+func BinaryMissingFromArchive() error {
+	return errors.New("更新用アーカイブに hso がありません")
+}
+
+func PrivilegeAuthenticationFailed(tool string, err error) error {
+	return fmt.Errorf("%s で権限を確認できませんでした: %w", tool, err)
+}
+
+func PrivilegeToolMissing(path string) error {
+	return fmt.Errorf("%s の更新には root 権限が必要ですが、sudo も doas もありません。root で実行し直してください", path)
+}
+
+func ReplaceExecutableFailed(path string, err error) error {
+	return fmt.Errorf("hso を置き換える (%s): %w", path, err)
+}
+
+func UpdateComplete(latest, path string) string {
+	return fmt.Sprintf("hso を %s に更新しました: %s", latest, path)
+}
+
 func UnknownCommand(command, available string) error {
 	return fmt.Errorf(
 		"未知のサブコマンドです: %s\n利用できるサブコマンド: %s",

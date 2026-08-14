@@ -195,22 +195,23 @@ install_binary() {
     local source="$2"
     local dir="$3"
 
+    # $1 and $2 are positional parameters received by the inner shell.
+    # shellcheck disable=SC2016
+    set -- sh -c '
+        mkdir -p "$2" || exit 1
+        staging=$(mktemp "$2/.hso-XXXXXX") || exit 1
+        trap '\''rm -f "$staging"'\'' 0
+        trap '\''exit 1'\'' 1 2 15
+        cp "$1" "$staging" || exit $?
+        chmod 0755 "$staging" || exit $?
+        mv -f "$staging" "$2/hso" || exit $?
+        trap - 0 1 2 15
+    ' _ "$source" "$dir"
+
     if [ -n "$privileged" ]; then
-        # $1 と $2 は内側の sh が受け取る位置パラメータ。
-        # shellcheck disable=SC2016
-        "$privileged" sh -c '
-            mkdir -p "$2" &&
-            cp "$1" "$2/.hso.new" &&
-            chmod 0755 "$2/.hso.new" &&
-            mv -f "$2/.hso.new" "$2/hso"
-        ' _ "$source" "$dir"
+        "$privileged" "$@"
     else
-        sh -c '
-            mkdir -p "$2" &&
-            cp "$1" "$2/.hso.new" &&
-            chmod 0755 "$2/.hso.new" &&
-            mv -f "$2/.hso.new" "$2/hso"
-        ' _ "$source" "$dir"
+        "$@"
     fi
 }
 
