@@ -4,6 +4,7 @@ package pidfile
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,13 +18,17 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
-const refreshInterval = time.Hour
+const (
+	refreshInterval        = time.Hour
+	maxPIDFileOpenAttempts = 3
+)
 
 var (
-	// ErrCreateFailed は pidfile の作成処理で起きたエラーを表す。
-	ErrCreateFailed = msg.PIDFileCreationFailed()
+	// ErrAlreadyRunning は同じサーバーの pidfile がすでに使われていることを表す。
+	ErrAlreadyRunning = msg.AlreadyRunning()
 	// ErrUnsafeDirectory は /tmp 側のディレクトリを安全と確認できなかったことを表す。
-	ErrUnsafeDirectory = msg.UnsafePIDDirectory()
+	ErrUnsafeDirectory  = msg.UnsafePIDDirectory()
+	errMalformedPIDFile = msg.MalformedPIDFile()
 )
 
 const (
@@ -31,9 +36,10 @@ const (
 	accessWrite   = 2
 )
 
-// File は実行中の hso が作った pidfile と mtime 更新処理を持つ。
+// File は実行中の hso が作った pidfile を開いたまま保持し、ロックと mtime 更新を管理する。
 type File struct {
 	path      string
+	file      *os.File
 	pid       int
 	startTime uint64
 	done      chan struct{}
@@ -52,20 +58,29 @@ func Directory() (string, error) {
 	return runtimeDirectory(os.Getenv("XDG_RUNTIME_DIR"), "/tmp", os.Getuid(), syscall.Access)
 }
 
-// Create は現在の hso の PID と起動時刻を書き、mtime の更新を始める。
+// Create は pidfile をロックして現在の hso の PID と起動時刻を書き、mtime の更新を始める。
 func Create(name string) (*File, error) {
 	directory, err := Directory()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
+		return nil, err
 	}
 	file, err := create(name, directory, "/proc", os.Getpid(), refreshInterval)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
+		return nil, err
 	}
 	return file, nil
 }
 
 func create(name, directory, procRoot string, pid int, interval time.Duration) (*File, error) {
+	return createWithOpenFile(name, directory, procRoot, pid, interval, os.OpenFile)
+}
+
+func createWithOpenFile(
+	name, directory, procRoot string,
+	pid int,
+	interval time.Duration,
+	openFile func(string, int, os.FileMode) (*os.File, error),
+) (*File, error) {
 	if err := registry.ValidateName(name); err != nil {
 		return nil, err
 	}
@@ -75,18 +90,92 @@ func create(name, directory, procRoot string, pid int, interval time.Duration) (
 	}
 	path := filepath.Join(directory, name+".pid")
 	contents := fmt.Sprintf("%d %d\n", pid, stat.StartTime)
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
-		return nil, msg.WritePIDFileFailed(err, path)
-	}
+	for range maxPIDFileOpenAttempts {
+		pidFile, err := openFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+		if err != nil {
+			return nil, msg.WritePIDFileFailed(err, path)
+		}
+		if err := syscall.Flock(int(pidFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+				runningPID, _, readErr := readFile(pidFile)
+				_ = pidFile.Close()
+				if readErr == nil {
+					return nil, &alreadyRunningError{name: name, pid: runningPID}
+				}
+				return nil, ErrAlreadyRunning
+			}
+			_ = pidFile.Close()
+			return nil, msg.LockPIDFileFailed(err, path)
+		}
 
-	file := &File{path: path, pid: pid, startTime: stat.StartTime, done: make(chan struct{})}
-	file.wait.Add(1)
-	go file.refresh(interval)
-	return file, nil
+		matches, err := pidFileMatchesPath(pidFile, path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			_ = pidFile.Close()
+			return nil, msg.ReadPIDFileFailed(err, path)
+		}
+		if err != nil || !matches {
+			_ = pidFile.Close()
+			continue
+		}
+
+		if err := pidFile.Truncate(0); err != nil {
+			_ = pidFile.Close()
+			return nil, msg.WritePIDFileFailed(err, path)
+		}
+		if _, err := pidFile.WriteString(contents); err != nil {
+			_ = pidFile.Close()
+			return nil, msg.WritePIDFileFailed(err, path)
+		}
+
+		file := &File{
+			path: path, file: pidFile, pid: pid, startTime: stat.StartTime,
+			done: make(chan struct{}),
+		}
+		file.wait.Add(1)
+		go file.refresh(interval)
+		return file, nil
+	}
+	return nil, msg.PIDFileChangedTooOften(path)
 }
 
-// Close は mtime の更新を止めて pidfile を消す。実行中にファイルが消されて
-// いても hso の終了処理には影響させない。
+func pidFileMatchesPath(pidFile *os.File, path string) (bool, error) {
+	fileInfo, err := pidFile.Stat()
+	if err != nil {
+		return false, err
+	}
+	pathInfo, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	fileStat, fileOK := fileInfo.Sys().(*syscall.Stat_t)
+	pathStat, pathOK := pathInfo.Sys().(*syscall.Stat_t)
+	return fileOK && pathOK && fileStat.Dev == pathStat.Dev && fileStat.Ino == pathStat.Ino, nil
+}
+
+type alreadyRunningError struct {
+	name string
+	pid  int
+}
+
+func (e *alreadyRunningError) Error() string {
+	return msg.ServerAlreadyRunning(e.name, e.pid).Error()
+}
+
+func (e *alreadyRunningError) Unwrap() error {
+	return ErrAlreadyRunning
+}
+
+// AlreadyRunningPID は競合した pidfile から PID を確認できたときだけ返す。
+func AlreadyRunningPID(err error) (int, bool) {
+	var runningErr *alreadyRunningError
+	if !errors.As(err, &runningErr) {
+		return 0, false
+	}
+	return runningErr.pid, true
+}
+
+// Close は mtime の更新を止め、ロック中に pidfile を消してからファイルを閉じる。
+// 実行中にファイルが消されていても hso の終了処理には影響させない。
 func (f *File) Close() {
 	if f == nil {
 		return
@@ -94,7 +183,8 @@ func (f *File) Close() {
 	f.once.Do(func() {
 		close(f.done)
 		f.wait.Wait()
-		_ = removeIfMatches(f.path, f.pid, f.startTime)
+		_ = removeLockedIfMatches(f.path, f.pid, f.startTime)
+		_ = f.file.Close()
 	})
 }
 
@@ -105,8 +195,8 @@ func (f *File) refresh(interval time.Duration) {
 	for {
 		select {
 		case now := <-ticker.C:
-			// pidfile は表示のための情報なので、runtime directory ごと
-			// 消えていても動作中の hso は止めない。
+			// 起動後は runtime directory ごと pidfile が消えていても、
+			// 動作中の hso は止めない。
 			_ = os.Chtimes(f.path, now, now)
 		case <-f.done:
 			return
@@ -139,6 +229,10 @@ func (c Checker) Running(name string) (int, bool, error) {
 	path := filepath.Join(directory, name+".pid")
 	pid, expectedStartTime, err := read(path)
 	if errors.Is(err, os.ErrNotExist) {
+		return 0, false, nil
+	}
+	if errors.Is(err, errMalformedPIDFile) {
+		// 作成側がロックを取って書いている途中かもしれないので消さない。
 		return 0, false, nil
 	}
 	if err != nil {
@@ -219,17 +313,32 @@ func read(path string) (int, uint64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
+	return parse(contents)
+}
+
+func readFile(file *os.File) (int, uint64, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return 0, 0, err
+	}
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return 0, 0, err
+	}
+	return parse(contents)
+}
+
+func parse(contents []byte) (int, uint64, error) {
 	fields := strings.Fields(string(contents))
 	if len(fields) != 2 {
-		return 0, 0, errors.New("malformed pidfile")
+		return 0, 0, errMalformedPIDFile
 	}
 	pid, err := strconv.Atoi(fields[0])
 	if err != nil || pid <= 0 {
-		return 0, 0, errors.New("malformed pidfile PID")
+		return 0, 0, errMalformedPIDFile
 	}
 	startTime, err := strconv.ParseUint(fields[1], 10, 64)
 	if err != nil {
-		return 0, 0, errors.New("malformed pidfile start time")
+		return 0, 0, errMalformedPIDFile
 	}
 	return pid, startTime, nil
 }
@@ -250,6 +359,42 @@ func stale(path string, pid int, startTime uint64) (int, bool, error) {
 }
 
 func removeIfMatches(path string, pid int, startTime uint64) error {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			return nil
+		}
+		return err
+	}
+	currentPID, currentStartTime, err := readFile(file)
+	if err != nil || currentPID != pid || currentStartTime != startTime {
+		return nil
+	}
+	matches, err := pidFileMatchesPath(file, path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !matches {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func removeLockedIfMatches(path string, pid int, startTime uint64) error {
 	currentPID, currentStartTime, err := read(path)
 	if err != nil || currentPID != pid || currentStartTime != startTime {
 		return nil

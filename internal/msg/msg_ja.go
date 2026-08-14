@@ -172,10 +172,11 @@ const (
 // セットアップウィザードの画面。
 const (
 	SetupTitle            = "hijo-server-ops セットアップ"
-	SetupStepWorkDir      = "1/3 Minecraft サーバーのディレクトリ"
-	SetupStepCommand      = "2/3 起動スクリプトを選ぶ"
-	SetupStepCommandInput = "2/3 起動スクリプトのパス"
-	SetupStepConfirm      = "3/3 この内容で作成する"
+	SetupStepWorkDir      = "1/4 Minecraft サーバーのディレクトリ"
+	SetupStepName         = "2/4 サーバー名"
+	SetupStepCommand      = "3/4 起動スクリプトを選ぶ"
+	SetupStepCommandInput = "3/4 起動スクリプトのパス"
+	SetupStepConfirm      = "4/4 この内容で作成する"
 	SetupManualEntry      = "パスを直接入力する"
 	SetupNotExecutable    = "(実行権限なし)"
 	SetupNoCandidates     = "起動スクリプトの候補が見つかりません"
@@ -189,6 +190,10 @@ func SetupTarget(path string) string {
 
 func SetupRelativeHint(dir string) string {
 	return dir + " からの相対パスも書ける"
+}
+
+func SetupServerName(name string) string {
+	return "登録名: " + name
 }
 
 // キーバーの説明。
@@ -279,6 +284,13 @@ func ReplaceConfigFailed(err error) error {
 	return fmt.Errorf("設定ファイルを置き換える: %w", err)
 }
 
+func RemoveConfigAfterRegistrationFailed(registrationErr, removeErr error) error {
+	return fmt.Errorf(
+		"サーバー一覧への登録に失敗し、作成した設定ファイルも戻せませんでした: %v: %w",
+		registrationErr, removeErr,
+	)
+}
+
 // サーバー一覧。
 func RegistryPathFailed(err error) error {
 	return fmt.Errorf("サーバー一覧の場所を求める: %w", err)
@@ -324,8 +336,8 @@ func ReplaceRegistryFailed(err error) error {
 }
 
 // pidfile。
-func PIDFileCreationFailed() error {
-	return errors.New("pidfileの作成に失敗")
+func AlreadyRunning() error {
+	return errors.New("サーバーはすでに起動中です")
 }
 
 func UnsafePIDDirectory() error {
@@ -360,6 +372,18 @@ func WritePIDFileFailed(err error, path string) error {
 	return fmt.Errorf("pidfileを書く (%s): %w", path, err)
 }
 
+func LockPIDFileFailed(err error, path string) error {
+	return fmt.Errorf("pidfileをロックする (%s): %w", path, err)
+}
+
+func PIDFileChangedTooOften(path string) error {
+	return fmt.Errorf("pidfileのパスがロック取得中に繰り返し変更されました (%s)", path)
+}
+
+func MalformedPIDFile() error {
+	return errors.New("pidfileの内容が壊れています")
+}
+
 func ReadPIDFileFailed(err error, path string) error {
 	return fmt.Errorf("pidfileを読む (%s): %w", path, err)
 }
@@ -370,10 +394,6 @@ func CheckProcessFailed(err error, pid int) error {
 
 func RemoveStalePIDFileFailed(err error, path string) error {
 	return fmt.Errorf("古いpidfileを消す (%s): %w", path, err)
-}
-
-func PIDFileWarning(err error) string {
-	return "警告: 起動状態を記録できません: " + err.Error()
 }
 
 func CheckRegisteredConfigFailed(err error, path string) error {
@@ -446,6 +466,7 @@ const (
 	ServerStopped    = "停止"
 	ConfigNotFound   = "設定が見つからない"
 	EmptyServerList  = "登録済みのサーバーはありません。hso setup で登録してください。"
+	StartTitle       = "起動するサーバーを選ぶ"
 )
 
 func ServerRunning(pid int) string {
@@ -454,6 +475,42 @@ func ServerRunning(pid int) string {
 
 func ListArgumentsNotAllowed() error {
 	return errors.New("list サブコマンドに引数は指定できません")
+}
+
+func NoRegisteredServers() error {
+	return errors.New(EmptyServerList)
+}
+
+func SetupArgumentsNotAllowed() error {
+	return errors.New("setup サブコマンドに引数は指定できません")
+}
+
+func SetupRequiresTerminal() error {
+	return errors.New("setup は端末から実行してください")
+}
+
+func StartArgumentsNotAllowed() error {
+	return errors.New("start サブコマンドに指定できる名前は1つだけです")
+}
+
+func StartRequiresTerminal() error {
+	return errors.New("サーバー名を省略するには端末から実行してください")
+}
+
+func ServerNotRegistered(name string) error {
+	return fmt.Errorf("サーバーが一覧にありません: %s", name)
+}
+
+func ServerAlreadyRunning(name string, pid int) error {
+	return fmt.Errorf("サーバー %s はすでに起動中です（PID %d）", name, pid)
+}
+
+func ServerAlreadyRunningWithoutPID(name string) error {
+	return fmt.Errorf("サーバー %s はすでに起動中です", name)
+}
+
+func RegisteredConfigNotFound(name, path string) error {
+	return fmt.Errorf("サーバー %s の設定ファイルが見つかりません: %s", name, path)
 }
 
 func VersionOutput(version, language, architecture string) string {

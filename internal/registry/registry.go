@@ -21,6 +21,28 @@ type Server struct {
 	Config string `toml:"config"`
 }
 
+// Add は重複を検査してサーバーを一覧へ加える。
+func (r *Registry) Add(server Server) error {
+	if err := ValidateName(server.Name); err != nil {
+		return err
+	}
+	if _, found := r.Find(server.Name); found {
+		return msg.DuplicateServerName(server.Name)
+	}
+	r.Servers = append(r.Servers, server)
+	return nil
+}
+
+// Find は大文字小文字を区別せず登録名を探す。
+func (r Registry) Find(name string) (Server, bool) {
+	for _, server := range r.Servers {
+		if strings.EqualFold(server.Name, name) {
+			return server, true
+		}
+	}
+	return Server{}, false
+}
+
 // Path はサーバー一覧の設定ファイルの場所を返す。
 func Path() (string, error) {
 	configDir, err := os.UserConfigDir()
@@ -128,16 +150,11 @@ func (r Registry) NameForConfig(path string) (string, bool) {
 }
 
 func validate(registry Registry) error {
-	seen := make(map[string]struct{}, len(registry.Servers))
+	var validated Registry
 	for _, server := range registry.Servers {
-		if err := ValidateName(server.Name); err != nil {
+		if err := validated.Add(server); err != nil {
 			return err
 		}
-		key := strings.ToLower(server.Name)
-		if _, exists := seen[key]; exists {
-			return msg.DuplicateServerName(server.Name)
-		}
-		seen[key] = struct{}{}
 	}
 	return nil
 }

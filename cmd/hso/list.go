@@ -48,13 +48,14 @@ func printServerList(
 	nameWidth := ansi.StringWidth(msg.ListNameHeader)
 	statusWidth := ansi.StringWidth(msg.ListStatusHeader)
 	for _, server := range servers.Servers {
-		status, err := serverStatus(server, running)
+		status, err := inspectServer(server, running)
 		if err != nil {
 			return err
 		}
-		rows = append(rows, row{server.Name, status, server.Config})
+		label := status.label()
+		rows = append(rows, row{server.Name, label, server.Config})
 		nameWidth = max(nameWidth, ansi.StringWidth(server.Name))
-		statusWidth = max(statusWidth, ansi.StringWidth(status))
+		statusWidth = max(statusWidth, ansi.StringWidth(label))
 	}
 	for _, row := range rows {
 		line := row.name + strings.Repeat(" ", nameWidth-ansi.StringWidth(row.name)+2) +
@@ -67,21 +68,46 @@ func printServerList(
 	return nil
 }
 
-func serverStatus(
+type serverState uint8
+
+const (
+	serverStopped serverState = iota
+	serverRunning
+	serverConfigMissing
+)
+
+type serverStatus struct {
+	state serverState
+	pid   int
+}
+
+func (status serverStatus) label() string {
+	switch status.state {
+	case serverRunning:
+		return msg.ServerRunning(status.pid)
+	case serverConfigMissing:
+		return msg.ConfigNotFound
+	default:
+		return msg.ServerStopped
+	}
+}
+
+// inspectServer は list と start が共有する登録済みサーバーの状態判定。
+func inspectServer(
 	server registry.Server,
 	running func(string) (int, bool, error),
-) (string, error) {
+) (serverStatus, error) {
 	if _, err := os.Stat(server.Config); errors.Is(err, fs.ErrNotExist) {
-		return msg.ConfigNotFound, nil
+		return serverStatus{state: serverConfigMissing}, nil
 	} else if err != nil {
-		return "", msg.CheckRegisteredConfigFailed(err, server.Config)
+		return serverStatus{}, msg.CheckRegisteredConfigFailed(err, server.Config)
 	}
 	pid, alive, err := running(server.Name)
 	if err != nil {
-		return "", err
+		return serverStatus{}, err
 	}
 	if alive {
-		return msg.ServerRunning(pid), nil
+		return serverStatus{state: serverRunning, pid: pid}, nil
 	}
-	return msg.ServerStopped, nil
+	return serverStatus{state: serverStopped}, nil
 }

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
 const (
@@ -18,6 +19,7 @@ type step uint8
 
 const (
 	stepWorkDir step = iota
+	stepName
 	stepCommand
 	stepCommandInput
 	stepConfirm
@@ -29,6 +31,8 @@ type model struct {
 	step       step
 	input      []rune
 	workDir    string
+	name       string
+	servers    registry.Registry
 	candidates []candidate
 	cursor     int
 	command    string // 設定に書く形の起動スクリプト
@@ -41,7 +45,7 @@ type model struct {
 	err        error
 }
 
-func newModel(configPath string) *model {
+func newModel(configPath string, servers registry.Registry) *model {
 	configDir := filepath.Dir(configPath)
 	// 設定ファイルの置き場所をそのままサーバーディレクトリの初期値にする。
 	// 大半のケースで同じディレクトリになる。
@@ -49,6 +53,7 @@ func newModel(configPath string) *model {
 		configPath: configPath,
 		configDir:  configDir,
 		input:      []rune(configDir),
+		servers:    servers,
 	}
 }
 
@@ -69,6 +74,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.step {
 	case stepWorkDir:
 		return m.updateWorkDir(key.Key())
+	case stepName:
+		return m.updateName(key.Key())
 	case stepCommand:
 		return m.updateCommand(key.Key())
 	case stepCommandInput:
@@ -89,7 +96,31 @@ func (m *model) updateWorkDir(key tea.Key) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.workDir = workDir
-		m.candidates = scanCommands(workDir)
+		m.input = []rune(defaultServerName(workDir))
+		m.step = stepName
+	default:
+		m.editInput(key)
+	}
+	return m, nil
+}
+
+func (m *model) updateName(key tea.Key) (tea.Model, tea.Cmd) {
+	switch key.Code {
+	case tea.KeyEscape:
+		m.step = stepWorkDir
+		m.input = []rune(m.workDir)
+	case tea.KeyEnter, tea.KeyKpEnter:
+		name := string(m.input)
+		if err := registry.ValidateName(name); err != nil {
+			m.message = err.Error()
+			return m, nil
+		}
+		if _, found := m.servers.Find(name); found {
+			m.message = msg.DuplicateServerName(name).Error()
+			return m, nil
+		}
+		m.name = name
+		m.candidates = scanCommands(m.workDir)
 		m.cursor = 0
 		m.step = stepCommand
 		if len(m.candidates) == 0 {
@@ -108,8 +139,8 @@ func (m *model) updateCommand(key tea.Key) (tea.Model, tea.Cmd) {
 	count := len(m.candidates) + 1 // 末尾は手入力
 	switch key.Code {
 	case tea.KeyEscape:
-		m.step = stepWorkDir
-		m.input = []rune(m.workDir)
+		m.step = stepName
+		m.input = []rune(m.name)
 	case tea.KeyEnter, tea.KeyKpEnter:
 		if m.cursor == len(m.candidates) {
 			m.step = stepCommandInput
@@ -127,8 +158,8 @@ func (m *model) updateCommandInput(key tea.Key) (tea.Model, tea.Cmd) {
 	switch key.Code {
 	case tea.KeyEscape:
 		if len(m.candidates) == 0 {
-			m.step = stepWorkDir
-			m.input = []rune(m.workDir)
+			m.step = stepName
+			m.input = []rune(m.name)
 			return m, nil
 		}
 		m.step = stepCommand
@@ -228,4 +259,12 @@ func moveCursor(key tea.Key, cursor, count int) int {
 
 func (m *model) preview() string {
 	return render(m.command, m.workDir, m.configDir)
+}
+
+func defaultServerName(workDir string) string {
+	name := filepath.Base(filepath.Clean(workDir))
+	if registry.ValidateName(name) != nil {
+		return ""
+	}
+	return name
 }

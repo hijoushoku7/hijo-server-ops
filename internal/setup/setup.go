@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
 // Run は設定ファイルを対話的に作る。作成したら作成先のパスを返す。
@@ -22,8 +23,16 @@ func Run(configPath string) (string, error) {
 	if _, err := os.Stat(path); err == nil {
 		return "", msg.ConfigAlreadyExists(path)
 	}
+	registryPath, err := registry.Path()
+	if err != nil {
+		return "", err
+	}
+	servers, err := registry.Load(registryPath)
+	if err != nil {
+		return "", err
+	}
 
-	model := newModel(path)
+	model := newModel(path, servers)
 	if _, err := tea.NewProgram(model).Run(); err != nil {
 		return "", err
 	}
@@ -33,7 +42,25 @@ func Run(configPath string) (string, error) {
 	if !model.created {
 		return "", nil
 	}
+	if err := registerServer(registryPath, model.name, path); err != nil {
+		// この実行で作った設定だけを戻し、名前を直して再実行できる状態を保つ。
+		if removeErr := os.Remove(path); removeErr != nil {
+			return "", msg.RemoveConfigAfterRegistrationFailed(err, removeErr)
+		}
+		return "", err
+	}
 	return path, nil
+}
+
+func registerServer(path, name, configPath string) error {
+	servers, err := registry.Load(path)
+	if err != nil {
+		return err
+	}
+	if err := servers.Add(registry.Server{Name: name, Config: configPath}); err != nil {
+		return err
+	}
+	return registry.Save(path, servers)
 }
 
 // candidate は起動スクリプトの候補。実行権限がないファイルも候補に出す。
