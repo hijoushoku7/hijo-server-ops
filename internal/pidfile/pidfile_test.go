@@ -156,6 +156,101 @@ func TestCreateWritesAndCloseRemovesPIDFile(t *testing.T) {
 	file.Close()
 }
 
+func TestCreateRejectsRunningPIDFile(t *testing.T) {
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	path := writePIDFile(t, directory, "server", 100, 10)
+	writeProcStat(t, procRoot, 100, "running hso", 10)
+	writeProcStat(t, procRoot, 123, "new hso", 456)
+
+	file, err := create("server", directory, procRoot, 123, time.Hour)
+	if !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("err = %v", err)
+	}
+	if runningPID, ok := AlreadyRunningPID(err); !ok || runningPID != 100 {
+		t.Fatalf("running PID = %d, ok = %t", runningPID, ok)
+	}
+	if file != nil {
+		file.Close()
+		t.Fatal("起動中のpidfileを上書きして追跡を始めた")
+	}
+	pid, startTime, err := read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pid != 100 || startTime != 10 {
+		t.Fatalf("pid = %d, startTime = %d", pid, startTime)
+	}
+}
+
+func TestCreateReplacesStalePIDFile(t *testing.T) {
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	writePIDFile(t, directory, "server", 100, 10)
+	writeProcStat(t, procRoot, 100, "reused process", 20)
+	writeProcStat(t, procRoot, 123, "new hso", 456)
+
+	file, err := create("server", directory, procRoot, 123, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	pid, startTime, err := read(filepath.Join(directory, "server.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pid != 123 || startTime != 456 {
+		t.Fatalf("pid = %d, startTime = %d", pid, startTime)
+	}
+}
+
+func TestCreateRejectsSecondExclusiveCreateConflict(t *testing.T) {
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	path := writePIDFile(t, directory, "server", 100, 10)
+	writeProcStat(t, procRoot, 100, "reused process", 20)
+	writeProcStat(t, procRoot, 123, "new hso", 456)
+
+	openCalls := 0
+	openFile := func(name string, flag int, permission os.FileMode) (*os.File, error) {
+		openCalls++
+		if openCalls == 2 {
+			competitor, err := os.OpenFile(name, flag, permission)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := competitor.WriteString("789 1011\n"); err != nil {
+				_ = competitor.Close()
+				return nil, err
+			}
+			if err := competitor.Close(); err != nil {
+				return nil, err
+			}
+		}
+		return os.OpenFile(name, flag, permission)
+	}
+	file, err := createWithOpenFile(
+		"server", directory, procRoot, 123, time.Hour, openFile,
+	)
+	if !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("err = %v", err)
+	}
+	if file != nil {
+		file.Close()
+		t.Fatal("2度目の排他的作成が競合しても追跡を始めた")
+	}
+	if openCalls != 2 {
+		t.Fatalf("open calls = %d, want 2", openCalls)
+	}
+	pid, startTime, err := read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pid != 789 || startTime != 1011 {
+		t.Fatalf("pid = %d, startTime = %d", pid, startTime)
+	}
+}
+
 func TestCloseDoesNotFailAfterPIDFileWasRemoved(t *testing.T) {
 	directory := t.TempDir()
 	procRoot := t.TempDir()

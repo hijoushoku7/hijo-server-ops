@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -185,7 +186,14 @@ func startFromRegistry(
 	case serverConfigMissing:
 		return msg.RegisteredConfigNotFound(server.Name, server.Config)
 	default:
-		return launch(server.Config)
+		err := launch(server.Config)
+		if !errors.Is(err, pidfile.ErrAlreadyRunning) {
+			return err
+		}
+		if pid, ok := pidfile.AlreadyRunningPID(err); ok {
+			return msg.ServerAlreadyRunning(server.Name, pid)
+		}
+		return msg.ServerAlreadyRunningWithoutPID(server.Name)
 	}
 }
 

@@ -123,7 +123,7 @@ func TestIsTerminal(t *testing.T) {
 
 func TestRunTrackedTUIStopsForUnsafePIDDirectory(t *testing.T) {
 	launched := false
-	unsafe := fmt.Errorf("%w: %w", pidfile.ErrCreateFailed, pidfile.ErrUnsafeDirectory)
+	unsafe := fmt.Errorf("pidfileディレクトリ: %w", pidfile.ErrUnsafeDirectory)
 	err := runTrackedTUI("hso.toml", config.Config{},
 		func(string) (*pidfile.File, error) { return nil, unsafe },
 		func(string, config.Config) error {
@@ -138,19 +138,45 @@ func TestRunTrackedTUIStopsForUnsafePIDDirectory(t *testing.T) {
 	}
 }
 
-func TestRunTrackedTUIContinuesWhenPIDFileCannotBeWritten(t *testing.T) {
+func TestRunTrackedTUIStopsWhenRegisteredServerPIDFileCannotBeWritten(t *testing.T) {
 	launched := false
-	writeErr := fmt.Errorf("%w: %w", pidfile.ErrCreateFailed, syscall.EACCES)
+	writeErr := syscall.EACCES
 	err := runTrackedTUI("hso.toml", config.Config{},
 		func(string) (*pidfile.File, error) { return nil, writeErr },
 		func(string, config.Config) error {
 			launched = true
 			return nil
 		})
+	if !errors.Is(err, syscall.EACCES) {
+		t.Fatalf("err = %v", err)
+	}
+	if launched {
+		t.Fatal("pidfileを書けないのにTUIが起動された")
+	}
+}
+
+func TestRunTrackedTUILaunchesUnregisteredConfigWithoutPIDFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	runtimeDirectory := t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDirectory)
+	configPath := filepath.Join(t.TempDir(), "hso.toml")
+	launched := false
+
+	err := runTrackedTUI(configPath, config.Config{}, trackRegisteredServer,
+		func(path string, _ config.Config) error {
+			launched = true
+			if path != configPath {
+				t.Fatalf("path = %q, want %q", path, configPath)
+			}
+			return nil
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !launched {
-		t.Fatal("pidfileを書けないだけでTUIが起動されなかった")
+		t.Fatal("一覧にない設定でTUIが起動されなかった")
+	}
+	if _, err := os.Stat(filepath.Join(runtimeDirectory, "hso")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("一覧にない設定でpidfileディレクトリが作られた: %v", err)
 	}
 }

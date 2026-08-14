@@ -20,8 +20,8 @@ import (
 const refreshInterval = time.Hour
 
 var (
-	// ErrCreateFailed は pidfile の作成処理で起きたエラーを表す。
-	ErrCreateFailed = msg.PIDFileCreationFailed()
+	// ErrAlreadyRunning は同じサーバーの pidfile がすでに使われていることを表す。
+	ErrAlreadyRunning = msg.AlreadyRunning()
 	// ErrUnsafeDirectory は /tmp 側のディレクトリを安全と確認できなかったことを表す。
 	ErrUnsafeDirectory = msg.UnsafePIDDirectory()
 )
@@ -56,16 +56,25 @@ func Directory() (string, error) {
 func Create(name string) (*File, error) {
 	directory, err := Directory()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
+		return nil, err
 	}
 	file, err := create(name, directory, "/proc", os.Getpid(), refreshInterval)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
+		return nil, err
 	}
 	return file, nil
 }
 
 func create(name, directory, procRoot string, pid int, interval time.Duration) (*File, error) {
+	return createWithOpenFile(name, directory, procRoot, pid, interval, os.OpenFile)
+}
+
+func createWithOpenFile(
+	name, directory, procRoot string,
+	pid int,
+	interval time.Duration,
+	openFile func(string, int, os.FileMode) (*os.File, error),
+) (*File, error) {
 	if err := registry.ValidateName(name); err != nil {
 		return nil, err
 	}
@@ -75,7 +84,31 @@ func create(name, directory, procRoot string, pid int, interval time.Duration) (
 	}
 	path := filepath.Join(directory, name+".pid")
 	contents := fmt.Sprintf("%d %d\n", pid, stat.StartTime)
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+	pidFile, err := openFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		runningPID, running, checkErr := (Checker{
+			Directory: directory,
+			ProcRoot:  procRoot,
+		}).Running(name)
+		if checkErr != nil {
+			return nil, checkErr
+		}
+		if running {
+			return nil, &alreadyRunningError{name: name, pid: runningPID}
+		}
+		pidFile, err = openFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, os.ErrExist) {
+			return nil, ErrAlreadyRunning
+		}
+	}
+	if err != nil {
+		return nil, msg.WritePIDFileFailed(err, path)
+	}
+	if _, err := pidFile.WriteString(contents); err != nil {
+		_ = pidFile.Close()
+		return nil, msg.WritePIDFileFailed(err, path)
+	}
+	if err := pidFile.Close(); err != nil {
 		return nil, msg.WritePIDFileFailed(err, path)
 	}
 
@@ -83,6 +116,28 @@ func create(name, directory, procRoot string, pid int, interval time.Duration) (
 	file.wait.Add(1)
 	go file.refresh(interval)
 	return file, nil
+}
+
+type alreadyRunningError struct {
+	name string
+	pid  int
+}
+
+func (e *alreadyRunningError) Error() string {
+	return msg.ServerAlreadyRunning(e.name, e.pid).Error()
+}
+
+func (e *alreadyRunningError) Unwrap() error {
+	return ErrAlreadyRunning
+}
+
+// AlreadyRunningPID は競合した pidfile から PID を確認できたときだけ返す。
+func AlreadyRunningPID(err error) (int, bool) {
+	var runningErr *alreadyRunningError
+	if !errors.As(err, &runningErr) {
+		return 0, false
+	}
+	return runningErr.pid, true
 }
 
 // Close は mtime の更新を止めて pidfile を消す。実行中にファイルが消されて
@@ -105,8 +160,8 @@ func (f *File) refresh(interval time.Duration) {
 	for {
 		select {
 		case now := <-ticker.C:
-			// pidfile は表示のための情報なので、runtime directory ごと
-			// 消えていても動作中の hso は止めない。
+			// 起動後は runtime directory ごと pidfile が消えていても、
+			// 動作中の hso は止めない。
 			_ = os.Chtimes(f.path, now, now)
 		case <-f.done:
 			return

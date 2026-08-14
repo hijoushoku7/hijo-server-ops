@@ -127,11 +127,7 @@ func runTrackedTUI(
 ) error {
 	tracking, trackingErr := track(configPath)
 	if trackingErr != nil {
-		if errors.Is(trackingErr, pidfile.ErrUnsafeDirectory) ||
-			!errors.Is(trackingErr, pidfile.ErrCreateFailed) {
-			return trackingErr
-		}
-		fmt.Fprintln(os.Stderr, "hso: "+msg.PIDFileWarning(trackingErr))
+		return trackingErr
 	}
 	if tracking != nil {
 		defer tracking.Close()

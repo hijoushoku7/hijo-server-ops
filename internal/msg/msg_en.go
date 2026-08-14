@@ -338,8 +338,8 @@ func ReplaceRegistryFailed(err error) error {
 }
 
 // pidfile.
-func PIDFileCreationFailed() error {
-	return errors.New("failed to create pidfile")
+func AlreadyRunning() error {
+	return errors.New("server is already running")
 }
 
 func UnsafePIDDirectory() error {
@@ -384,10 +384,6 @@ func CheckProcessFailed(err error, pid int) error {
 
 func RemoveStalePIDFileFailed(err error, path string) error {
 	return fmt.Errorf("remove stale pidfile (%s): %w", path, err)
-}
-
-func PIDFileWarning(err error) string {
-	return "warning: could not record running status: " + err.Error()
 }
 
 func CheckRegisteredConfigFailed(err error, path string) error {
@@ -497,6 +493,10 @@ func ServerNotRegistered(name string) error {
 
 func ServerAlreadyRunning(name string, pid int) error {
 	return fmt.Errorf("server %s is already running (PID %d)", name, pid)
+}
+
+func ServerAlreadyRunningWithoutPID(name string) error {
+	return fmt.Errorf("server %s is already running", name)
 }
 
 func RegisteredConfigNotFound(name, path string) error {

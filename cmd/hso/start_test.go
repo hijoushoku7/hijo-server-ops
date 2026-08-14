@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/pidfile"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
@@ -106,6 +108,21 @@ func TestStartRejectsRunningSelection(t *testing.T) {
 	}
 	if launched {
 		t.Fatal("起動中のサーバーを再び起動してはいけない")
+	}
+}
+
+func TestStartReportsExclusiveCreateConflictAsAlreadyRunning(t *testing.T) {
+	configPath := writeStartConfig(t, "survival.toml")
+	server := registry.Server{Name: "survival", Config: configPath}
+	err := startFromRegistry(
+		"survival",
+		registry.Registry{Servers: []registry.Server{server}},
+		nil,
+		func(string) (int, bool, error) { return 0, false, nil },
+		func(string) error { return fmt.Errorf("track server: %w", pidfile.ErrAlreadyRunning) },
+	)
+	if err == nil || err.Error() != msg.ServerAlreadyRunningWithoutPID(server.Name).Error() {
+		t.Fatalf("err = %v", err)
 	}
 }
 

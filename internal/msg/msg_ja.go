@@ -336,8 +336,8 @@ func ReplaceRegistryFailed(err error) error {
 }
 
 // pidfile。
-func PIDFileCreationFailed() error {
-	return errors.New("pidfileの作成に失敗")
+func AlreadyRunning() error {
+	return errors.New("サーバーはすでに起動中です")
 }
 
 func UnsafePIDDirectory() error {
@@ -382,10 +382,6 @@ func CheckProcessFailed(err error, pid int) error {
 
 func RemoveStalePIDFileFailed(err error, path string) error {
 	return fmt.Errorf("古いpidfileを消す (%s): %w", path, err)
-}
-
-func PIDFileWarning(err error) string {
-	return "警告: 起動状態を記録できません: " + err.Error()
 }
 
 func CheckRegisteredConfigFailed(err error, path string) error {
@@ -495,6 +491,10 @@ func ServerNotRegistered(name string) error {
 
 func ServerAlreadyRunning(name string, pid int) error {
 	return fmt.Errorf("サーバー %s はすでに起動中です（PID %d）", name, pid)
+}
+
+func ServerAlreadyRunningWithoutPID(name string) error {
+	return fmt.Errorf("サーバー %s はすでに起動中です", name)
 }
 
 func RegisteredConfigNotFound(name, path string) error {
