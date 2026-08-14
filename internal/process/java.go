@@ -7,8 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/procstat"
 )
 
 var (
@@ -165,35 +166,15 @@ type procEntry struct {
 }
 
 func parseProcStat(data []byte) (procEntry, error) {
-	line := strings.TrimSpace(string(data))
-	open := strings.IndexByte(line, '(')
-	close := strings.LastIndexByte(line, ')')
-	if open < 0 || close <= open {
-		return procEntry{}, errors.New("malformed /proc stat")
-	}
-
-	fields := strings.Fields(line[close+1:])
-	if len(fields) < 20 {
-		return procEntry{}, errors.New("malformed /proc stat fields")
-	}
-	ppid, err := strconv.Atoi(fields[1])
+	stat, err := procstat.Parse(data)
 	if err != nil {
-		return procEntry{}, fmt.Errorf("read PPID: %w", err)
+		return procEntry{}, err
 	}
-	pgrp, err := strconv.Atoi(fields[2])
-	if err != nil {
-		return procEntry{}, fmt.Errorf("read process group ID: %w", err)
-	}
-	startTime, err := strconv.ParseUint(fields[19], 10, 64)
-	if err != nil {
-		return procEntry{}, fmt.Errorf("read start time: %w", err)
-	}
-
 	return procEntry{
-		comm:      line[open+1 : close],
-		ppid:      ppid,
-		pgrp:      pgrp,
-		startTime: startTime,
+		comm:      stat.Command,
+		ppid:      stat.ParentPID,
+		pgrp:      stat.ProcessGroup,
+		startTime: stat.StartTime,
 	}, nil
 }
 

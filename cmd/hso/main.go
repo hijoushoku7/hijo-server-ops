@@ -14,13 +14,14 @@ import (
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/pidfile"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/setup"
 )
 
 var version = "dev"
 
-const availableSubcommands = "version"
+const availableSubcommands = "version, list (ls)"
 
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
@@ -49,6 +50,11 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 		}
 		fmt.Fprintln(output, msg.VersionOutput(version, msg.Lang, runtime.GOARCH))
 		return true, nil
+	case "list", "ls":
+		if len(args) != 1 {
+			return true, msg.ListArgumentsNotAllowed()
+		}
+		return true, runList(output)
 	default:
 		return true, msg.UnknownCommand(args[0], availableSubcommands)
 	}
@@ -76,7 +82,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return runTUI(*configPath, cfg)
+	return runTrackedTUI(*configPath, cfg, trackRegisteredServer, runTUI)
+}
+
+func runTrackedTUI(
+	configPath string,
+	cfg config.Config,
+	track func(string) (*pidfile.File, error),
+	launch func(string, config.Config) error,
+) error {
+	tracking, trackingErr := track(configPath)
+	if trackingErr != nil {
+		if errors.Is(trackingErr, pidfile.ErrUnsafeDirectory) ||
+			!errors.Is(trackingErr, pidfile.ErrCreateFailed) {
+			return trackingErr
+		}
+		fmt.Fprintln(os.Stderr, "hso: "+msg.PIDFileWarning(trackingErr))
+	}
+	if tracking != nil {
+		defer tracking.Close()
+	}
+	return launch(configPath, cfg)
 }
 
 func missingConfig(path string) bool {

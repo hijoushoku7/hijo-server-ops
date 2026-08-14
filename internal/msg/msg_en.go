@@ -281,6 +281,111 @@ func ReplaceConfigFailed(err error) error {
 	return fmt.Errorf("replace config file: %w", err)
 }
 
+// Server registry.
+func RegistryPathFailed(err error) error {
+	return fmt.Errorf("resolve server registry path: %w", err)
+}
+
+func InvalidServerName(name string) error {
+	return fmt.Errorf(
+		"invalid server name %q (use 1-30 bytes of ASCII letters, digits, -, _, or .; start with a letter or digit)",
+		name,
+	)
+}
+
+func DuplicateServerName(name string) error {
+	return fmt.Errorf("duplicate server name ignoring case: %s", name)
+}
+
+func ReadRegistryFailed(err error, path string) error {
+	return fmt.Errorf("read server registry (%s): %w", path, err)
+}
+
+func UnknownRegistryKeys(keys, path string) error {
+	return fmt.Errorf("unknown server registry keys (%s): %s", path, keys)
+}
+
+func EncodeRegistryFailed(err error) error {
+	return fmt.Errorf("encode server registry as TOML: %w", err)
+}
+
+func CreateRegistryDirectoryFailed(err error) error {
+	return fmt.Errorf("create server registry directory: %w", err)
+}
+
+func WriteRegistryFailed(err error) error {
+	return fmt.Errorf("write server registry: %w", err)
+}
+
+func RegistryPermissionFailed(err error) error {
+	return fmt.Errorf("match server registry permission: %w", err)
+}
+
+func ReplaceRegistryFailed(err error) error {
+	return fmt.Errorf("replace server registry: %w", err)
+}
+
+// pidfile.
+func PIDFileCreationFailed() error {
+	return errors.New("failed to create pidfile")
+}
+
+func UnsafePIDDirectory() error {
+	return errors.New("could not verify pidfile directory safety")
+}
+
+func CreatePIDDirectoryFailed(err error) error {
+	return fmt.Errorf("create pidfile directory: %w", err)
+}
+
+func CheckPIDDirectoryFailed(err error) error {
+	return fmt.Errorf("check pidfile directory: %w", err)
+}
+
+func PIDDirectoryIsSymlink(path string) error {
+	return fmt.Errorf("pidfile directory is a symbolic link: %s", path)
+}
+
+func PIDDirectoryWrongOwner(path string) error {
+	return fmt.Errorf("pidfile directory is not owned by the current user: %s", path)
+}
+
+func PIDDirectoryWrongMode(path string, mode uint32) error {
+	return fmt.Errorf("pidfile directory permission is not 0700: %s (%04o)", path, mode)
+}
+
+func ReadPIDStartTimeFailed(err error) error {
+	return fmt.Errorf("read hso start time: %w", err)
+}
+
+func WritePIDFileFailed(err error, path string) error {
+	return fmt.Errorf("write pidfile (%s): %w", path, err)
+}
+
+func ReadPIDFileFailed(err error, path string) error {
+	return fmt.Errorf("read pidfile (%s): %w", path, err)
+}
+
+func CheckProcessFailed(err error, pid int) error {
+	return fmt.Errorf("check process %d: %w", pid, err)
+}
+
+func RemoveStalePIDFileFailed(err error, path string) error {
+	return fmt.Errorf("remove stale pidfile (%s): %w", path, err)
+}
+
+func PIDFileWarning(err error) string {
+	return "warning: could not record running status: " + err.Error()
+}
+
+func CheckRegisteredConfigFailed(err error, path string) error {
+	return fmt.Errorf("check registered config file (%s): %w", path, err)
+}
+
+func WriteServerListFailed(err error) error {
+	return fmt.Errorf("display server list: %w", err)
+}
+
 func WorkDirCheckFailed(err error) error {
 	return fmt.Errorf("check server.workdir: %w", err)
 }
@@ -334,10 +439,24 @@ func FindJavaFailed(err error) error {
 
 // Command line.
 const (
-	Lang            = "en"
-	ConfigFlagUsage = "path to the config file"
-	Aborted         = "aborted"
+	Lang             = "en"
+	ConfigFlagUsage  = "path to the config file"
+	Aborted          = "aborted"
+	ListNameHeader   = "Name"
+	ListStatusHeader = "Status"
+	ListPathHeader   = "Path"
+	ServerStopped    = "stopped"
+	ConfigNotFound   = "config not found"
+	EmptyServerList  = "No servers are registered. Run hso setup to register one."
 )
+
+func ServerRunning(pid int) string {
+	return fmt.Sprintf("running (PID %d)", pid)
+}
+
+func ListArgumentsNotAllowed() error {
+	return errors.New("the list subcommand does not accept arguments")
+}
 
 func VersionOutput(version, language, architecture string) string {
 	return fmt.Sprintf(

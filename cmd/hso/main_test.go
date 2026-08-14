@@ -2,13 +2,18 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/pidfile"
 )
 
 func TestDispatchCommandKeepsTUIArguments(t *testing.T) {
@@ -106,5 +111,39 @@ func TestIsTerminal(t *testing.T) {
 	defer regular.Close()
 	if isTerminal(regular) {
 		t.Fatal("通常ファイルは端末ではない")
+	}
+}
+
+func TestRunTrackedTUIStopsForUnsafePIDDirectory(t *testing.T) {
+	launched := false
+	unsafe := fmt.Errorf("%w: %w", pidfile.ErrCreateFailed, pidfile.ErrUnsafeDirectory)
+	err := runTrackedTUI("hso.toml", config.Config{},
+		func(string) (*pidfile.File, error) { return nil, unsafe },
+		func(string, config.Config) error {
+			launched = true
+			return nil
+		})
+	if !errors.Is(err, pidfile.ErrUnsafeDirectory) {
+		t.Fatalf("err = %v", err)
+	}
+	if launched {
+		t.Fatal("安全でないpidfileディレクトリでもTUIが起動された")
+	}
+}
+
+func TestRunTrackedTUIContinuesWhenPIDFileCannotBeWritten(t *testing.T) {
+	launched := false
+	writeErr := fmt.Errorf("%w: %w", pidfile.ErrCreateFailed, syscall.EACCES)
+	err := runTrackedTUI("hso.toml", config.Config{},
+		func(string) (*pidfile.File, error) { return nil, writeErr },
+		func(string, config.Config) error {
+			launched = true
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !launched {
+		t.Fatal("pidfileを書けないだけでTUIが起動されなかった")
 	}
 }
