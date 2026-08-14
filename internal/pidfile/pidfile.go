@@ -183,7 +183,7 @@ func (f *File) Close() {
 	f.once.Do(func() {
 		close(f.done)
 		f.wait.Wait()
-		_ = removeIfMatches(f.path, f.pid, f.startTime)
+		_ = removeLockedIfMatches(f.path, f.pid, f.startTime)
 		_ = f.file.Close()
 	})
 }
@@ -359,6 +359,42 @@ func stale(path string, pid int, startTime uint64) (int, bool, error) {
 }
 
 func removeIfMatches(path string, pid int, startTime uint64) error {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			return nil
+		}
+		return err
+	}
+	currentPID, currentStartTime, err := readFile(file)
+	if err != nil || currentPID != pid || currentStartTime != startTime {
+		return nil
+	}
+	matches, err := pidFileMatchesPath(file, path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !matches {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func removeLockedIfMatches(path string, pid int, startTime uint64) error {
 	currentPID, currentStartTime, err := read(path)
 	if err != nil || currentPID != pid || currentStartTime != startTime {
 		return nil

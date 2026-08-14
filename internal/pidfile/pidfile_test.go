@@ -397,6 +397,64 @@ func TestCreateReopensPIDFileRemovedBeforeLock(t *testing.T) {
 	}
 }
 
+func TestStaleCleanupDoesNotUnlinkPIDFileLockedByCreate(t *testing.T) {
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	path := writePIDFile(t, directory, "server", 100, 10)
+	writeProcStat(t, procRoot, 123, "first hso", 456)
+	writeProcStat(t, procRoot, 789, "second hso", 1011)
+
+	// Running が古い内容を読み、対象のプロセスが無いと判定した状態にする。
+	stalePID, staleStartTime, err := read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(procRoot, strconv.Itoa(stalePID))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("古いPIDのプロセス: %v", err)
+	}
+
+	// Create A と同じ順に、古い pidfile を開いてロックし、inode の一致を確認する。
+	first, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if err := syscall.Flock(int(first.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	matches, err := pidFileMatchesPath(first, path)
+	if err != nil || !matches {
+		t.Fatalf("inode matches = %t, err = %v", matches, err)
+	}
+
+	// Running の stale cleanup を、Create A の inode 照合後かつ書き込み前に進める。
+	if _, _, err := stale(path, stalePID, staleStartTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Truncate(0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.WriteString("123 456\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create A のロック中なので、Create B は同じパスを取得できない。
+	second, err := create("server", directory, procRoot, 789, time.Hour)
+	if second != nil {
+		second.Close()
+	}
+	if !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("Create B: err = %v, want ErrAlreadyRunning", err)
+	}
+	pid, startTime, err := read(path)
+	if err != nil {
+		t.Fatalf("Create A の pidfile がパス上にない: %v", err)
+	}
+	if pid != 123 || startTime != 456 {
+		t.Fatalf("pid = %d, startTime = %d", pid, startTime)
+	}
+}
+
 func TestCreateSucceedsAfterLockHolderProcessExits(t *testing.T) {
 	directory := t.TempDir()
 	procRoot := t.TempDir()
