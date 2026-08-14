@@ -28,6 +28,8 @@ func TestProcessConnectsStreamsAndInjectsGCLog(t *testing.T) {
 	script := filepath.Join(dir, "run.sh")
 	content := `#!/bin/sh
 printf '%s\n' "$JAVA_TOOL_OPTIONS"
+printf 'path:%s\n' "$PATH"
+printf 'home:%s\n' "$JAVA_HOME"
 IFS= read -r line
 printf 'got:%s\n' "$line"
 `
@@ -42,7 +44,11 @@ printf 'got:%s\n' "$line"
 		WorkDir: dir,
 		Stdout:  &stdout,
 		Stderr:  &stderr,
-		Env:     []string{"JAVA_TOOL_OPTIONS=-Dexisting=true"},
+		Env: []string{
+			"JAVA_TOOL_OPTIONS=-Dexisting=true",
+			"PATH=/opt/jdk/bin:/usr/bin",
+			"JAVA_HOME=/unchanged",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +71,12 @@ printf 'got:%s\n' "$line"
 	}
 	if !strings.Contains(output, "got:say hello") {
 		t.Fatalf("stdout = %q", output)
+	}
+	if !strings.Contains(output, "path:/opt/jdk/bin:/usr/bin") {
+		t.Fatalf("PATH was not overridden: %q", output)
+	}
+	if !strings.Contains(output, "home:/unchanged") {
+		t.Fatalf("JAVA_HOME changed: %q", output)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q", stderr.String())

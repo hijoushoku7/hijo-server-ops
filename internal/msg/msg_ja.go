@@ -92,15 +92,31 @@ const (
 	ExitButtonRestart = "再起動"
 	ExitButtonQuit    = "終了"
 
-	ExitAutoRestartHint     = "Esc: 自動再起動をやめる"
-	ExitAutoRestartCanceled = "自動再起動をやめました。"
-	ExitAutoRestartStopped  = "短時間での終了が続いたため、自動再起動を打ち切りました。"
-	ExitAutoRestartSkipped  = "起動スクリプトがjavaを起動しないため、自動再起動しません。"
-	ExitAutoRestartRejected = "自動再起動を要求できませんでした。"
-	ExitAutoRestartFatal    = "hso 側の失敗のため、自動再起動しません。"
-	ExitAutoRestartDone     = "自動再起動しました。サーバーは動いています。"
-	ExitAutoRestartDoneHint = "Enter: 閉じる"
+	ExitAutoRestartHint         = "Esc: 自動再起動をやめる"
+	ExitAutoRestartCanceled     = "自動再起動をやめました。"
+	ExitAutoRestartStopped      = "短時間での終了が続いたため、自動再起動を打ち切りました。"
+	ExitAutoRestartSkipped      = "起動スクリプトがjavaを起動しないため、自動再起動しません。"
+	ExitAutoRestartRejected     = "自動再起動を要求できませんでした。"
+	ExitAutoRestartFatal        = "hso 側の失敗のため、自動再起動しません。"
+	ExitAutoRestartJavaMismatch = "Java のバージョンが合わないため、自動再起動しません。"
+	ExitAutoRestartDone         = "自動再起動しました。サーバーは動いています。"
+	ExitAutoRestartDoneHint     = "Enter: 閉じる"
 )
+
+func JavaVersionMismatch(required, actual int) string {
+	if actual == 0 {
+		return fmt.Sprintf("このサーバーは Java %d が必要ですが、現在の Java バージョンは確認できませんでした。", required)
+	}
+	return fmt.Sprintf("このサーバーは Java %d が必要ですが、Java %d で起動しました。", required, actual)
+}
+
+func JavaVersionChange(required int) string {
+	return fmt.Sprintf("hso java change で Java %d に切り替えてください。", required)
+}
+
+func JavaVersionInstall(required int) string {
+	return fmt.Sprintf("Java %d をインストールしてから、hso java change で切り替えてください。", required)
+}
 
 func StoppedLogTitle(code string) string {
 	return "Log · 停止済み (exit " + code + ")"

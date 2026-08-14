@@ -237,7 +237,20 @@ func processStartTime(procRoot string, pid int) (uint64, error) {
 }
 
 func withJavaToolOptions(extraEnv []string, gcLogPath string) []string {
-	env := append([]string(nil), os.Environ()...)
+	overrides := make(map[string]struct{}, len(extraEnv))
+	for _, item := range extraEnv {
+		key, _, ok := strings.Cut(item, "=")
+		if ok {
+			overrides[key] = struct{}{}
+		}
+	}
+	env := make([]string, 0, len(os.Environ())+len(extraEnv))
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if _, overridden := overrides[key]; !overridden {
+			env = append(env, item)
+		}
+	}
 	env = append(env, extraEnv...)
 
 	const key = "JAVA_TOOL_OPTIONS"

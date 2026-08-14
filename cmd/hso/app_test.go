@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -519,6 +520,107 @@ func (s *fakeStoppableServer) Signal(signal os.Signal) error {
 		close(s.done)
 	}
 	return nil
+}
+
+func TestResolveJavaEnvAllPathsContinueStartup(t *testing.T) {
+	root := t.TempDir()
+	configured := filepath.Join(t.TempDir(), "jdk-21")
+	makeControllerJava(t, configured, "")
+
+	env, warning := resolveJavaEnv(configured, root, "/usr/bin")
+	if len(env) != 1 || env[0] != "PATH="+filepath.Join(configured, "bin")+":/usr/bin" || warning != "" {
+		t.Fatalf("configured: env=%q warning=%q", env, warning)
+	}
+
+	if err := os.Remove(filepath.Join(configured, "bin", "java")); err != nil {
+		t.Fatal(err)
+	}
+	replacement := filepath.Join(root, "jdk-21.0.2")
+	makeControllerJava(t, replacement, "JAVA_VERSION=\"21.0.2\"\n")
+	env, warning = resolveJavaEnv(configured, root, "/usr/bin")
+	if len(env) != 1 || env[0] != "PATH="+filepath.Join(replacement, "bin")+":/usr/bin" ||
+		!strings.Contains(warning, configured) || !strings.Contains(warning, replacement) {
+		t.Fatalf("replacement: env=%q warning=%q", env, warning)
+	}
+
+	if err := os.Remove(filepath.Join(replacement, "bin", "java")); err != nil {
+		t.Fatal(err)
+	}
+	env, warning = resolveJavaEnv(configured, root, "/usr/bin")
+	if env != nil || !strings.Contains(warning, configured) ||
+		!strings.Contains(warning, "hso java change") {
+		t.Fatalf("no injection: env=%q warning=%q", env, warning)
+	}
+}
+
+// Java の警告は端末へ直接書かない。標準エラーへ書くと、初回は TUI が画面を
+// 占有した瞬間に消え、再起動では描画中の画面に割り込んで崩す。警告はログの
+// 経路に流し、他のサーバー出力と同じように表示させる。
+func TestServerControllerKeepsJavaWarningOffStderr(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "run.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 5\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// 存在しない JAVA_HOME。代わりも見つからないので警告つきで起動する。
+	missing := filepath.Join(dir, "no-such-jdk")
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stderr
+	os.Stderr = writer
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	actions := make(chan ui.Action, actionQueueSize)
+	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings())
+	program := tea.NewProgram(
+		model,
+		tea.WithContext(ctx),
+		tea.WithInput(nil),
+		tea.WithoutRenderer(),
+	)
+	controller := newServerController(ctx, config.Config{
+		Server: config.Server{Command: script, WorkDir: dir, Java: missing},
+	}, program)
+	// 注入できなくても起動は続く。ここで失敗するなら補助機能が主機能を
+	// 止めている。
+	startErr := controller.start(initialGeneration, false)
+
+	os.Stderr = original
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	written, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	_ = controller.shutdown()
+
+	if startErr != nil {
+		t.Fatalf("start with an unusable java = %v", startErr)
+	}
+	if len(written) != 0 {
+		t.Fatalf("start wrote to stderr: %q", written)
+	}
+}
+
+func makeControllerJava(t *testing.T, home, release string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(home, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "bin", "java"), nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if release != "" {
+		if err := os.WriteFile(filepath.Join(home, "release"), []byte(release), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func runFakeJava(dir string) {

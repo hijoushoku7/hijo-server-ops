@@ -94,15 +94,31 @@ const (
 	ExitButtonRestart = "Restart"
 	ExitButtonQuit    = "Quit"
 
-	ExitAutoRestartHint     = "Esc: stop auto restart"
-	ExitAutoRestartCanceled = "Auto restart stopped."
-	ExitAutoRestartStopped  = "Auto restart gave up: the server keeps dying at startup."
-	ExitAutoRestartRejected = "Could not request the auto restart."
-	ExitAutoRestartSkipped  = "No auto restart: the start script never started java."
-	ExitAutoRestartFatal    = "No auto restart: hso itself failed."
-	ExitAutoRestartDone     = "Auto restart done. The server is running."
-	ExitAutoRestartDoneHint = "Enter: close"
+	ExitAutoRestartHint         = "Esc: stop auto restart"
+	ExitAutoRestartCanceled     = "Auto restart stopped."
+	ExitAutoRestartStopped      = "Auto restart gave up: the server keeps dying at startup."
+	ExitAutoRestartRejected     = "Could not request the auto restart."
+	ExitAutoRestartSkipped      = "No auto restart: the start script never started java."
+	ExitAutoRestartFatal        = "No auto restart: hso itself failed."
+	ExitAutoRestartJavaMismatch = "No auto restart: the Java version does not match."
+	ExitAutoRestartDone         = "Auto restart done. The server is running."
+	ExitAutoRestartDoneHint     = "Enter: close"
 )
+
+func JavaVersionMismatch(required, actual int) string {
+	if actual == 0 {
+		return fmt.Sprintf("This server requires Java %d, but the current Java version could not be determined.", required)
+	}
+	return fmt.Sprintf("This server requires Java %d, but it was started with Java %d.", required, actual)
+}
+
+func JavaVersionChange(required int) string {
+	return fmt.Sprintf("Run hso java change and switch to Java %d.", required)
+}
+
+func JavaVersionInstall(required int) string {
+	return fmt.Sprintf("Install Java %d, then run hso java change to switch to it.", required)
+}
 
 func StoppedLogTitle(code string) string {
 	return "Log · stopped (exit " + code + ")"

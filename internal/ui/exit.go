@@ -10,6 +10,7 @@ import (
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/javaenv"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 )
@@ -59,7 +60,8 @@ type exitState struct {
 	autoRestartAt time.Time
 	// restarted は自動再起動で新しい世代が立ち上がった状態。落ちたことを
 	// 見落とさないよう、モーダルは勝手に消さず Enter を待つ。
-	restarted bool
+	restarted    bool
+	javaMismatch bool
 	// fatal は hso 自身の失敗で開いたモーダル。findJava の失敗のように
 	// hso が SIGTERM を送る経路では、後から同じ世代の終了通知が届いて
 	// 状態を作り直すので、自動再起動の対象外であることを引き継ぐ。
@@ -190,12 +192,18 @@ func (model *Model) newExitState(
 			Available: true,
 		}
 	}
+	mismatch, javaMismatch := model.javaVersionMismatch()
+	guidance := []string(nil)
+	if javaMismatch {
+		guidance = javaMismatchLines(mismatch)
+	}
 	return &exitState{
-		crashed:    crashed,
-		exitCode:   exitCode,
-		exitedAt:   exitedAt,
-		uptime:     uptime,
-		errorLines: model.exitErrorLines(err, crashed),
+		crashed:      crashed,
+		exitCode:     exitCode,
+		exitedAt:     exitedAt,
+		uptime:       uptime,
+		errorLines:   model.exitErrorLines(err, crashed, guidance),
+		javaMismatch: javaMismatch,
 		snapshot: exitSnapshot{
 			heap: model.lastHeap,
 			rss:  model.lastRSS,
@@ -207,8 +215,8 @@ func (model *Model) newExitState(
 // exitErrorLines は原因として読ませる行を集める。異常終了で 1 本も
 // 拾えなかったときだけ末尾で埋める。正常停止でこれをやると、保存完了の
 // INFO 行が「エラー行」の見出しで並ぶ。
-func (model *Model) exitErrorLines(err error, crashed bool) []string {
-	lines := make([]string, 0, exitErrorLineLimit+1)
+func (model *Model) exitErrorLines(err error, crashed bool, guidance []string) []string {
+	lines := append([]string(nil), guidance...)
 	if err != nil {
 		lines = append(lines, err.Error())
 	}
@@ -231,6 +239,33 @@ func (model *Model) exitErrorLines(err error, crashed bool) []string {
 		lines = append(lines, matches[index])
 	}
 	return lines
+}
+
+func (model *Model) javaVersionMismatch() (javaenv.ClassVersionError, bool) {
+	oldest := model.generationLogStart()
+	lines := make([]string, 0, model.logs.Len()-oldest)
+	for index := oldest; index < model.logs.Len(); index++ {
+		lines = append(lines, model.logs.At(index).line())
+	}
+	return javaenv.ParseUnsupportedClassVersion(strings.Join(lines, "\n"))
+}
+
+func javaMismatchLines(mismatch javaenv.ClassVersionError) []string {
+	installations, _ := javaenv.Installed("/usr/lib/jvm")
+	return javaMismatchGuidance(mismatch, installations)
+}
+
+func javaMismatchGuidance(
+	mismatch javaenv.ClassVersionError,
+	installations []javaenv.Installation,
+) []string {
+	lines := []string{msg.JavaVersionMismatch(mismatch.Required, mismatch.Actual)}
+	for _, installation := range installations {
+		if installation.Major == mismatch.Required {
+			return append(lines, msg.JavaVersionChange(mismatch.Required))
+		}
+	}
+	return append(lines, msg.JavaVersionInstall(mismatch.Required))
 }
 
 // generationLogStart は現世代の最初のログが今どの位置にいるかを返す。
@@ -280,6 +315,9 @@ func (model *Model) startAutoRestart(state *exitState, err error) tea.Cmd {
 	switch {
 	case state.fatal:
 		state.notice = msg.ExitAutoRestartFatal
+		return nil
+	case state.javaMismatch:
+		state.notice = msg.ExitAutoRestartJavaMismatch
 		return nil
 	// 起動スクリプトが java を立てないまま終わるのは設定やスクリプトの
 	// 誤りで、待って叩き直しても直らない。1 回で人に渡す。

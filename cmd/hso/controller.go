@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/javaenv"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
@@ -158,11 +159,13 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 	}
 	stdout := newOutputPipe()
 	stderr := newOutputPipe()
+	javaEnv, warning := resolveJavaEnv(controller.cfg.Server.Java, javaRoot, os.Getenv("PATH"))
 	server, err := process.Start(process.Options{
 		Command: controller.cfg.Server.Command,
 		WorkDir: controller.cfg.Server.WorkDir,
 		Stdout:  stdout.writer,
 		Stderr:  stderr.writer,
+		Env:     javaEnv,
 	})
 	if err != nil {
 		stdout.close()
@@ -201,6 +204,12 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 	// トレースが最後に固まって出るので、ここを待たずに終了を告げると
 	// いちばん読みたい行が捨てられる。
 	logs := make(chan serverlog.Entry, logQueueSize)
+	// Java の警告はログの先頭に流す。標準エラーへ書くと、初回は直後に TUI が
+	// 画面を占有して消え、再起動では描画中の画面に割り込んで崩す。ここは
+	// まだ誰も書いていないバッファ付きチャネルなので詰まらない。
+	if warning != "" {
+		logs <- serverlog.Entry{Kind: serverlog.KindOther, Message: warning}
+	}
 	var readers sync.WaitGroup
 	readers.Add(2)
 	go pumpLogs(runtimeCtx, controller.program, logs, generation, runtime.logsDone)
@@ -226,6 +235,22 @@ func (controller *serverController) start(generation uint64, announce bool) erro
 		generation,
 	)
 	return nil
+}
+
+func resolveJavaEnv(configured, root, pathValue string) ([]string, string) {
+	if configured == "" {
+		return nil, ""
+	}
+	resolution := javaenv.Resolve(configured, root)
+	switch resolution.Kind {
+	case javaenv.UseConfigured:
+		return []string{"PATH=" + javaenv.PrependPath(pathValue, resolution.Home)}, ""
+	case javaenv.UseReplacement:
+		return []string{"PATH=" + javaenv.PrependPath(pathValue, resolution.Home)},
+			msg.JavaHomeReplaced(resolution.Configured, resolution.Home)
+	default:
+		return nil, msg.JavaHomeNotInjected(resolution.Configured)
+	}
 }
 
 func (controller *serverController) handleActions(actions <-chan ui.Action) {
