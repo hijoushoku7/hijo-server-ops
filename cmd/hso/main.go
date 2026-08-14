@@ -20,7 +20,7 @@ import (
 
 var version = "dev"
 
-const availableSubcommands = "setup, start, list (ls), version, update"
+const availableSubcommands = "setup, start, list (ls), version, update, uninstall"
 
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
@@ -67,6 +67,8 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 			return true, msg.UpdateArgumentsNotAllowed()
 		}
 		return true, runUpdate(output)
+	case "uninstall":
+		return true, runUninstall(args[1:], os.Stdin, output, interactive())
 	case "list", "ls":
 		if len(args) != 1 {
 			return true, msg.ListArgumentsNotAllowed()

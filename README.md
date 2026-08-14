@@ -66,15 +66,41 @@ hso update
 
 ## アンインストール
 
-インストール先に応じてバイナリを削除します。サーバーディレクトリ内の `hso.toml` には触れません。
-
 ```bash
-rm "$HOME/.local/bin/hso"
-# システムにインストールした場合
-sudo rm /usr/local/bin/hso
+hso uninstall
 ```
 
-`HSO_INSTALL_DIR` を指定した場合は、そのディレクトリ内の `hso` を削除してください。
+削除するパスを表示して確認を取ってから、いま動いているバイナリを削除します。サーバー一覧は残り、サーバーディレクトリ内の `hso.toml` やワールドには触れません。確認を省略するには `-y` / `--yes` を付けます。
+
+`/usr/local/bin` に入れているバイナリだけを削除する場合は、`sudo hso uninstall` を実行します。アンインストール自身が `sudo` / `doas` を起動することはありません。
+
+サーバー一覧と pidfile も消す場合は、**sudo を付けずに**実行します。
+
+```bash
+hso uninstall --purge
+```
+
+`/usr/local/bin` に入れている場合は、先に通常ユーザーで設定を消し、残ったバイナリを root で削除します。
+
+```bash
+hso uninstall --purge
+sudo hso uninstall
+```
+
+バイナリが壊れて `uninstall` を実行できない場合は、手動で削除できます。
+`HSO_INSTALL_DIR` を指定していた場合は、1 行目をそのディレクトリ内の `hso` に読み替えてください。
+
+```bash
+rm "$HOME/.local/bin/hso"                 # または sudo rm /usr/local/bin/hso
+rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/hso"
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  rm -rf "$XDG_RUNTIME_DIR/hso"
+else
+  rm -rf "/tmp/hso-$(id -u)"
+fi
+```
+
+pidfile は再起動でも消えます。
 
 ## ドキュメント
 
