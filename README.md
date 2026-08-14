@@ -9,17 +9,29 @@ Vanilla,Spigot,Paper,Forge,NeoForge,Fabricなど様々な環境で動作しま�
 
 ## クイックスタート
 
-[Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) からアーカイブを取得して展開します。
+### システムにインストールする（推奨）
+
+`/usr/local/bin` に入ります。全ユーザーが使えて、PATH の設定は要りません。日本語版を入れるには次を実行します。
 
 ```bash
-tar xzf hso_v0.1.1_linux_amd64_ja.tar.gz
-cd hso_v0.1.1_linux_amd64_ja
-./hso
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --system --lang ja
 ```
 
-初回は設定ウィザードが開きます。サーバーのディレクトリを入力し、起動スクリプトを一覧から選ぶだけで、そのままサーバーが立ち上がります。
+`sudo` はパイプに付けないでください。スクリプトは一般ユーザーの権限でダウンロードと検証を行い、`/usr/local/bin` へ置く最後の処理だけ `sudo` を使います。
 
-arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを選んでください。
+### 自分のホームにインストールする
+
+root 権限が無い、または使いたくない場合は `~/.local/bin` に入れます。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --lang ja
+```
+
+`~/.local/bin` が PATH に無い環境では、インストール後に追記する 1 行が表示されます。
+
+表示は既定で英語です。上記の `--lang ja` を外すと英語版が入り、環境変数を使う場合は `curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | env HSO_LANG=ja sh -s -- --system` のように指定できます。フラグの指定は環境変数より優先されます。
+
+インストール後に `hso` を実行すると、初回は設定ウィザードが開きます。サーバーのディレクトリを入力し、起動スクリプトを一覧から選ぶだけで、そのままサーバーが立ち上がります。hso 本体は `sudo` で実行しないでください。
 
 ## 機能
 
@@ -29,6 +41,30 @@ arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを�
 - ログからチャットだけを抜き出して表示
 
 サーバー側にプラグインや MOD を入れる必要はありません。
+
+## 手動インストール
+
+[Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) から環境に合うアーカイブを取得して展開します。
+
+```bash
+tar xzf hso_v0.1.1_linux_amd64_ja.tar.gz
+cd hso_v0.1.1_linux_amd64_ja
+./hso
+```
+
+arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを選んでください。
+
+## アンインストール
+
+インストール先に応じてバイナリを削除します。サーバーディレクトリ内の `hso.toml` には触れません。
+
+```bash
+rm "$HOME/.local/bin/hso"
+# システムにインストールした場合
+sudo rm /usr/local/bin/hso
+```
+
+`HSO_INSTALL_DIR` を指定した場合は、そのディレクトリ内の `hso` を削除してください。
 
 ## ドキュメント
 
