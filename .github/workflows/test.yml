@@ -28,6 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: shellcheck
+        run: shellcheck -s sh install.sh
+
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod

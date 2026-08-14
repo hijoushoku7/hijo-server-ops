@@ -1,9 +1,12 @@
-# このプロジェクトだけ Go のバージョンを固定する。
+# このプロジェクトで使う開発ツールを固定する。
 #
-# go.mod の go ディレクティブと同じ版に揃える。CI は actions/setup-go が
+# go は go.mod の go ディレクティブと同じ版に揃える。CI は actions/setup-go が
 # go.mod から引くので、ローカルとリリースで違う版が使われないようにする。
+#
+# shellcheck は install.sh の検査に使う。CI（test.yml）でも同じ検査を回す。
 #
 # 反映: mise install
 
 [tools]
 go = "1.25.13"
+shellcheck = "latest"
