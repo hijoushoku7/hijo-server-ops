@@ -258,43 +258,56 @@ func replacementPrivilege(target string) (string, error) {
 }
 
 func replaceExecutable(source, target, privileged string) error {
-	staging := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".new")
 	if privileged == "" {
-		defer os.Remove(staging)
-		return copyChmodRename(source, staging, target)
+		return copyChmodRename(source, target)
 	}
 
 	// 昇格する範囲は、対象と同じディレクトリへの複製、権限設定、rename だけ。
 	command := exec.Command(privileged, "sh", "-c", `
-		cp "$1" "$2" &&
-		chmod 0755 "$2" &&
-		mv -f "$2" "$3"
-	`, "_", source, staging, target)
+		staging=$(mktemp "$2/.$4-XXXXXX") || exit 1
+		trap 'rm -f "$staging"' 0
+		trap 'exit 1' 1 2 15
+		cp "$1" "$staging" || exit $?
+		chmod 0755 "$staging" || exit $?
+		mv -f "$staging" "$3" || exit $?
+		trap - 0 1 2 15
+	`, "_", source, filepath.Dir(target), target, filepath.Base(target))
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	return command.Run()
 }
 
-func copyChmodRename(source, staging, target string) error {
+func copyChmodRename(source, target string) error {
 	input, err := os.Open(source)
 	if err != nil {
 		return err
 	}
 	defer input.Close()
-	output, err := os.OpenFile(staging, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	output, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+"-*")
 	if err != nil {
 		return err
 	}
+	staging := output.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			output.Close()
+			os.Remove(staging)
+		}
+	}()
 	if _, err := io.Copy(output, input); err != nil {
-		output.Close()
+		return err
+	}
+	if err := output.Chmod(0o755); err != nil {
 		return err
 	}
 	if err := output.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(staging, 0o755); err != nil {
+	if err := os.Rename(staging, target); err != nil {
 		return err
 	}
-	return os.Rename(staging, target)
+	renamed = true
+	return nil
 }

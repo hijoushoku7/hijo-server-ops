@@ -273,7 +273,7 @@ func TestReplacementPrivilegeUsesSudoForProtectedDirectory(t *testing.T) {
 	}
 }
 
-func TestPrivilegedReplacementRunsCopyChmodMove(t *testing.T) {
+func TestPrivilegedReplacementRunsCreateCopyChmodMove(t *testing.T) {
 	directory := t.TempDir()
 	source := filepath.Join(directory, "downloaded-hso")
 	target := filepath.Join(directory, "hso")
@@ -306,10 +306,69 @@ func TestPrivilegedReplacementRunsCopyChmodMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"cp \"$1\" \"$2\"", "chmod 0755 \"$2\"", "mv -f \"$2\" \"$3\""} {
+	for _, command := range []string{
+		"mktemp \"$2/.$4-XXXXXX\"",
+		"cp \"$1\" \"$staging\"",
+		"chmod 0755 \"$staging\"",
+		"mv -f \"$staging\" \"$3\"",
+	} {
 		if !strings.Contains(string(arguments), command) {
 			t.Errorf("privileged command に %q がない: %s", command, arguments)
 		}
+	}
+}
+
+func TestReplaceExecutableDoesNotFollowStagingSymlink(t *testing.T) {
+	for _, privileged := range []bool{false, true} {
+		name := "unprivileged"
+		if privileged {
+			name = "privileged"
+		}
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			source := filepath.Join(directory, "downloaded-hso")
+			target := filepath.Join(directory, "hso")
+			if err := os.WriteFile(source, []byte("new"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			stagingSymlinks := []string{".hso.new", ".hso-0", ".hso-000000"}
+			for _, name := range stagingSymlinks {
+				if err := os.Symlink(target, filepath.Join(directory, name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			privilegeCommand := ""
+			if privileged {
+				privilegeCommand = filepath.Join(directory, "sudo")
+				if err := os.WriteFile(privilegeCommand, []byte("#!/bin/sh\nexec \"$@\"\n"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := replaceExecutable(source, target, privilegeCommand); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != "new" {
+				t.Fatalf("binary = %q", got)
+			}
+			for _, name := range stagingSymlinks {
+				info, err := os.Lstat(filepath.Join(directory, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if info.Mode()&os.ModeSymlink == 0 {
+					t.Errorf("%s が symlink ではなくなった", name)
+				}
+			}
+		})
 	}
 }
 
