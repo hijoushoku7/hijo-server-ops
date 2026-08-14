@@ -223,6 +223,9 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 		"EnterDirectory":      EnterDirectory().Error(),
 		"JavaHomeReplaced":    JavaHomeReplaced("/old/jdk-21", "/new/jdk-21"),
 		"JavaHomeNotInjected": JavaHomeNotInjected("/old/jdk-21"),
+		"JavaVersionMismatch": JavaVersionMismatch(21, 17),
+		"JavaVersionChange":   JavaVersionChange(21),
+		"JavaVersionInstall":  JavaVersionInstall(21),
 		"CommandRequired":     CommandRequired().Error(),
 	}
 

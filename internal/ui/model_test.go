@@ -13,6 +13,7 @@ import (
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/javaenv"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
@@ -1301,6 +1302,83 @@ func TestModelExitErrorLinesStayWithinCurrentGeneration(t *testing.T) {
 	}
 	if !strings.Contains(joined, "Done (12.114s)!") {
 		t.Fatalf("errorLines = %q", joined)
+	}
+}
+
+func TestModelGuidesJavaMismatchFromCurrentGeneration(t *testing.T) {
+	model := newAutoRestartModel(make(chan Action, 1))
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind: serverlog.KindOther,
+		Message: "UnsupportedClassVersionError: old class file version 69.0, " +
+			"class file versions up to 65.0",
+	}})
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+
+	for _, line := range []string{
+		"java.lang.UnsupportedClassVersionError: Example has been compiled by a more recent version",
+		"of the Java Runtime (class file version 65.0),",
+		"this version only recognizes class file versions up to 61.0",
+	} {
+		_, _ = model.Update(LogMsg{Generation: 2, Entry: serverlog.Entry{
+			Kind: serverlog.KindOther, Message: line,
+		}})
+	}
+	crash(model, errors.New("some other exit error"), time.Second)
+
+	if !model.exit.javaMismatch {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+	if model.exit.autoRestart || model.exit.notice != msg.ExitAutoRestartJavaMismatch {
+		t.Fatalf("auto restart was not suppressed: %#v", model.exit)
+	}
+	if len(model.exit.errorLines) < 3 ||
+		!strings.Contains(model.exit.errorLines[0], "21") ||
+		!strings.Contains(model.exit.errorLines[0], "17") ||
+		!strings.Contains(model.exit.errorLines[1], "hso java change") ||
+		model.exit.errorLines[2] != "some other exit error" {
+		t.Fatalf("errorLines = %q", model.exit.errorLines)
+	}
+	joined := strings.Join(model.exit.errorLines, "\n")
+	if strings.Contains(joined, "Java 25") {
+		t.Fatalf("previous generation was included: %q", joined)
+	}
+
+	model.resize(40, 20)
+	box, _, _ := model.exitModal()
+	for index, line := range strings.Split(box, "\n") {
+		if width := stringWidth(line); width > 36 {
+			t.Fatalf("wrapped modal line %d width = %d: %q", index, width, stripANSI(line))
+		}
+	}
+}
+
+func TestJavaMismatchGuidanceUsesInstalledGeneration(t *testing.T) {
+	mismatch := javaenv.ClassVersionError{Required: 21}
+	installed := javaMismatchGuidance(mismatch, []javaenv.Installation{{Major: 21}})
+	if len(installed) != 2 || !strings.Contains(installed[0], msg.JavaVersionMismatch(21, 0)) ||
+		installed[1] != msg.JavaVersionChange(21) {
+		t.Fatalf("installed guidance = %q", installed)
+	}
+	if strings.Contains(strings.Join(installed, "\n"), msg.JavaVersionInstall(21)) {
+		t.Fatalf("installed guidance asks for installation: %q", installed)
+	}
+
+	missing := javaMismatchGuidance(mismatch, nil)
+	if len(missing) != 2 || missing[1] != msg.JavaVersionInstall(21) {
+		t.Fatalf("missing guidance = %q", missing)
+	}
+}
+
+func TestModelIgnoresJavaMismatchFromPreviousGeneration(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind:    serverlog.KindOther,
+		Message: "UnsupportedClassVersionError: class file version 65.0, class file versions up to 61.0",
+	}})
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+	_, _ = model.Update(ProcessExitedMsg{Generation: 2, Err: errors.New("crashed"), ExitCode: 1})
+	if model.exit.javaMismatch {
+		t.Fatalf("previous generation caused mismatch: %#v", model.exit)
 	}
 }
 
