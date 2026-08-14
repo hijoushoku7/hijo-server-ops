@@ -37,6 +37,7 @@ func TestDeleteFromRegistry(t *testing.T) {
 		{name: "起動中は拒否する", options: deleteOptions{name: "survival", yes: true}, running: true, wantError: "PID 4321"},
 		{name: "未登録名を拒否する", options: deleteOptions{name: "creative", yes: true}, wantError: "creative"},
 		{name: "設定ファイルがなくても削除する", options: deleteOptions{name: "survival", yes: true}, missing: true, wantSaved: true, wantOutput: msg.ServerDeleted(server.Name)},
+		{name: "設定ファイルがなく起動中なら拒否する", options: deleteOptions{name: "survival", yes: true}, running: true, missing: true, wantError: "PID 4321"},
 		{name: "端末なしでは確認できない", options: deleteOptions{name: "survival"}, wantError: msg.DeleteRequiresConfirmation().Error()},
 	}
 	for _, test := range tests {
@@ -48,7 +49,7 @@ func TestDeleteFromRegistry(t *testing.T) {
 			servers := registry.Registry{Servers: []registry.Server{{Name: server.Name, Config: path}}}
 			var output bytes.Buffer
 			saved := false
-			err := deleteFromRegistry(test.options, servers, test.terminal, strings.NewReader(test.input), &output,
+			err := deleteFromRegistry(test.options, func() (registry.Registry, error) { return servers, nil }, test.terminal, strings.NewReader(test.input), &output,
 				func(registry.Registry) (registry.Server, bool, error) {
 					t.Fatal("名前指定時にピッカーを呼んではいけない")
 					return registry.Server{}, false, nil
@@ -78,7 +79,7 @@ func TestDeleteFromRegistry(t *testing.T) {
 }
 
 func TestDeleteFromRegistryRejectsEmptyList(t *testing.T) {
-	err := deleteFromRegistry(deleteOptions{yes: true}, registry.Registry{}, false, strings.NewReader(""), &bytes.Buffer{}, nil, nil, nil)
+	err := deleteFromRegistry(deleteOptions{yes: true}, func() (registry.Registry, error) { return registry.Registry{}, nil }, false, strings.NewReader(""), &bytes.Buffer{}, nil, nil, nil)
 	if err == nil || err.Error() != msg.NoRegisteredServers().Error() {
 		t.Fatalf("err = %v", err)
 	}
@@ -86,7 +87,7 @@ func TestDeleteFromRegistryRejectsEmptyList(t *testing.T) {
 
 func TestDeleteFromRegistryRequiresTerminalToChoose(t *testing.T) {
 	servers := registry.Registry{Servers: []registry.Server{{Name: "survival", Config: "/missing/hso.toml"}}}
-	err := deleteFromRegistry(deleteOptions{yes: true}, servers, false, strings.NewReader(""), &bytes.Buffer{}, nil, nil, nil)
+	err := deleteFromRegistry(deleteOptions{yes: true}, func() (registry.Registry, error) { return servers, nil }, false, strings.NewReader(""), &bytes.Buffer{}, nil, nil, nil)
 	if err == nil || err.Error() != msg.DeleteRequiresTerminal().Error() {
 		t.Fatalf("err = %v", err)
 	}
@@ -109,9 +110,65 @@ func TestParseDeleteOptions(t *testing.T) {
 func TestDeleteFromRegistryReturnsSaveError(t *testing.T) {
 	want := errors.New("save failed")
 	servers := registry.Registry{Servers: []registry.Server{{Name: "survival", Config: "/missing/hso.toml"}}}
-	err := deleteFromRegistry(deleteOptions{name: "survival", yes: true}, servers, false, strings.NewReader(""), &bytes.Buffer{}, nil,
+	err := deleteFromRegistry(deleteOptions{name: "survival", yes: true}, func() (registry.Registry, error) { return servers, nil }, false, strings.NewReader(""), &bytes.Buffer{}, nil,
 		func(string) (int, bool, error) { return 0, false, nil }, func(registry.Registry) error { return want })
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDeleteFromRegistryReloadsAfterConfirmation(t *testing.T) {
+	target := registry.Server{Name: "survival", Config: "/servers/survival/hso.toml"}
+	added := registry.Server{Name: "creative", Config: "/servers/creative/hso.toml"}
+	tests := []struct {
+		name          string
+		reloaded      registry.Registry
+		runningAfter  bool
+		wantSaved     bool
+		wantError     string
+		wantRemaining []registry.Server
+	}{
+		{name: "対象が削除済み", reloaded: registry.Registry{}, wantError: msg.ServerNotRegistered(target.Name).Error()},
+		{name: "対象が起動済み", reloaded: registry.Registry{Servers: []registry.Server{target}}, runningAfter: true, wantError: "PID 4321"},
+		{name: "別のサーバーが追加済み", reloaded: registry.Registry{Servers: []registry.Server{target, added}}, wantSaved: true, wantRemaining: []registry.Server{added}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			loads := 0
+			load := func() (registry.Registry, error) {
+				loads++
+				if loads == 1 {
+					return registry.Registry{Servers: []registry.Server{target}}, nil
+				}
+				return test.reloaded, nil
+			}
+			runningChecks := 0
+			running := func(string) (int, bool, error) {
+				runningChecks++
+				return 4321, test.runningAfter && runningChecks == 2, nil
+			}
+			var saved registry.Registry
+			savedCalled := false
+			err := deleteFromRegistry(deleteOptions{name: target.Name, yes: true}, load, false, strings.NewReader(""), &bytes.Buffer{}, nil, running,
+				func(got registry.Registry) error {
+					savedCalled = true
+					saved = got
+					return nil
+				})
+			if test.wantError == "" && err != nil || test.wantError != "" && (err == nil || !strings.Contains(err.Error(), test.wantError)) {
+				t.Fatalf("err = %v", err)
+			}
+			if savedCalled != test.wantSaved {
+				t.Fatalf("saved = %t, want %t", savedCalled, test.wantSaved)
+			}
+			if test.wantSaved && len(saved.Servers) != len(test.wantRemaining) {
+				t.Fatalf("保存する一覧 = %#v, want %#v", saved.Servers, test.wantRemaining)
+			}
+			for index := range test.wantRemaining {
+				if saved.Servers[index] != test.wantRemaining[index] {
+					t.Fatalf("保存する一覧 = %#v, want %#v", saved.Servers, test.wantRemaining)
+				}
+			}
+		})
 	}
 }
