@@ -102,14 +102,15 @@ print_path_guidance() {
             ;;
     esac
 
-    if [ "$dir" = "$HOME/.local/bin" ] && \
+    if [ -n "${HOME:-}" ] && \
+        [ "$dir" = "$HOME/.local/bin" ] && \
         [ -f "$HOME/.profile" ] && \
         grep -q '\.local/bin' "$HOME/.profile"; then
         print_debian_path_guidance "$tag" "$destination" "$dir"
         return
     fi
 
-    if [ "$dir" = "$HOME/.local/bin" ]; then
+    if [ -n "${HOME:-}" ] && [ "$dir" = "$HOME/.local/bin" ]; then
         path_entry='$HOME/.local/bin'
     else
         path_entry=$dir
@@ -290,7 +291,15 @@ main() {
     if [ -e "$dir" ] && [ ! -d "$dir" ]; then
         die "installation directory is not a directory: $dir"
     fi
-    if [ "$system" = false ]; then
+    if [ -n "$privileged" ]; then
+        # $1 は内側の sh が受け取る位置パラメータ。
+        # shellcheck disable=SC2016
+        "$privileged" sh -c 'mkdir -p "$1"' _ "$dir" || \
+            die "could not create installation directory: $dir"
+        # shellcheck disable=SC2016
+        "$privileged" sh -c '[ -w "$1" ]' _ "$dir" || \
+            die "installation directory is not writable: $dir"
+    else
         mkdir -p "$dir" || die "could not create installation directory: $dir"
         [ -w "$dir" ] || die "installation directory is not writable: $dir"
     fi
