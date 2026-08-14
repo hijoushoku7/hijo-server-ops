@@ -349,6 +349,14 @@ func DuplicateServerName(name string) error {
 	return fmt.Errorf("duplicate server name ignoring case: %s", name)
 }
 
+func DuplicateServerConfig(name, path string) error {
+	return fmt.Errorf("config file is already registered as server %s: %s", name, path)
+}
+
+func ConfigAlreadyRegistered(name, path string) error {
+	return fmt.Errorf("config file is already registered as server %s: %s\nrun hso delete %s to remove it from the list", name, path, name)
+}
+
 func ReadRegistryFailed(err error, path string) error {
 	return fmt.Errorf("read server registry (%s): %w", path, err)
 }
@@ -499,16 +507,18 @@ func FindJavaFailed(err error) error {
 
 // Command line.
 const (
-	Lang             = "en"
-	ConfigFlagUsage  = "path to the config file"
-	Aborted          = "aborted"
-	ListNameHeader   = "Name"
-	ListStatusHeader = "Status"
-	ListPathHeader   = "Path"
-	ServerStopped    = "stopped"
-	ConfigNotFound   = "config not found"
-	EmptyServerList  = "No servers are registered. Run hso setup to register one."
-	StartTitle       = "Choose a server to start"
+	Lang                = "en"
+	ConfigFlagUsage     = "path to the config file"
+	Aborted             = "aborted"
+	ListNameHeader      = "Name"
+	ListStatusHeader    = "Status"
+	ListPathHeader      = "Path"
+	ServerStopped       = "stopped"
+	ConfigNotFound      = "config not found"
+	EmptyServerList     = "No servers are registered. Run hso setup to register one."
+	StartTitle          = "Choose a server to start"
+	DeleteTitle         = "Choose a server to delete"
+	DeleteConfirmPrompt = "Only this registration will be removed. hso.toml and the server directory contents will not be deleted.\nDelete it? [y/N]: "
 )
 
 func ServerRunning(pid int) string {
@@ -537,6 +547,30 @@ func StartArgumentsNotAllowed() error {
 
 func StartRequiresTerminal() error {
 	return errors.New("run start from a terminal when omitting the server name")
+}
+
+func DeleteArgumentsNotAllowed() error {
+	return errors.New("the delete subcommand accepts at most one server name and only the -y or --yes flag")
+}
+
+func DeleteTarget(name, path string) string {
+	return fmt.Sprintf("%s: %s\n%s: %s", ListNameHeader, name, ListPathHeader, path)
+}
+
+func DeleteRequiresTerminal() error {
+	return errors.New("run delete from a terminal when omitting the server name")
+}
+
+func DeleteRequiresConfirmation() error {
+	return errors.New("confirmation requires a terminal; rerun with -y or --yes")
+}
+
+func CannotDeleteRunningServer(name string, pid int) error {
+	return fmt.Errorf("server %s is running (PID %d); stop it before deleting it", name, pid)
+}
+
+func ServerDeleted(name string) string {
+	return fmt.Sprintf("removed server %s from the list", name)
 }
 
 func ServerNotRegistered(name string) error {

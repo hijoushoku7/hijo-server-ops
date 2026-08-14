@@ -207,3 +207,54 @@ func writeRegistry(t *testing.T, path, contents string) {
 		t.Fatal(err)
 	}
 }
+
+func TestAddRejectsDuplicateConfigPath(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "server", "..", "hso.toml")
+	servers := Registry{Servers: []Server{{Name: "survival", Config: filepath.Join(directory, "hso.toml")}}}
+	if err := servers.Add(Server{Name: "creative", Config: path}); err == nil || !strings.Contains(err.Error(), "survival") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(servers.Servers) != 1 {
+		t.Fatalf("servers = %#v", servers.Servers)
+	}
+}
+
+func TestRemoveIgnoresCase(t *testing.T) {
+	servers := Registry{Servers: []Server{
+		{Name: "Survival", Config: "/one/hso.toml"},
+		{Name: "creative", Config: "/two/hso.toml"},
+	}}
+	removed, found := servers.Remove("survival")
+	if !found || removed.Name != "Survival" {
+		t.Fatalf("removed = %#v, found = %t", removed, found)
+	}
+	if len(servers.Servers) != 1 || servers.Servers[0].Name != "creative" {
+		t.Fatalf("servers = %#v", servers.Servers)
+	}
+}
+
+func TestRemoveKeepsListWhenNameDoesNotExist(t *testing.T) {
+	servers := Registry{Servers: []Server{{Name: "survival", Config: "/one/hso.toml"}}}
+	removed, found := servers.Remove("creative")
+	if found || removed != (Server{}) {
+		t.Fatalf("removed = %#v, found = %t", removed, found)
+	}
+	if len(servers.Servers) != 1 {
+		t.Fatalf("servers = %#v", servers.Servers)
+	}
+}
+
+func TestLoadAllowsDuplicateConfigPaths(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeRegistry(t, path, "[[servers]]\nname = \"survival\"\nconfig = \"/srv/hso.toml\"\n\n"+
+		"[[servers]]\nname = \"creative\"\nconfig = \"/srv/./hso.toml\"\n")
+
+	servers, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers.Servers) != 2 {
+		t.Fatalf("servers = %#v", servers.Servers)
+	}
+}

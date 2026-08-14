@@ -347,6 +347,14 @@ func DuplicateServerName(name string) error {
 	return fmt.Errorf("サーバー名が大文字小文字を区別せず重複しています: %s", name)
 }
 
+func DuplicateServerConfig(name, path string) error {
+	return fmt.Errorf("設定ファイルはサーバー %s として登録済みです: %s", name, path)
+}
+
+func ConfigAlreadyRegistered(name, path string) error {
+	return fmt.Errorf("設定ファイルはサーバー %s として登録済みです: %s\n一覧から外すには hso delete %s を実行してください", name, path, name)
+}
+
 func ReadRegistryFailed(err error, path string) error {
 	return fmt.Errorf("サーバー一覧を読む (%s): %w", path, err)
 }
@@ -497,16 +505,18 @@ func FindJavaFailed(err error) error {
 
 // コマンドライン。
 const (
-	Lang             = "ja"
-	ConfigFlagUsage  = "設定ファイルのパス"
-	Aborted          = "中止しました"
-	ListNameHeader   = "名前"
-	ListStatusHeader = "状態"
-	ListPathHeader   = "パス"
-	ServerStopped    = "停止"
-	ConfigNotFound   = "設定が見つからない"
-	EmptyServerList  = "登録済みのサーバーはありません。hso setup で登録してください。"
-	StartTitle       = "起動するサーバーを選ぶ"
+	Lang                = "ja"
+	ConfigFlagUsage     = "設定ファイルのパス"
+	Aborted             = "中止しました"
+	ListNameHeader      = "名前"
+	ListStatusHeader    = "状態"
+	ListPathHeader      = "パス"
+	ServerStopped       = "停止"
+	ConfigNotFound      = "設定が見つからない"
+	EmptyServerList     = "登録済みのサーバーはありません。hso setup で登録してください。"
+	StartTitle          = "起動するサーバーを選ぶ"
+	DeleteTitle         = "削除するサーバーを選ぶ"
+	DeleteConfirmPrompt = "一覧からこの登録だけを外します。hso.toml とサーバーディレクトリの中身は削除しません。\n削除しますか？ [y/N]: "
 )
 
 func ServerRunning(pid int) string {
@@ -535,6 +545,30 @@ func StartArgumentsNotAllowed() error {
 
 func StartRequiresTerminal() error {
 	return errors.New("サーバー名を省略するには端末から実行してください")
+}
+
+func DeleteArgumentsNotAllowed() error {
+	return errors.New("delete サブコマンドに指定できる名前は1つまでで、フラグは -y または --yes だけです")
+}
+
+func DeleteTarget(name, path string) string {
+	return fmt.Sprintf("%s: %s\n%s: %s", ListNameHeader, name, ListPathHeader, path)
+}
+
+func DeleteRequiresTerminal() error {
+	return errors.New("サーバー名を省略するには端末から実行してください")
+}
+
+func DeleteRequiresConfirmation() error {
+	return errors.New("削除の確認には端末が必要です。-y または --yes を指定してください")
+}
+
+func CannotDeleteRunningServer(name string, pid int) error {
+	return fmt.Errorf("サーバー %s は起動中です（PID %d）。先に停止してから削除してください", name, pid)
+}
+
+func ServerDeleted(name string) string {
+	return fmt.Sprintf("サーバー %s を一覧から削除しました", name)
 }
 
 func ServerNotRegistered(name string) error {

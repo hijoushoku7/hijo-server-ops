@@ -31,6 +31,9 @@ func Run(configPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if name, found := servers.NameForConfig(path); found {
+		return "", msg.ConfigAlreadyRegistered(name, path)
+	}
 
 	model := newModel(path, servers)
 	if _, err := tea.NewProgram(model).Run(); err != nil {

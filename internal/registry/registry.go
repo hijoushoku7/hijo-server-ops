@@ -23,6 +23,13 @@ type Server struct {
 
 // Add は重複を検査してサーバーを一覧へ加える。
 func (r *Registry) Add(server Server) error {
+	if name, found := r.NameForConfig(server.Config); found {
+		return msg.DuplicateServerConfig(name, server.Config)
+	}
+	return r.addWithoutConfigCheck(server)
+}
+
+func (r *Registry) addWithoutConfigCheck(server Server) error {
 	if err := ValidateName(server.Name); err != nil {
 		return err
 	}
@@ -31,6 +38,17 @@ func (r *Registry) Add(server Server) error {
 	}
 	r.Servers = append(r.Servers, server)
 	return nil
+}
+
+// Remove は大文字小文字を区別せず登録名を探して一覧から取り除く。
+func (r *Registry) Remove(name string) (Server, bool) {
+	for index, server := range r.Servers {
+		if strings.EqualFold(server.Name, name) {
+			r.Servers = append(r.Servers[:index], r.Servers[index+1:]...)
+			return server, true
+		}
+	}
+	return Server{}, false
 }
 
 // Find は大文字小文字を区別せず登録名を探す。
@@ -152,7 +170,9 @@ func (r Registry) NameForConfig(path string) (string, bool) {
 func validate(registry Registry) error {
 	var validated Registry
 	for _, server := range registry.Servers {
-		if err := validated.Add(server); err != nil {
+		// 既存のパス重複を Load で拒むと delete で修復できないため、
+		// ここでは名前に関する不変条件だけを検査する。
+		if err := validated.addWithoutConfigCheck(server); err != nil {
 			return err
 		}
 	}
