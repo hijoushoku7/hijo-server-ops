@@ -334,6 +334,25 @@ func FindJavaFailed(err error) error {
 
 // Command line.
 const (
+	Lang            = "en"
 	ConfigFlagUsage = "path to the config file"
 	Aborted         = "aborted"
 )
+
+func VersionOutput(version, language, architecture string) string {
+	return fmt.Sprintf(
+		"Version: %s\nLanguage: %s\nArchitecture: %s",
+		version, language, architecture,
+	)
+}
+
+func VersionArgumentsNotAllowed() error {
+	return errors.New("the version subcommand does not accept arguments")
+}
+
+func UnknownCommand(command, available string) error {
+	return fmt.Errorf(
+		"unknown subcommand: %s\navailable subcommands: %s",
+		command, available,
+	)
+}
