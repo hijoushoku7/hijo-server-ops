@@ -165,20 +165,22 @@ func prepareUninstall(options uninstallOptions) (uninstallPlan, error) {
 	}
 	plan.configFile = configFile
 	plan.configDir = filepath.Dir(configFile)
-	if _, err := os.Lstat(configFile); err == nil {
+	_, inspectErr := os.Lstat(configFile)
+	if inspectErr == nil {
 		plan.serverListKept = true
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return uninstallPlan{}, fmt.Errorf("cannot inspect server list %s: %w", configFile, err)
 	}
 
 	servers, loadErr := registry.Load(configFile)
+	if inspectErr != nil && !errors.Is(inspectErr, fs.ErrNotExist) {
+		loadErr = inspectErr
+	}
 	if options.purge || loadErr == nil && len(servers.Servers) > 0 {
 		plan.pidDir, err = pidfile.Directory()
 		if err != nil {
 			return uninstallPlan{}, err
 		}
 	}
-	// 一覧は実行中サーバーの注意にだけ使うため、読めなくても
+	// 一覧は実行中サーバーの注意にだけ使うため、確認できなくても
 	// アンインストール自体は続ける。
 	if loadErr != nil {
 		plan.runningUnchecked = true

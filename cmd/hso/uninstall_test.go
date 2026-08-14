@@ -427,6 +427,76 @@ func TestRunUninstallContinuesWhenServerListCannotBeRead(t *testing.T) {
 	}
 }
 
+func TestRunUninstallContinuesWhenServerListCannotBeInspected(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root では Lstat の権限不足を再現できない")
+	}
+	for _, mode := range []struct {
+		name  string
+		args  []string
+		purge bool
+	}{
+		{name: "default", args: []string{"-y"}},
+		{name: "purge", args: []string{"--purge", "-y"}, purge: true},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			preserveUninstallGlobals(t)
+			configHome := t.TempDir()
+			runtimeHome := t.TempDir()
+			installDirectory := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", configHome)
+			t.Setenv("XDG_RUNTIME_DIR", runtimeHome)
+			uninstallEUID = func() int { return 1000 }
+
+			executable := filepath.Join(installDirectory, "hso")
+			configDirectory := filepath.Join(configHome, "hso")
+			configFile := filepath.Join(configDirectory, "config.toml")
+			pidDirectory := filepath.Join(runtimeHome, "hso")
+			if err := os.WriteFile(executable, []byte("test binary"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(configDirectory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(pidDirectory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(configDirectory, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(configDirectory, 0o700) })
+			if _, err := os.Lstat(configFile); !errors.Is(err, unix.EACCES) {
+				t.Fatalf("server list の Lstat error = %v", err)
+			}
+			executablePath = func() (string, error) { return executable, nil }
+
+			var output bytes.Buffer
+			if err := runUninstall(mode.args, strings.NewReader(""), &output, false); err != nil {
+				t.Fatalf("終了コード 1 相当のエラー: %v", err)
+			}
+			if _, err := os.Lstat(executable); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("binary が残った: %v", err)
+			}
+			warning := "Could not read server list at " + configFile + "; running servers were not checked."
+			if !strings.Contains(output.String(), warning+"\n") {
+				t.Fatalf("output = %q に警告 %q がない", output.String(), warning)
+			}
+			if strings.Contains(output.String(), "Server list kept at ") {
+				t.Fatalf("確認できなかった server list を残したと表示した: %q", output.String())
+			}
+			for _, path := range []string{configDirectory, pidDirectory} {
+				_, err := os.Lstat(path)
+				if mode.purge && !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("--purge 後も %s が残った: %v", path, err)
+				}
+				if !mode.purge && err != nil {
+					t.Errorf("通常アンインストールで %s が変更された: %v", path, err)
+				}
+			}
+		})
+	}
+}
+
 func TestRunUninstallDefaultKeepsTemporaryServerList(t *testing.T) {
 	preserveUninstallGlobals(t)
 	configHome := t.TempDir()
