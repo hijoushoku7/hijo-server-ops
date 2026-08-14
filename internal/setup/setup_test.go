@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
 func writeFile(t *testing.T, path string, mode os.FileMode) {
@@ -169,8 +171,12 @@ func TestModelCreatesConfig(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "run.sh"), 0o644)
 	path := filepath.Join(dir, "hso.toml")
 
-	model := newModel(path)
-	// 初期値のディレクトリをそのまま確定し、一覧から run.sh を選ぶ。
+	model := newModel(path, registry.Registry{})
+	// 初期値のディレクトリと名前を確定し、一覧から run.sh を選ぶ。
+	press(t, model, enter)
+	if model.step != stepName || string(model.input) != filepath.Base(dir) {
+		t.Fatalf("step = %d, input = %q", model.step, string(model.input))
+	}
 	press(t, model, enter)
 	if model.step != stepCommand {
 		t.Fatalf("step = %d (%s)", model.step, model.message)
@@ -209,13 +215,13 @@ func TestModelManualEntry(t *testing.T) {
 	writeFile(t, filepath.Join(server, "start.sh"), 0o755)
 	path := filepath.Join(dir, "hso.toml")
 
-	model := newModel(path)
+	model := newModel(path, registry.Registry{})
 	// サーバーディレクトリを打ち直してから、手入力でパスを指定する。
 	press(t, model, typeText("/server"), enter)
 	if model.workDir != server {
 		t.Fatalf("workDir = %q (%s)", model.workDir, model.message)
 	}
-	press(t, model, tea.KeyPressMsg{Code: tea.KeyEnd}, enter)
+	press(t, model, enter, tea.KeyPressMsg{Code: tea.KeyEnd}, enter)
 	if model.step != stepCommandInput {
 		t.Fatalf("step = %d", model.step)
 	}
@@ -236,7 +242,7 @@ func TestModelManualEntry(t *testing.T) {
 }
 
 func TestModelRejectsMissingDirectory(t *testing.T) {
-	model := newModel(filepath.Join(t.TempDir(), "hso.toml"))
+	model := newModel(filepath.Join(t.TempDir(), "hso.toml"), registry.Registry{})
 	press(t, model, typeText("/no-such-directory"), enter)
 	if model.step != stepWorkDir || model.message == "" {
 		t.Fatalf("step = %d, message = %q", model.step, model.message)
@@ -248,8 +254,8 @@ func TestModelEscapeReturnsToManualEntry(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "run.sh"), 0o755)
 
-	model := newModel(filepath.Join(dir, "hso.toml"))
-	press(t, model, enter)
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
+	press(t, model, enter, enter)
 	press(t, model, tea.KeyPressMsg{Code: tea.KeyEnd}, enter)
 	press(t, model, typeText("run.sh"), enter)
 	if model.step != stepConfirm {
@@ -268,8 +274,8 @@ func TestModelDeclineChmod(t *testing.T) {
 	writeFile(t, script, 0o644)
 	path := filepath.Join(dir, "hso.toml")
 
-	model := newModel(path)
-	press(t, model, enter, enter)
+	model := newModel(path, registry.Registry{})
+	press(t, model, enter, enter, enter)
 	if !model.grantChmod {
 		t.Fatal("既定では実行権限を付ける")
 	}
@@ -298,10 +304,76 @@ func TestModelEscapeGoesBack(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "run.sh"), 0o755)
 
-	model := newModel(filepath.Join(dir, "hso.toml"))
-	press(t, model, enter)
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
+	press(t, model, enter, enter)
 	press(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if model.step != stepWorkDir || string(model.input) != dir {
+	if model.step != stepName || string(model.input) != filepath.Base(dir) {
 		t.Fatalf("step = %d, input = %q", model.step, string(model.input))
+	}
+}
+
+func TestDefaultServerName(t *testing.T) {
+	if got := defaultServerName("/srv/survival-1"); got != "survival-1" {
+		t.Fatalf("有効なディレクトリ名の初期値 = %q", got)
+	}
+	for _, path := range []string{"/srv/日本語", "/srv/my server"} {
+		if got := defaultServerName(path); got != "" {
+			t.Errorf("defaultServerName(%q) = %q, want empty", path, got)
+		}
+	}
+}
+
+func TestModelLeavesInvalidDirectoryNameEmpty(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "日本語 サーバー")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
+	press(t, model, enter)
+	if model.step != stepName || len(model.input) != 0 {
+		t.Fatalf("step = %d, input = %q", model.step, string(model.input))
+	}
+}
+
+func TestModelRejectsDuplicateNameIgnoringCase(t *testing.T) {
+	dir := t.TempDir()
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{Servers: []registry.Server{
+		{Name: "Survival", Config: "/srv/one/hso.toml"},
+	}})
+	press(t, model, enter)
+	model.input = []rune("survival")
+	press(t, model, enter)
+	if model.step != stepName || model.message == "" {
+		t.Fatalf("step = %d, message = %q", model.step, model.message)
+	}
+}
+
+func TestRegisterServerRejectsDuplicateIgnoringCase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := registry.Save(path, registry.Registry{Servers: []registry.Server{
+		{Name: "Survival", Config: "/srv/one/hso.toml"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerServer(path, "survival", "/srv/two/hso.toml"); err == nil {
+		t.Fatal("保存直前にも重複を拒否するべき")
+	}
+}
+
+func TestRegisterServerSavesNameAndConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	configPath := "/srv/minecraft/hso.toml"
+	if err := registerServer(path, "survival", configPath); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := registry.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers.Servers) != 1 || servers.Servers[0] != (registry.Server{
+		Name: "survival", Config: configPath,
+	}) {
+		t.Fatalf("servers = %#v", servers.Servers)
 	}
 }

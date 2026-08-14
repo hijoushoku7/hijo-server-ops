@@ -21,7 +21,7 @@ import (
 
 var version = "dev"
 
-const availableSubcommands = "version, list (ls)"
+const availableSubcommands = "setup, start, list (ls), version"
 
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
@@ -44,6 +44,20 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 	}
 
 	switch args[0] {
+	case "setup":
+		if len(args) != 1 {
+			return true, msg.SetupArgumentsNotAllowed()
+		}
+		return true, runSetup(output)
+	case "start":
+		if len(args) > 2 {
+			return true, msg.StartArgumentsNotAllowed()
+		}
+		name := ""
+		if len(args) == 2 {
+			name = args[1]
+		}
+		return true, runStart(name)
 	case "version":
 		if len(args) != 1 {
 			return true, msg.VersionArgumentsNotAllowed()
@@ -78,11 +92,31 @@ func run() error {
 		}
 	}
 
-	cfg, err := config.Load(*configPath)
+	return launchConfig(*configPath)
+}
+
+func runSetup(output io.Writer) error {
+	if !interactive() {
+		return msg.SetupRequiresTerminal()
+	}
+	created, err := setup.Run("hso.toml")
 	if err != nil {
 		return err
 	}
-	return runTrackedTUI(*configPath, cfg, trackRegisteredServer, runTUI)
+	if created == "" {
+		_, err := fmt.Fprintln(output, msg.Aborted)
+		return err
+	}
+	return launchConfig(created)
+}
+
+// launchConfig は従来の設定読み込みと TUI 起動経路をそのまま使う。
+func launchConfig(configPath string) error {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
+	return runTrackedTUI(configPath, cfg, trackRegisteredServer, runTUI)
 }
 
 func runTrackedTUI(

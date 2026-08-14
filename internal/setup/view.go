@@ -48,6 +48,12 @@ func (m *model) body() []string {
 			"",
 			"  " + string(m.input) + "█",
 		}
+	case stepName:
+		return []string{
+			msg.SetupStepName,
+			"",
+			"  " + string(m.input) + "█",
+		}
 	case stepCommand:
 		return append([]string{msg.SetupStepCommand, ""}, m.candidateLines()...)
 	case stepCommandInput:
@@ -58,7 +64,12 @@ func (m *model) body() []string {
 			"  " + string(m.input) + "█",
 		}
 	default:
-		lines := []string{msg.SetupStepConfirm, ""}
+		lines := []string{
+			msg.SetupStepConfirm,
+			"",
+			"  " + msg.SetupServerName(m.name),
+			"",
+		}
 		for _, line := range strings.Split(strings.TrimRight(m.preview(), "\n"), "\n") {
 			lines = append(lines, "  "+line)
 		}
@@ -126,6 +137,11 @@ func (m *model) keybar() string {
 			{"Enter", msg.KeyNext},
 			{"Esc / Ctrl+C", msg.KeyAbort},
 		})
+	case stepName:
+		keys = append(keys,
+			[2]string{"Enter", msg.KeyNext},
+			[2]string{"Esc", msg.KeyBack},
+		)
 	case stepCommand:
 		keys = append(keys,
 			[2]string{"↑↓", msg.KeySelect},

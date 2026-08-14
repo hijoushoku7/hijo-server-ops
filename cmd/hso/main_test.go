@@ -73,6 +73,13 @@ func TestDispatchVersionRejectsArguments(t *testing.T) {
 	}
 }
 
+func TestDispatchSetupRejectsArguments(t *testing.T) {
+	handled, err := dispatchCommand([]string{"setup", "extra"}, &bytes.Buffer{})
+	if !handled || err == nil {
+		t.Fatalf("handled = %t, err = %v", handled, err)
+	}
+}
+
 func TestMissingConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "hso.toml")

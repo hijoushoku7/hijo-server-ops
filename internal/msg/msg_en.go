@@ -173,10 +173,11 @@ const (
 // Setup wizard screens.
 const (
 	SetupTitle            = "hijo-server-ops setup"
-	SetupStepWorkDir      = "1/3 Minecraft server directory"
-	SetupStepCommand      = "2/3 Choose the start script"
-	SetupStepCommandInput = "2/3 Start script path"
-	SetupStepConfirm      = "3/3 Create with these contents"
+	SetupStepWorkDir      = "1/4 Minecraft server directory"
+	SetupStepName         = "2/4 Server name"
+	SetupStepCommand      = "3/4 Choose the start script"
+	SetupStepCommandInput = "3/4 Start script path"
+	SetupStepConfirm      = "4/4 Create with these contents"
 	SetupManualEntry      = "enter a path directly"
 	SetupNotExecutable    = "(not executable)"
 	SetupNoCandidates     = "no start script candidates found"
@@ -190,6 +191,10 @@ func SetupTarget(path string) string {
 
 func SetupRelativeHint(dir string) string {
 	return "a path relative to " + dir + " also works"
+}
+
+func SetupServerName(name string) string {
+	return "registered as: " + name
 }
 
 // Key bar descriptions.
@@ -279,6 +284,13 @@ func ConfigPermissionFailed(err error) error {
 
 func ReplaceConfigFailed(err error) error {
 	return fmt.Errorf("replace config file: %w", err)
+}
+
+func RemoveConfigAfterRegistrationFailed(registrationErr, removeErr error) error {
+	return fmt.Errorf(
+		"failed to register the server and could not remove the newly created config: %v: %w",
+		registrationErr, removeErr,
+	)
 }
 
 // Server registry.
@@ -448,6 +460,7 @@ const (
 	ServerStopped    = "stopped"
 	ConfigNotFound   = "config not found"
 	EmptyServerList  = "No servers are registered. Run hso setup to register one."
+	StartTitle       = "Choose a server to start"
 )
 
 func ServerRunning(pid int) string {
@@ -456,6 +469,38 @@ func ServerRunning(pid int) string {
 
 func ListArgumentsNotAllowed() error {
 	return errors.New("the list subcommand does not accept arguments")
+}
+
+func NoRegisteredServers() error {
+	return errors.New(EmptyServerList)
+}
+
+func SetupArgumentsNotAllowed() error {
+	return errors.New("the setup subcommand does not accept arguments")
+}
+
+func SetupRequiresTerminal() error {
+	return errors.New("run setup from a terminal")
+}
+
+func StartArgumentsNotAllowed() error {
+	return errors.New("the start subcommand accepts at most one server name")
+}
+
+func StartRequiresTerminal() error {
+	return errors.New("run start from a terminal when omitting the server name")
+}
+
+func ServerNotRegistered(name string) error {
+	return fmt.Errorf("server is not registered: %s", name)
+}
+
+func ServerAlreadyRunning(name string, pid int) error {
+	return fmt.Errorf("server %s is already running (PID %d)", name, pid)
+}
+
+func RegisteredConfigNotFound(name, path string) error {
+	return fmt.Errorf("config file for server %s was not found: %s", name, path)
 }
 
 func VersionOutput(version, language, architecture string) string {

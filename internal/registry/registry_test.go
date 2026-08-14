@@ -38,6 +38,24 @@ func TestValidateName(t *testing.T) {
 	}
 }
 
+func TestAddRejectsCaseInsensitiveDuplicate(t *testing.T) {
+	servers := Registry{Servers: []Server{{Name: "survival", Config: "/one/hso.toml"}}}
+	if err := servers.Add(Server{Name: "Survival", Config: "/two/hso.toml"}); err == nil {
+		t.Fatal("大文字小文字だけが違う名前を追加できてはいけない")
+	}
+	if len(servers.Servers) != 1 {
+		t.Fatalf("servers = %#v", servers.Servers)
+	}
+}
+
+func TestFindIgnoresCase(t *testing.T) {
+	servers := Registry{Servers: []Server{{Name: "Survival", Config: "/srv/hso.toml"}}}
+	server, found := servers.Find("survival")
+	if !found || server.Name != "Survival" {
+		t.Fatalf("server = %#v, found = %t", server, found)
+	}
+}
+
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	writeRegistry(t, path, "[[servers]]\nname = \"survival\"\nconfig = \"/srv/hso.toml\"\ncommand = \"./run.sh\"\n")
