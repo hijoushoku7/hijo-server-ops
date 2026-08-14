@@ -112,14 +112,20 @@ func deleteFromRegistry(
 	// あるので、読み直してから消す。ロックは入れない。単一ユーザー向けの
 	// ツールで、他の書き込み経路も同じ方式のため、複雑さに見合わない。
 	// 読み直しから保存までのわずかな窓は残る。
-	targetName := server.Name
+	confirmedServer := server
 	servers, err = load()
 	if err != nil {
 		return err
 	}
-	server, found := servers.Find(targetName)
+	server, found := servers.Find(confirmedServer.Name)
 	if !found {
-		return msg.ServerNotRegistered(targetName)
+		return msg.ServerNotRegistered(confirmedServer.Name)
+	}
+	// 同じ名前でも中身が変わっていれば、ユーザーが確認していない登録を消す
+	// ことになる。確認をやり直させるより、何もせず終わって実行し直して
+	// もらうほうが単純で安全。
+	if server != confirmedServer {
+		return msg.DeleteTargetChanged(confirmedServer.Name)
 	}
 	if err := ensureStopped(server.Name, running); err != nil {
 		return err

@@ -131,6 +131,11 @@ func TestDeleteFromRegistryReloadsAfterConfirmation(t *testing.T) {
 		{name: "対象が削除済み", reloaded: registry.Registry{}, wantError: msg.ServerNotRegistered(target.Name).Error()},
 		{name: "対象が起動済み", reloaded: registry.Registry{Servers: []registry.Server{target}}, runningAfter: true, wantError: "PID 4321"},
 		{name: "別のサーバーが追加済み", reloaded: registry.Registry{Servers: []registry.Server{target, added}}, wantSaved: true, wantRemaining: []registry.Server{added}},
+		{
+			name:      "同じ名前で別の設定へ差し替え済み",
+			reloaded:  registry.Registry{Servers: []registry.Server{{Name: target.Name, Config: "/servers/other/hso.toml"}}},
+			wantError: msg.DeleteTargetChanged(target.Name).Error(),
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

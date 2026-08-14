@@ -567,6 +567,10 @@ func CannotDeleteRunningServer(name string, pid int) error {
 	return fmt.Errorf("サーバー %s は起動中です（PID %d）。先に停止してから削除してください", name, pid)
 }
 
+func DeleteTargetChanged(name string) error {
+	return fmt.Errorf("確認している間にサーバー %s の登録が変わりました。もう一度実行してください", name)
+}
+
 func ServerDeleted(name string) string {
 	return fmt.Sprintf("サーバー %s を一覧から削除しました", name)
 }
