@@ -25,12 +25,12 @@ echo "build started: $project_dir"
 "$go_command" test -tags en ./...
 
 CGO_ENABLED=0 "$go_command" build \
-	-ldflags="-s -w" \
+	-ldflags="-s -w -X main.version=dev" \
 	-o hso_ja \
 	./cmd/hso
 CGO_ENABLED=0 "$go_command" build \
 	-tags en \
-	-ldflags="-s -w" \
+	-ldflags="-s -w -X main.version=dev" \
 	-o hso_en \
 	./cmd/hso
 

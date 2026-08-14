@@ -1,10 +1,72 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
+
+func TestDispatchCommandKeepsTUIArguments(t *testing.T) {
+	for _, args := range [][]string{
+		nil,
+		{"-config", "/srv/minecraft/hso.toml"},
+		{"-help"},
+	} {
+		handled, err := dispatchCommand(args, &bytes.Buffer{})
+		if err != nil {
+			t.Fatalf("args=%q: %v", args, err)
+		}
+		if handled {
+			t.Errorf("args=%q がサブコマンドとして処理された", args)
+		}
+	}
+}
+
+func TestDispatchCommandRunsVersion(t *testing.T) {
+	previousVersion := version
+	version = "v1.2.3"
+	t.Cleanup(func() { version = previousVersion })
+
+	var output bytes.Buffer
+	handled, err := dispatchCommand([]string{"version"}, &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !handled {
+		t.Fatal("version がサブコマンドとして処理されなかった")
+	}
+	want := msg.VersionOutput("v1.2.3", msg.Lang, runtime.GOARCH) + "\n"
+	if output.String() != want {
+		t.Fatalf("output = %q, want %q", output.String(), want)
+	}
+}
+
+func TestDispatchCommandRejectsUnknownCommand(t *testing.T) {
+	handled, err := dispatchCommand([]string{"unknown"}, &bytes.Buffer{})
+	if !handled {
+		t.Fatal("未知のサブコマンドが TUI 経路へ渡された")
+	}
+	if err == nil {
+		t.Fatal("未知のサブコマンドがエラーにならなかった")
+	}
+	for _, want := range []string{"unknown", "version"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q に %q がない", err, want)
+		}
+	}
+}
+
+func TestDispatchVersionRejectsArguments(t *testing.T) {
+	handled, err := dispatchCommand([]string{"version", "extra"}, &bytes.Buffer{})
+	if !handled || err == nil {
+		t.Fatalf("handled = %t, err = %v", handled, err)
+	}
+}
 
 func TestMissingConfig(t *testing.T) {
 	dir := t.TempDir()

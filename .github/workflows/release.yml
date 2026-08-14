@@ -36,7 +36,8 @@ jobs:
               name="hso_${VERSION}_linux_${arch}_${lang}"
               mkdir -p "dist/$name"
               CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
-                $tags -trimpath -ldflags="-s -w" -o "dist/$name/hso" ./cmd/hso
+                $tags -trimpath -ldflags="-s -w -X main.version=$VERSION" \
+                -o "dist/$name/hso" ./cmd/hso
               cp hso.toml.example "dist/$name/hso.toml"
               cp README.md "dist/$name/README.md"
               tar -czf "dist/$name.tar.gz" -C dist "$name"

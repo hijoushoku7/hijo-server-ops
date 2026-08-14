@@ -97,6 +97,7 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 	sample := errors.New("boom")
 
 	messages := map[string]string{
+		"Lang":                  Lang,
 		"SectionPreferences":    SectionPreferences,
 		"SectionAdvanced":       SectionAdvanced,
 		"LabelFrame":            LabelFrame,
@@ -171,6 +172,9 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 		"ActionFailed":       ActionFailed(sample),
 		"SetupTarget":        SetupTarget("/srv/hso.toml"),
 		"SetupRelativeHint":  SetupRelativeHint("/srv"),
+		"VersionOutput":      VersionOutput("v1.2.3", "ja", "amd64"),
+		"VersionArguments":   VersionArgumentsNotAllowed().Error(),
+		"UnknownCommand":     UnknownCommand("unknown", "version").Error(),
 
 		"ErrHeapCountersUnavailable": ErrHeapCountersUnavailable.Error(),
 		"ErrRSSUnavailable":          ErrRSSUnavailable.Error(),
@@ -187,6 +191,15 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 	for name, message := range messages {
 		if strings.TrimSpace(message) == "" {
 			t.Errorf("%s が空", name)
+		}
+	}
+}
+
+func TestVersionOutputIncludesAssetProperties(t *testing.T) {
+	output := VersionOutput("v1.2.3", "test-lang", "test-arch")
+	for _, want := range []string{"v1.2.3", "test-lang", "test-arch"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("version の出力 %q に %q がない", output, want)
 		}
 	}
 }

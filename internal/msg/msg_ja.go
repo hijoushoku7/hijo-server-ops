@@ -332,6 +332,25 @@ func FindJavaFailed(err error) error {
 
 // コマンドライン。
 const (
+	Lang            = "ja"
 	ConfigFlagUsage = "設定ファイルのパス"
 	Aborted         = "中止しました"
 )
+
+func VersionOutput(version, language, architecture string) string {
+	return fmt.Sprintf(
+		"バージョン: %s\n表示言語: %s\nアーキテクチャ: %s",
+		version, language, architecture,
+	)
+}
+
+func VersionArgumentsNotAllowed() error {
+	return errors.New("version サブコマンドに引数は指定できません")
+}
+
+func UnknownCommand(command, available string) error {
+	return fmt.Errorf(
+		"未知のサブコマンドです: %s\n利用できるサブコマンド: %s",
+		command, available,
+	)
+}

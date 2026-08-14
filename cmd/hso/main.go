@@ -4,8 +4,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"runtime"
+	"strings"
 
 	"github.com/charmbracelet/x/term"
 
@@ -15,13 +18,39 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/setup"
 )
 
+var version = "dev"
+
+const availableSubcommands = "version"
+
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
 		os.Exit(process.RunSupervisor(command))
 	}
-	if err := run(); err != nil {
+
+	handled, err := dispatchCommand(os.Args[1:], os.Stdout)
+	if !handled {
+		err = run()
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "hso: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func dispatchCommand(args []string, output io.Writer) (bool, error) {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return false, nil
+	}
+
+	switch args[0] {
+	case "version":
+		if len(args) != 1 {
+			return true, msg.VersionArgumentsNotAllowed()
+		}
+		fmt.Fprintln(output, msg.VersionOutput(version, msg.Lang, runtime.GOARCH))
+		return true, nil
+	default:
+		return true, msg.UnknownCommand(args[0], availableSubcommands)
 	}
 }
 
