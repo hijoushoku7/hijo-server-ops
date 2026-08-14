@@ -374,6 +374,18 @@ func WritePIDFileFailed(err error, path string) error {
 	return fmt.Errorf("write pidfile (%s): %w", path, err)
 }
 
+func LockPIDFileFailed(err error, path string) error {
+	return fmt.Errorf("lock pidfile (%s): %w", path, err)
+}
+
+func PIDFileChangedTooOften(path string) error {
+	return fmt.Errorf("pidfile path changed repeatedly while acquiring its lock (%s)", path)
+}
+
+func MalformedPIDFile() error {
+	return errors.New("malformed pidfile")
+}
+
 func ReadPIDFileFailed(err error, path string) error {
 	return fmt.Errorf("read pidfile (%s): %w", path, err)
 }

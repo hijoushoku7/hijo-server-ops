@@ -4,6 +4,7 @@ package pidfile
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,13 +18,17 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
-const refreshInterval = time.Hour
+const (
+	refreshInterval        = time.Hour
+	maxPIDFileOpenAttempts = 3
+)
 
 var (
 	// ErrAlreadyRunning は同じサーバーの pidfile がすでに使われていることを表す。
 	ErrAlreadyRunning = msg.AlreadyRunning()
 	// ErrUnsafeDirectory は /tmp 側のディレクトリを安全と確認できなかったことを表す。
-	ErrUnsafeDirectory = msg.UnsafePIDDirectory()
+	ErrUnsafeDirectory  = msg.UnsafePIDDirectory()
+	errMalformedPIDFile = msg.MalformedPIDFile()
 )
 
 const (
@@ -31,9 +36,10 @@ const (
 	accessWrite   = 2
 )
 
-// File は実行中の hso が作った pidfile と mtime 更新処理を持つ。
+// File は実行中の hso が作った pidfile を開いたまま保持し、ロックと mtime 更新を管理する。
 type File struct {
 	path      string
+	file      *os.File
 	pid       int
 	startTime uint64
 	done      chan struct{}
@@ -52,7 +58,7 @@ func Directory() (string, error) {
 	return runtimeDirectory(os.Getenv("XDG_RUNTIME_DIR"), "/tmp", os.Getuid(), syscall.Access)
 }
 
-// Create は現在の hso の PID と起動時刻を書き、mtime の更新を始める。
+// Create は pidfile をロックして現在の hso の PID と起動時刻を書き、mtime の更新を始める。
 func Create(name string) (*File, error) {
 	directory, err := Directory()
 	if err != nil {
@@ -84,38 +90,66 @@ func createWithOpenFile(
 	}
 	path := filepath.Join(directory, name+".pid")
 	contents := fmt.Sprintf("%d %d\n", pid, stat.StartTime)
-	pidFile, err := openFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		runningPID, running, checkErr := (Checker{
-			Directory: directory,
-			ProcRoot:  procRoot,
-		}).Running(name)
-		if checkErr != nil {
-			return nil, checkErr
+	for range maxPIDFileOpenAttempts {
+		pidFile, err := openFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+		if err != nil {
+			return nil, msg.WritePIDFileFailed(err, path)
 		}
-		if running {
-			return nil, &alreadyRunningError{name: name, pid: runningPID}
+		if err := syscall.Flock(int(pidFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+				runningPID, _, readErr := readFile(pidFile)
+				_ = pidFile.Close()
+				if readErr == nil {
+					return nil, &alreadyRunningError{name: name, pid: runningPID}
+				}
+				return nil, ErrAlreadyRunning
+			}
+			_ = pidFile.Close()
+			return nil, msg.LockPIDFileFailed(err, path)
 		}
-		pidFile, err = openFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-		if errors.Is(err, os.ErrExist) {
-			return nil, ErrAlreadyRunning
-		}
-	}
-	if err != nil {
-		return nil, msg.WritePIDFileFailed(err, path)
-	}
-	if _, err := pidFile.WriteString(contents); err != nil {
-		_ = pidFile.Close()
-		return nil, msg.WritePIDFileFailed(err, path)
-	}
-	if err := pidFile.Close(); err != nil {
-		return nil, msg.WritePIDFileFailed(err, path)
-	}
 
-	file := &File{path: path, pid: pid, startTime: stat.StartTime, done: make(chan struct{})}
-	file.wait.Add(1)
-	go file.refresh(interval)
-	return file, nil
+		matches, err := pidFileMatchesPath(pidFile, path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			_ = pidFile.Close()
+			return nil, msg.ReadPIDFileFailed(err, path)
+		}
+		if err != nil || !matches {
+			_ = pidFile.Close()
+			continue
+		}
+
+		if err := pidFile.Truncate(0); err != nil {
+			_ = pidFile.Close()
+			return nil, msg.WritePIDFileFailed(err, path)
+		}
+		if _, err := pidFile.WriteString(contents); err != nil {
+			_ = pidFile.Close()
+			return nil, msg.WritePIDFileFailed(err, path)
+		}
+
+		file := &File{
+			path: path, file: pidFile, pid: pid, startTime: stat.StartTime,
+			done: make(chan struct{}),
+		}
+		file.wait.Add(1)
+		go file.refresh(interval)
+		return file, nil
+	}
+	return nil, msg.PIDFileChangedTooOften(path)
+}
+
+func pidFileMatchesPath(pidFile *os.File, path string) (bool, error) {
+	fileInfo, err := pidFile.Stat()
+	if err != nil {
+		return false, err
+	}
+	pathInfo, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	fileStat, fileOK := fileInfo.Sys().(*syscall.Stat_t)
+	pathStat, pathOK := pathInfo.Sys().(*syscall.Stat_t)
+	return fileOK && pathOK && fileStat.Dev == pathStat.Dev && fileStat.Ino == pathStat.Ino, nil
 }
 
 type alreadyRunningError struct {
@@ -140,8 +174,8 @@ func AlreadyRunningPID(err error) (int, bool) {
 	return runningErr.pid, true
 }
 
-// Close は mtime の更新を止めて pidfile を消す。実行中にファイルが消されて
-// いても hso の終了処理には影響させない。
+// Close は mtime の更新を止め、ロック中に pidfile を消してからファイルを閉じる。
+// 実行中にファイルが消されていても hso の終了処理には影響させない。
 func (f *File) Close() {
 	if f == nil {
 		return
@@ -150,6 +184,7 @@ func (f *File) Close() {
 		close(f.done)
 		f.wait.Wait()
 		_ = removeIfMatches(f.path, f.pid, f.startTime)
+		_ = f.file.Close()
 	})
 }
 
@@ -194,6 +229,10 @@ func (c Checker) Running(name string) (int, bool, error) {
 	path := filepath.Join(directory, name+".pid")
 	pid, expectedStartTime, err := read(path)
 	if errors.Is(err, os.ErrNotExist) {
+		return 0, false, nil
+	}
+	if errors.Is(err, errMalformedPIDFile) {
+		// 作成側がロックを取って書いている途中かもしれないので消さない。
 		return 0, false, nil
 	}
 	if err != nil {
@@ -274,17 +313,32 @@ func read(path string) (int, uint64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
+	return parse(contents)
+}
+
+func readFile(file *os.File) (int, uint64, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return 0, 0, err
+	}
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return 0, 0, err
+	}
+	return parse(contents)
+}
+
+func parse(contents []byte) (int, uint64, error) {
 	fields := strings.Fields(string(contents))
 	if len(fields) != 2 {
-		return 0, 0, errors.New("malformed pidfile")
+		return 0, 0, errMalformedPIDFile
 	}
 	pid, err := strconv.Atoi(fields[0])
 	if err != nil || pid <= 0 {
-		return 0, 0, errors.New("malformed pidfile PID")
+		return 0, 0, errMalformedPIDFile
 	}
 	startTime, err := strconv.ParseUint(fields[1], 10, 64)
 	if err != nil {
-		return 0, 0, errors.New("malformed pidfile start time")
+		return 0, 0, errMalformedPIDFile
 	}
 	return pid, startTime, nil
 }

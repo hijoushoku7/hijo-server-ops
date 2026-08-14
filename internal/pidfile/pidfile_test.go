@@ -1,9 +1,11 @@
 package pidfile
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -52,6 +54,39 @@ func TestRunningMatchesPIDAndStartTime(t *testing.T) {
 	pid, running, err := (Checker{Directory: directory, ProcRoot: procRoot}).Running("server")
 	if err != nil || !running || pid != 100 {
 		t.Fatalf("pid = %d, running = %t, err = %v", pid, running, err)
+	}
+}
+
+func TestRunningTreatsIncompletePIDFileAsStoppedWithoutRemovingIt(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		contents string
+	}{
+		{name: "空", contents: ""},
+		{name: "壊れた内容", contents: "123 書きかけ"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			path := filepath.Join(directory, "server.pid")
+			if err := os.WriteFile(path, []byte(test.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			pid, running, err := (Checker{
+				Directory: directory,
+				ProcRoot:  t.TempDir(),
+			}).Running("server")
+			if err != nil || running || pid != 0 {
+				t.Fatalf("pid = %d, running = %t, err = %v", pid, running, err)
+			}
+			contents, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("書きかけのpidfileが消えた: %v", err)
+			}
+			if string(contents) != test.contents {
+				t.Fatalf("contents = %q, want %q", contents, test.contents)
+			}
+		})
 	}
 }
 
@@ -160,6 +195,8 @@ func TestCreateRejectsRunningPIDFile(t *testing.T) {
 	directory := t.TempDir()
 	procRoot := t.TempDir()
 	path := writePIDFile(t, directory, "server", 100, 10)
+	lock := lockPIDFile(t, path)
+	defer lock.Close()
 	writeProcStat(t, procRoot, 100, "running hso", 10)
 	writeProcStat(t, procRoot, 123, "new hso", 456)
 
@@ -204,51 +241,227 @@ func TestCreateReplacesStalePIDFile(t *testing.T) {
 	}
 }
 
-func TestCreateRejectsSecondExclusiveCreateConflict(t *testing.T) {
+func TestCreateRejectsLockedIncompletePIDFile(t *testing.T) {
 	directory := t.TempDir()
 	procRoot := t.TempDir()
-	path := writePIDFile(t, directory, "server", 100, 10)
-	writeProcStat(t, procRoot, 100, "reused process", 20)
+	path := filepath.Join(directory, "server.pid")
+	lock := lockPIDFile(t, path)
+	defer lock.Close()
 	writeProcStat(t, procRoot, 123, "new hso", 456)
 
-	openCalls := 0
-	openFile := func(name string, flag int, permission os.FileMode) (*os.File, error) {
-		openCalls++
-		if openCalls == 2 {
-			competitor, err := os.OpenFile(name, flag, permission)
-			if err != nil {
-				return nil, err
-			}
-			if _, err := competitor.WriteString("789 1011\n"); err != nil {
-				_ = competitor.Close()
-				return nil, err
-			}
-			if err := competitor.Close(); err != nil {
-				return nil, err
-			}
-		}
-		return os.OpenFile(name, flag, permission)
-	}
-	file, err := createWithOpenFile(
-		"server", directory, procRoot, 123, time.Hour, openFile,
-	)
+	file, err := create("server", directory, procRoot, 123, time.Hour)
 	if !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("err = %v", err)
 	}
+	if _, ok := AlreadyRunningPID(err); ok {
+		t.Fatal("空のpidfileからPIDを取得した")
+	}
 	if file != nil {
 		file.Close()
-		t.Fatal("2度目の排他的作成が競合しても追跡を始めた")
+		t.Fatal("書き込み途中のpidfileがロックされていても追跡を始めた")
 	}
-	if openCalls != 2 {
-		t.Fatalf("open calls = %d, want 2", openCalls)
-	}
-	pid, startTime, err := read(path)
+	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pid != 789 || startTime != 1011 {
-		t.Fatalf("pid = %d, startTime = %d", pid, startTime)
+	if len(contents) != 0 {
+		t.Fatalf("contents = %q, want empty", contents)
 	}
+}
+
+func TestConcurrentCreateOverStalePIDFileHasOneWinner(t *testing.T) {
+	const iterations = 50
+	type result struct {
+		file *File
+		err  error
+	}
+
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	writeProcStat(t, procRoot, 123, "first hso", 456)
+	writeProcStat(t, procRoot, 789, "second hso", 1011)
+
+	for iteration := range iterations {
+		writePIDFile(t, directory, "server", 100, 10)
+		start := make(chan struct{})
+		results := make(chan result, 2)
+		for _, pid := range []int{123, 789} {
+			go func() {
+				<-start
+				file, err := create("server", directory, procRoot, pid, time.Hour)
+				results <- result{file: file, err: err}
+			}()
+		}
+		close(start)
+
+		got := []result{<-results, <-results}
+		var winner *File
+		successes := 0
+		for _, result := range got {
+			if result.err == nil {
+				successes++
+				winner = result.file
+				continue
+			}
+			if !errors.Is(result.err, ErrAlreadyRunning) {
+				t.Fatalf("iteration %d: err = %v", iteration, result.err)
+			}
+		}
+		if successes != 1 {
+			for _, result := range got {
+				if result.file != nil {
+					result.file.Close()
+				}
+			}
+			t.Fatalf("iteration %d: successes = %d, want 1", iteration, successes)
+		}
+		winner.Close()
+	}
+}
+
+func TestCreateReopensPIDFileRemovedBeforeLock(t *testing.T) {
+	type result struct {
+		file *File
+		err  error
+	}
+
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	writeProcStat(t, procRoot, 123, "first hso", 456)
+	writeProcStat(t, procRoot, 789, "second hso", 1011)
+
+	first, err := create("server", directory, procRoot, 123, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	path := filepath.Join(directory, "server.pid")
+
+	opened := make(chan struct{})
+	releaseOpen := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(releaseOpen)
+		}
+	}()
+	openCalls := 0
+	openFile := func(name string, flag int, permission os.FileMode) (*os.File, error) {
+		pidFile, err := os.OpenFile(name, flag, permission)
+		if err != nil {
+			return nil, err
+		}
+		openCalls++
+		if openCalls == 1 {
+			close(opened)
+			<-releaseOpen
+		}
+		return pidFile, nil
+	}
+	results := make(chan result, 1)
+	go func() {
+		file, err := createWithOpenFile(
+			"server", directory, procRoot, 789, time.Hour, openFile,
+		)
+		results <- result{file: file, err: err}
+	}()
+
+	select {
+	case <-opened:
+		// 2つ目の作成処理は、最初の処理がロックしている inode を開いた状態。
+	case result := <-results:
+		t.Fatalf("古いinodeを開く前にCreateが終了した: %v", result.err)
+	}
+	first.Close()
+	assertMissing(t, path)
+	close(releaseOpen)
+	released = true
+
+	second := <-results
+	if second.err != nil {
+		t.Fatalf("pidfileを開き直したCreate: %v", second.err)
+	}
+	if second.file == nil {
+		t.Fatal("pidfileを開き直した後に追跡を始めなかった")
+	}
+	defer second.file.Close()
+	if openCalls != 2 {
+		t.Fatalf("open calls = %d, want 2", openCalls)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("作成後のpidfileがパス上にない: %v", err)
+	}
+	pid, running, err := (Checker{Directory: directory, ProcRoot: procRoot}).Running("server")
+	if err != nil || !running || pid != 789 {
+		t.Fatalf("pid = %d, running = %t, err = %v", pid, running, err)
+	}
+}
+
+func TestCreateSucceedsAfterLockHolderProcessExits(t *testing.T) {
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	path := writePIDFile(t, directory, "server", 100, 10)
+	writeProcStat(t, procRoot, 123, "new hso", 456)
+
+	command := exec.Command(os.Args[0], "-test.run=^TestPIDFileLockHolderHelper$")
+	command.Env = append(os.Environ(),
+		"HSO_PIDFILE_LOCK_HELPER=1",
+		"HSO_PIDFILE_LOCK_PATH="+path,
+	)
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if command.ProcessState == nil {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	})
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil || line != "locked\n" {
+		t.Fatalf("ロック待機プロセスの準備: line = %q, err = %v", line, err)
+	}
+
+	file, err := create("server", directory, procRoot, 123, time.Hour)
+	if !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("ロック中の err = %v", err)
+	}
+	if file != nil {
+		file.Close()
+		t.Fatal("別プロセスがロック中でも追跡を始めた")
+	}
+	if err := command.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err == nil {
+		t.Fatal("ロック待機プロセスがkill後も正常終了した")
+	}
+
+	file, err = create("server", directory, procRoot, 123, time.Hour)
+	if err != nil {
+		t.Fatalf("ロック解放後のCreate: %v", err)
+	}
+	file.Close()
+}
+
+func TestPIDFileLockHolderHelper(t *testing.T) {
+	if os.Getenv("HSO_PIDFILE_LOCK_HELPER") != "1" {
+		return
+	}
+	file, err := os.OpenFile(os.Getenv("HSO_PIDFILE_LOCK_PATH"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("locked")
+	select {}
 }
 
 func TestCloseDoesNotFailAfterPIDFileWasRemoved(t *testing.T) {
@@ -372,6 +585,19 @@ func writeProcStat(t *testing.T, procRoot string, pid int, command string, start
 	if err := os.WriteFile(filepath.Join(directory, "stat"), []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func lockPIDFile(t *testing.T, path string) *os.File {
+	t.Helper()
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	return file
 }
 
 func assertMissing(t *testing.T, path string) {

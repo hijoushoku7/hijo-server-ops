@@ -372,6 +372,18 @@ func WritePIDFileFailed(err error, path string) error {
 	return fmt.Errorf("pidfileを書く (%s): %w", path, err)
 }
 
+func LockPIDFileFailed(err error, path string) error {
+	return fmt.Errorf("pidfileをロックする (%s): %w", path, err)
+}
+
+func PIDFileChangedTooOften(path string) error {
+	return fmt.Errorf("pidfileのパスがロック取得中に繰り返し変更されました (%s)", path)
+}
+
+func MalformedPIDFile() error {
+	return errors.New("pidfileの内容が壊れています")
+}
+
 func ReadPIDFileFailed(err error, path string) error {
 	return fmt.Errorf("pidfileを読む (%s): %w", path, err)
 }
