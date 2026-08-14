@@ -165,3 +165,39 @@ func TestLoadJavaUpdateErrorHidesTemporaryPath(t *testing.T) {
 		t.Errorf("error leaked temporary path: %q", err)
 	}
 }
+
+// server = { ... } の形は hso が生成しないので書き換えに対応しない。ただし
+// 意味の分かるエラーで断り、元のファイルは触らないこと。
+func TestSetJavaRejectsInlineServerTable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hso.toml")
+	if err := os.WriteFile(filepath.Join(dir, "run.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "server = { command = \"./run.sh\", java = \"/missing/jdk-17\" }\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(dir, "jvm")
+	if err := os.MkdirAll(filepath.Join(home, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "bin", "java"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := SetJava(path, home)
+	if err == nil {
+		t.Fatal("インラインテーブルを黙って書き換えた")
+	}
+	if strings.Contains(err.Error(), "already been defined") {
+		t.Fatalf("TOML の内部エラーがそのまま出ている: %v", err)
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(after) != body {
+		t.Fatalf("元のファイルが変わった:\n%s", after)
+	}
+}

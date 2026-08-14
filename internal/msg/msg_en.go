@@ -246,6 +246,14 @@ func JavaHomeInvalid(err error) error {
 	return fmt.Errorf("server.java is not a valid JAVA_HOME: %w", err)
 }
 
+// JavaInlineTableUnsupported は server = { ... } 形式の設定を断る。この形は
+// hso が生成しないので、書き換えに対応するより手で直してもらう方が安全。
+func JavaInlineTableUnsupported() error {
+	return errors.New(
+		"hso java change cannot edit a config written as server = { ... }. " +
+			"Add java = \"path to JAVA_HOME\" under [server] in hso.toml instead")
+}
+
 func JavaHomeReplaced(configured, actual string) string {
 	return fmt.Sprintf("The configured Java (%s) is unavailable; using %s found by rescanning. Run hso java change to choose Java again.", configured, actual)
 }

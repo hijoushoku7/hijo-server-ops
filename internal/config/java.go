@@ -90,12 +90,19 @@ type tomlLine struct {
 func replaceJava(data []byte, javaHome string) ([]byte, error) {
 	lines, newline := scanTOMLLines(data)
 	serverStart, serverEnd := -1, len(data)
+	// server = { ... } のインラインテーブルは書き換えの対象にしない。中身へ
+	// 踏み込むと、この関数だけが持つ「ユーザーの設定を壊しうる」経路が増える。
+	// hso が生成するのは常に [server] 形式なので、断って手で直してもらう。
+	inlineServer := false
 	for i := range lines {
 		line := lines[i]
 		if (len(line.table) == 0 && equalKey(line.key, "server", "java")) ||
 			(equalKey(line.table, "server") && equalKey(line.key, "java")) {
 			valueStart, valueEnd := assignmentValueBounds(data, line.equal+1, line.assignmentEnd)
 			return splice(data, valueStart, valueEnd, quote(javaHome)), nil
+		}
+		if len(line.table) == 0 && equalKey(line.key, "server") {
+			inlineServer = true
 		}
 		if line.header && equalKey(line.table, "server") {
 			serverStart = line.end
@@ -107,6 +114,9 @@ func replaceJava(data []byte, javaHome string) ([]byte, error) {
 				}
 			}
 		}
+	}
+	if serverStart < 0 && inlineServer {
+		return nil, msg.JavaInlineTableUnsupported()
 	}
 	entry := "java = " + quote(javaHome)
 	if serverStart >= 0 {
