@@ -65,8 +65,8 @@ func TestTemporaryDirectoryRejectsSymlink(t *testing.T) {
 	if err := os.Symlink(target, path); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateTemporaryDirectory(path, os.Getuid()); err == nil {
-		t.Fatal("シンボリックリンクが許可された")
+	if err := validateTemporaryDirectory(path, os.Getuid()); !errors.Is(err, ErrUnsafeDirectory) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -75,8 +75,8 @@ func TestTemporaryDirectoryRejectsWrongOwner(t *testing.T) {
 	if err := os.Chmod(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateTemporaryDirectory(path, os.Getuid()+1); err == nil {
-		t.Fatal("所有者の違うディレクトリが許可された")
+	if err := validateTemporaryDirectory(path, os.Getuid()+1); !errors.Is(err, ErrUnsafeDirectory) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -85,8 +85,24 @@ func TestTemporaryDirectoryRejectsWrongMode(t *testing.T) {
 	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateTemporaryDirectory(path, os.Getuid()); err == nil {
-		t.Fatal("0700 でないディレクトリが許可された")
+	if err := validateTemporaryDirectory(path, os.Getuid()); !errors.Is(err, ErrUnsafeDirectory) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRuntimeDirectoryRejectsUnsafeTemporaryDirectory(t *testing.T) {
+	temporaryRoot := t.TempDir()
+	directory := filepath.Join(temporaryRoot, "hso-"+strconv.Itoa(os.Getuid()))
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runtimeDirectory("", temporaryRoot, os.Getuid(),
+		func(string, uint32) error { return nil })
+	if !errors.Is(err, ErrUnsafeDirectory) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -155,6 +171,52 @@ func TestCloseDoesNotFailAfterPIDFileWasRemoved(t *testing.T) {
 	// 終了処理がそのエラーを hso の動作へ返さないことを確かめる。
 	time.Sleep(5 * time.Millisecond)
 	file.Close()
+}
+
+func TestCloseDoesNotRemoveReplacedPIDFile(t *testing.T) {
+	directory := t.TempDir()
+	procRoot := t.TempDir()
+	writeProcStat(t, procRoot, 123, "hso", 456)
+	file, err := create("server", directory, procRoot, 123, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writePIDFile(t, directory, "server", 789, 1011)
+	file.Close()
+	pid, startTime, err := read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pid != 789 || startTime != 1011 {
+		t.Fatalf("pid = %d, startTime = %d", pid, startTime)
+	}
+}
+
+func TestStaleRemovesOnlyMatchingPIDFile(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		currentPID       int
+		currentStartTime uint64
+		removed          bool
+	}{
+		{name: "自分の内容", currentPID: 123, currentStartTime: 456, removed: true},
+		{name: "別プロセスの内容", currentPID: 789, currentStartTime: 1011, removed: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			path := writePIDFile(t, directory, "server", test.currentPID, test.currentStartTime)
+			if _, _, err := stale(path, 123, 456); err != nil {
+				t.Fatal(err)
+			}
+			_, err := os.Stat(path)
+			if test.removed && !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("一致するpidfileが残った: %v", err)
+			}
+			if !test.removed && err != nil {
+				t.Fatalf("別プロセスのpidfileが消えた: %v", err)
+			}
+		})
+	}
 }
 
 func TestCreateRefreshesModificationTime(t *testing.T) {

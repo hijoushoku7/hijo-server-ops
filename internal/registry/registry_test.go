@@ -122,6 +122,7 @@ func TestSaveRenameFailureKeepsOriginal(t *testing.T) {
 	}
 	wantErr := errors.New("rename failed")
 	err := save(path, Registry{Servers: []Server{{Name: "new", Config: "/new/hso.toml"}}},
+		os.WriteFile,
 		func(string, string) error { return wantErr })
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v", err)
@@ -135,6 +136,25 @@ func TestSaveRenameFailureKeepsOriginal(t *testing.T) {
 	}
 	if _, err := os.Stat(path + ".tmp"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("失敗後に一時ファイルが残った: %v", err)
+	}
+}
+
+func TestSaveWriteFailureRemovesTemporaryFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	wantErr := errors.New("write failed")
+	writeFile := func(path string, _ []byte, permission os.FileMode) error {
+		if err := os.WriteFile(path, []byte("incomplete"), permission); err != nil {
+			t.Fatal(err)
+		}
+		return wantErr
+	}
+	err := save(path, Registry{Servers: []Server{{Name: "server", Config: "/srv/hso.toml"}}},
+		writeFile, os.Rename)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(path + ".tmp"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("書き込み失敗後に一時ファイルが残った: %v", err)
 	}
 }
 

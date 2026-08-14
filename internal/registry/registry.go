@@ -75,10 +75,15 @@ func Load(path string) (Registry, error) {
 
 // Save はサーバー一覧を一時ファイルへ書いてから置き換える。
 func Save(path string, registry Registry) error {
-	return save(path, registry, os.Rename)
+	return save(path, registry, os.WriteFile, os.Rename)
 }
 
-func save(path string, registry Registry, rename func(string, string) error) error {
+func save(
+	path string,
+	registry Registry,
+	writeFile func(string, []byte, os.FileMode) error,
+	rename func(string, string) error,
+) error {
 	if err := validate(registry); err != nil {
 		return err
 	}
@@ -92,7 +97,8 @@ func save(path string, registry Registry, rename func(string, string) error) err
 
 	permission := permissionOf(path)
 	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, []byte(contents.String()), permission); err != nil {
+	if err := writeFile(temporary, []byte(contents.String()), permission); err != nil {
+		_ = os.Remove(temporary)
 		return msg.WriteRegistryFailed(err)
 	}
 	if err := os.Chmod(temporary, permission); err != nil {

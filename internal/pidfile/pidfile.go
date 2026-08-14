@@ -19,6 +19,13 @@ import (
 
 const refreshInterval = time.Hour
 
+var (
+	// ErrCreateFailed は pidfile の作成処理で起きたエラーを表す。
+	ErrCreateFailed = msg.PIDFileCreationFailed()
+	// ErrUnsafeDirectory は /tmp 側のディレクトリを安全と確認できなかったことを表す。
+	ErrUnsafeDirectory = msg.UnsafePIDDirectory()
+)
+
 const (
 	accessExecute = 1
 	accessWrite   = 2
@@ -26,10 +33,12 @@ const (
 
 // File は実行中の hso が作った pidfile と mtime 更新処理を持つ。
 type File struct {
-	path string
-	done chan struct{}
-	once sync.Once
-	wait sync.WaitGroup
+	path      string
+	pid       int
+	startTime uint64
+	done      chan struct{}
+	once      sync.Once
+	wait      sync.WaitGroup
 }
 
 // Checker は pidfile と /proc を照合する。空の項目には通常の場所を使う。
@@ -47,9 +56,13 @@ func Directory() (string, error) {
 func Create(name string) (*File, error) {
 	directory, err := Directory()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
 	}
-	return create(name, directory, "/proc", os.Getpid(), refreshInterval)
+	file, err := create(name, directory, "/proc", os.Getpid(), refreshInterval)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCreateFailed, err)
+	}
+	return file, nil
 }
 
 func create(name, directory, procRoot string, pid int, interval time.Duration) (*File, error) {
@@ -66,7 +79,7 @@ func create(name, directory, procRoot string, pid int, interval time.Duration) (
 		return nil, msg.WritePIDFileFailed(err, path)
 	}
 
-	file := &File{path: path, done: make(chan struct{})}
+	file := &File{path: path, pid: pid, startTime: stat.StartTime, done: make(chan struct{})}
 	file.wait.Add(1)
 	go file.refresh(interval)
 	return file, nil
@@ -81,7 +94,7 @@ func (f *File) Close() {
 	f.once.Do(func() {
 		close(f.done)
 		f.wait.Wait()
-		_ = os.Remove(f.path)
+		_ = removeIfMatches(f.path, f.pid, f.startTime)
 	})
 }
 
@@ -134,19 +147,19 @@ func (c Checker) Running(name string) (int, bool, error) {
 
 	procDirectory := filepath.Join(procRoot, strconv.Itoa(pid))
 	if _, err := os.Stat(procDirectory); errors.Is(err, os.ErrNotExist) {
-		return stale(path)
+		return stale(path, pid, expectedStartTime)
 	} else if err != nil {
 		return 0, false, msg.CheckProcessFailed(err, pid)
 	}
 	stat, err := readProcStat(procRoot, pid)
 	if errors.Is(err, os.ErrNotExist) {
-		return stale(path)
+		return stale(path, pid, expectedStartTime)
 	}
 	if err != nil {
 		return 0, false, msg.CheckProcessFailed(err, pid)
 	}
 	if stat.StartTime != expectedStartTime {
-		return stale(path)
+		return stale(path, pid, expectedStartTime)
 	}
 	return pid, true, nil
 }
@@ -181,20 +194,22 @@ func runtimeDirectory(
 func validateTemporaryDirectory(path string, uid int) error {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return msg.CheckPIDDirectoryFailed(err)
+		return fmt.Errorf("%w: %w", ErrUnsafeDirectory, msg.CheckPIDDirectoryFailed(err))
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return msg.PIDDirectoryIsSymlink(path)
+		return fmt.Errorf("%w: %w", ErrUnsafeDirectory, msg.PIDDirectoryIsSymlink(path))
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return msg.CheckPIDDirectoryFailed(errors.New("file stat has no syscall.Stat_t"))
+		return fmt.Errorf("%w: %w", ErrUnsafeDirectory,
+			msg.CheckPIDDirectoryFailed(errors.New("file stat has no syscall.Stat_t")))
 	}
 	if stat.Uid != uint32(uid) {
-		return msg.PIDDirectoryWrongOwner(path)
+		return fmt.Errorf("%w: %w", ErrUnsafeDirectory, msg.PIDDirectoryWrongOwner(path))
 	}
 	if info.Mode().Perm() != 0o700 {
-		return msg.PIDDirectoryWrongMode(path, uint32(info.Mode().Perm()))
+		return fmt.Errorf("%w: %w", ErrUnsafeDirectory,
+			msg.PIDDirectoryWrongMode(path, uint32(info.Mode().Perm())))
 	}
 	return nil
 }
@@ -227,9 +242,20 @@ func readProcStat(procRoot string, pid int) (procstat.Stat, error) {
 	return procstat.Parse(contents)
 }
 
-func stale(path string) (int, bool, error) {
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+func stale(path string, pid int, startTime uint64) (int, bool, error) {
+	if err := removeIfMatches(path, pid, startTime); err != nil {
 		return 0, false, msg.RemoveStalePIDFileFailed(err, path)
 	}
 	return 0, false, nil
+}
+
+func removeIfMatches(path string, pid int, startTime uint64) error {
+	currentPID, currentStartTime, err := read(path)
+	if err != nil || currentPID != pid || currentStartTime != startTime {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }

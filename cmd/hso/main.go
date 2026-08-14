@@ -14,6 +14,7 @@ import (
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/pidfile"
 	"github.com/hijoushoku7/hijo-server-ops/internal/process"
 	"github.com/hijoushoku7/hijo-server-ops/internal/setup"
 )
@@ -81,14 +82,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	tracking, trackingErr := trackRegisteredServer(*configPath)
+	return runTrackedTUI(*configPath, cfg, trackRegisteredServer, runTUI)
+}
+
+func runTrackedTUI(
+	configPath string,
+	cfg config.Config,
+	track func(string) (*pidfile.File, error),
+	launch func(string, config.Config) error,
+) error {
+	tracking, trackingErr := track(configPath)
 	if trackingErr != nil {
+		if errors.Is(trackingErr, pidfile.ErrUnsafeDirectory) ||
+			!errors.Is(trackingErr, pidfile.ErrCreateFailed) {
+			return trackingErr
+		}
 		fmt.Fprintln(os.Stderr, "hso: "+msg.PIDFileWarning(trackingErr))
 	}
 	if tracking != nil {
 		defer tracking.Close()
 	}
-	return runTUI(*configPath, cfg)
+	return launch(configPath, cfg)
 }
 
 func missingConfig(path string) bool {

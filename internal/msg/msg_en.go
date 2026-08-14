@@ -326,6 +326,14 @@ func ReplaceRegistryFailed(err error) error {
 }
 
 // pidfile.
+func PIDFileCreationFailed() error {
+	return errors.New("failed to create pidfile")
+}
+
+func UnsafePIDDirectory() error {
+	return errors.New("could not verify pidfile directory safety")
+}
+
 func CreatePIDDirectoryFailed(err error) error {
 	return fmt.Errorf("create pidfile directory: %w", err)
 }
