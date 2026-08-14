@@ -54,6 +54,15 @@ cd hso_v0.1.1_linux_amd64_ja
 
 arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを選んでください。
 
+## Java の切り替えと確認
+
+```bash
+hso java change [name]
+hso java list
+```
+
+`change` は登録済みサーバーが使う Java を、`/usr/lib/jvm` から自動検出した候補から選んで `hso.toml` に保存します。サーバーが起動中でも変更でき、反映は次回起動からです。`list` は検出した JVM と、それぞれを使う登録済みサーバーを表示します。SDKMAN、asdf、`/opt` などの Java は自動検出されないため、使う場合は `hso.toml` の `[server] java` に JAVA_HOME の絶対パスを指定してください。
+
 ## 更新
 
 ```bash

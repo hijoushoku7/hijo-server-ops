@@ -644,3 +644,42 @@ func UnknownCommand(command, available string) error {
 		command, available,
 	)
 }
+
+// Java コマンド。
+const (
+	JavaCommandHelp = `Java configuration and status:
+  hso java change [name]  Change the Java used by a server
+  hso java list           Show detected Java installations and servers using them`
+	JavaChangeTitle       = "Choose the Java used by the server"
+	JavaCurrentMark       = "(current setting)"
+	JavaRunningNotice     = "The server is running. This change takes effect the next time it starts."
+	JavaDetectionNote     = "Automatic detection only scans /usr/lib/jvm.\nJava installations managed by SDKMAN or asdf, or installed under /opt, are not shown.\nTo use one, set [server] java in hso.toml to the absolute JAVA_HOME path."
+	JavaNotFound          = "No Java installation was found under /usr/lib/jvm."
+	JavaHeader            = "JAVA"
+	JavaImplementorHeader = "IMPLEMENTOR"
+	JavaHomeHeader        = "JAVA_HOME"
+	JavaServersHeader     = "SERVERS"
+)
+
+func JavaChangeArgumentsNotAllowed() error {
+	return errors.New("java change accepts at most one server name")
+}
+func JavaListArgumentsNotAllowed() error { return errors.New("java list does not accept arguments") }
+func UnknownJavaCommand(command string) error {
+	return fmt.Errorf("unknown java subcommand: %s\navailable java subcommands: change, list", command)
+}
+func JavaChangeRequiresTerminal() error { return errors.New("run java change from a terminal") }
+func JavaScanFailed(err error) error    { return fmt.Errorf("scan /usr/lib/jvm: %w", err) }
+func JavaChanged(name, home string) string {
+	return fmt.Sprintf("Changed the Java used by server %s: %s", name, home)
+}
+func JavaConfigWarning(name string, err error) string {
+	return fmt.Sprintf("warning: server %s was not associated with Java because its config could not be read: %v", name, err)
+}
+func JavaNotConfiguredWarning(name string) string {
+	return fmt.Sprintf("warning: server %s was not associated with Java because it has no Java setting", name)
+}
+func JavaConfiguredNotDetectedWarning(name, home string) string {
+	return fmt.Sprintf("warning: server %s was not associated with the list because its configured Java was not detected: %s", name, home)
+}
+func WriteJavaListFailed(err error) error { return fmt.Errorf("write the Java list: %w", err) }

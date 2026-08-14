@@ -58,3 +58,21 @@ func TestConfiguredMajor(t *testing.T) {
 		}
 	}
 }
+
+func TestConfiguredMajorCommonDirectoryNames(t *testing.T) {
+	tests := map[string]int{
+		"/usr/lib/jvm/temurin-21-jre-amd64":      21,
+		"/usr/lib/jvm/java-1.21.0-openjdk-amd64": 21,
+		"/usr/lib/jvm/java-21-openjdk-amd64":     21,
+		"/opt/jdk-21.0.4":                        21,
+		"/usr/lib/jvm/java-8-openjdk-amd64":      8,
+	}
+	for path, want := range tests {
+		if got, ok := configuredMajor(path); !ok || got != want {
+			t.Errorf("configuredMajor(%q) = %d, %v; want %d, true", path, got, ok, want)
+		}
+	}
+	if got, ok := configuredMajor("/opt/vendor-runtime"); ok {
+		t.Errorf("configuredMajor() = %d, true; want 0, false", got)
+	}
+}

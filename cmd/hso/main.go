@@ -20,7 +20,7 @@ import (
 
 var version = "dev"
 
-const availableSubcommands = "setup, start, list (ls), version, update, uninstall"
+const availableSubcommands = "setup, start, list (ls), java, version, update, uninstall"
 
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
@@ -57,6 +57,8 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 			name = args[1]
 		}
 		return true, runStart(name)
+	case "java":
+		return true, runJava(args[1:], output, os.Stderr, interactive())
 	case "version":
 		if len(args) != 1 {
 			return true, msg.VersionArgumentsNotAllowed()

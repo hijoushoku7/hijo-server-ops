@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // ResolutionKind は設定した Java を起動時にどう扱うかを表す。
@@ -23,7 +24,7 @@ type Resolution struct {
 	Home       string
 }
 
-var javaHomeMajorPattern = regexp.MustCompile(`(?i)(java|jdk)[-_]?([0-9]+)`)
+var javaHomeMajorPattern = regexp.MustCompile(`(?i)(?:temurin|java|jdk)[-_]?([0-9]+(?:\.[0-9]+)?)`)
 
 // Resolve は設定値を検査し、使えなければ root を再走査して同世代の JVM を探す。
 // 設定や走査に問題があってもエラーにはせず、Java を注入しない結果を返す。
@@ -55,9 +56,15 @@ func configuredMajor(path string) (int, bool) {
 		path = home
 	}
 	match := javaHomeMajorPattern.FindStringSubmatch(filepath.Base(filepath.Clean(path)))
-	if len(match) != 3 {
+	if len(match) != 2 {
 		return 0, false
 	}
-	major, err := strconv.Atoi(match[2])
+	version := match[1]
+	first, rest, dotted := strings.Cut(version, ".")
+	version = first
+	if first == "1" && dotted {
+		version, _, _ = strings.Cut(rest, ".")
+	}
+	major, err := strconv.Atoi(version)
 	return major, err == nil && major > 0
 }
