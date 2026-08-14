@@ -39,7 +39,12 @@ jobs:
                 $tags -trimpath -ldflags="-s -w -X main.version=$VERSION" \
                 -o "dist/$name/hso" ./cmd/hso
               cp hso.toml.example "dist/$name/hso.toml"
-              cp README.md "dist/$name/README.md"
+              # README は表示言語に合わせる。英語版が README.md。
+              if [ "$lang" = "ja" ]; then
+                cp README.ja.md "dist/$name/README.md"
+              else
+                cp README.md "dist/$name/README.md"
+              fi
               tar -czf "dist/$name.tar.gz" -C dist "$name"
               rm -rf "dist/$name"
             done
