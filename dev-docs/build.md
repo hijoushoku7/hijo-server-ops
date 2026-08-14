@@ -4,18 +4,18 @@
 
 ## Goの導入
 
-ここでは Go 1.25.12 をユーザー領域へインストールする。管理者権限は不要。
+ここでは Go 1.25.13 をユーザー領域へインストールする。管理者権限は不要。
 
 ### amd64
 
 ```bash
-curl -fsSLo /tmp/go1.25.12.linux-amd64.tar.gz \
-  https://go.dev/dl/go1.25.12.linux-amd64.tar.gz
+curl -fsSLo /tmp/go1.25.13.linux-amd64.tar.gz \
+  https://go.dev/dl/go1.25.13.linux-amd64.tar.gz
 
-mkdir -p "$HOME/.local/share/go-1.25.12"
+mkdir -p "$HOME/.local/share/go-1.25.13"
 
-tar -xzf /tmp/go1.25.12.linux-amd64.tar.gz \
-  -C "$HOME/.local/share/go-1.25.12" \
+tar -xzf /tmp/go1.25.13.linux-amd64.tar.gz \
+  -C "$HOME/.local/share/go-1.25.13" \
   --strip-components=1
 ```
 
@@ -25,7 +25,7 @@ arm64環境では、ファイル名とURLの`linux-amd64`を`linux-arm64`へ
 現在のシェルでGoを使えるようにする。
 
 ```bash
-export PATH="$HOME/.local/share/go-1.25.12/bin:$PATH"
+export PATH="$HOME/.local/share/go-1.25.13/bin:$PATH"
 ```
 
 `export`は現在のシェルにしか反映されない。ログイン後も有効にする場合は、
@@ -40,13 +40,13 @@ go version
 次のように表示されれば導入完了。
 
 ```text
-go version go1.25.12 linux/amd64
+go version go1.25.13 linux/amd64
 ```
 
 ダウンロードしたアーカイブが不要になったら削除できる。
 
 ```bash
-rm /tmp/go1.25.12.linux-amd64.tar.gz
+rm /tmp/go1.25.13.linux-amd64.tar.gz
 ```
 
 ## hsoのビルド
@@ -65,7 +65,7 @@ cd /path/to/hijo-server-ops
 
 スクリプトは次の処理を順番に実行する。
 
-1. PATHまたは`$HOME/.local/share/go-1.25.12/bin/go`からGoを検出
+1. PATHまたは`$HOME/.local/share/go-1.25.13/bin/go`からGoを検出
 2. `go test ./...`と`go test -tags en ./...`で両言語のテストを実行
 3. `CGO_ENABLED=0`でLinux向けの静的バイナリを2本ビルド
 4. `go version -m ./hso_ja`でビルド情報を表示
