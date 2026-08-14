@@ -1,4 +1,4 @@
-<img src="https://img.shields.io/badge/Go-1.25.12-00ADD8?logo=go&logoColor=white"> <img src="https://img.shields.io/badge/platform-Linux-333">
+<img src="https://img.shields.io/badge/Go-1.25.13-00ADD8?logo=go&logoColor=white"> <img src="https://img.shields.io/badge/platform-Linux-333">
 
 ![hijo Server Ops](hso-animation.gif)
 
