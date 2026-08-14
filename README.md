@@ -1,97 +1,99 @@
 <img src="https://img.shields.io/badge/Go-1.25.13-00ADD8?logo=go&logoColor=white"> <img src="https://img.shields.io/badge/platform-Linux-333">
 
+English | [日本語](README.ja.md)
+
 ![hijo Server Ops](hso-animation.gif)
 
 ## hijo Server Ops
 
-Linux で使える Minecraft サーバー用の TUI 画面ソフトウェアです。サーバーのラッパーとして動くので、いま使っている起動スクリプトはそのままで構いません。
-Vanilla,Spigot,Paper,Forge,NeoForge,Fabricなど様々な環境で動作します。
+A TUI console for Minecraft servers on Linux. It runs as a wrapper around your server, so the start script you already use stays as it is.
+Works with Vanilla, Spigot, Paper, Forge, NeoForge, Fabric and other setups.
 
-## クイックスタート
+## Quick start
 
-### システムにインストールする（推奨）
+### Install system-wide (recommended)
 
-`/usr/local/bin` に入ります。全ユーザーが使えて、PATH の設定は要りません。日本語版を入れるには次を実行します。
+Installs into `/usr/local/bin`. Every user can run it, and no PATH setup is needed.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --system --lang ja
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --system
 ```
 
-`sudo` はパイプに付けないでください。スクリプトは一般ユーザーの権限でダウンロードと検証を行い、`/usr/local/bin` へ置く最後の処理だけ `sudo` を使います。
+Do not put `sudo` in front of the pipe. The script downloads and verifies as your normal user, and only the final move into `/usr/local/bin` uses `sudo`.
 
-### 自分のホームにインストールする
+### Install into your home directory
 
-root 権限が無い、または使いたくない場合は `~/.local/bin` に入れます。
+If you have no root privileges, or would rather not use them, install into `~/.local/bin`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --lang ja
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh
 ```
 
-`~/.local/bin` が PATH に無い環境では、インストール後に追記する 1 行が表示されます。
+If `~/.local/bin` is not on your PATH, the installer prints the single line to add.
 
-表示は既定で英語です。上記の `--lang ja` を外すと英語版が入り、環境変数を使う場合は `curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | env HSO_LANG=ja sh -s -- --system` のように指定できます。フラグの指定は環境変数より優先されます。
+The interface is English by default. Add `--lang ja` to the commands above for the Japanese build, or use the environment variable: `curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | env HSO_LANG=ja sh -s -- --system`. The flag takes precedence over the environment variable.
 
-インストール後に `hso` を実行すると、初回は設定ウィザードが開きます。サーバーのディレクトリを入力し、起動スクリプトを一覧から選ぶだけで、そのままサーバーが立ち上がります。hso 本体は `sudo` で実行しないでください。
+Run `hso` after installing and the setup wizard opens on the first run. Enter your server directory, pick the start script from the list, and the server comes up right away. Do not run hso itself with `sudo`.
 
-## 機能
+## Features
 
-- Heap（Java が確保したメモリ）と RSS（実際の使用メモリ）を別々に表示。その差分も出すので、`-Xmx` を積んだのにメモリ不足になるなどの原因が見える
-- メモリ推移のグラフと GC の統計
-- プレイヤー一覧から選んでコマンドを実行
-- ログからチャットだけを抜き出して表示
+- Heap (memory Java reserved) and RSS (memory actually used) shown separately, along with the gap between them, so you can see why the server runs out of memory even though you raised `-Xmx`
+- Memory graph over time and GC statistics
+- Pick a player from the list and run a command against them
+- Chat pulled out of the log and shown on its own
 
-サーバー側にプラグインや MOD を入れる必要はありません。
+No plugin or mod has to be installed on the server side.
 
-## 手動インストール
+## Manual install
 
-[Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) から環境に合うアーカイブを取得して展開します。
+Download the archive matching your environment from [Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) and extract it.
 
 ```bash
-tar xzf hso_v0.1.1_linux_amd64_ja.tar.gz
-cd hso_v0.1.1_linux_amd64_ja
+tar xzf hso_v0.1.1_linux_amd64_en.tar.gz
+cd hso_v0.1.1_linux_amd64_en
 ./hso
 ```
 
-arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを選んでください。
+Pick `arm64` for arm64 machines, and the `_ja` archive if you want the Japanese interface.
 
-## 更新
+## Update
 
 ```bash
 hso update
 ```
 
-最新リリースから、いま動いているものと同じアーキテクチャ・同じ表示言語のバイナリを取得し、SHA-256 で照合してから自分自身を置き換えます。すでに最新なら何もしません。
+Fetches the binary for the same architecture and same interface language as the one currently running from the latest release, verifies it with SHA-256, then replaces itself. If it is already up to date, nothing happens.
 
-`/usr/local/bin` に入れている場合は、**置き換えの一手だけ** `sudo` / `doas` でパスワードを聞かれます。`sudo hso update` と打つ必要はありません（取得も展開も root で走ってしまいます）。`~/.local/bin` なら昇格なしで通ります。
+If it lives in `/usr/local/bin`, `sudo` / `doas` asks for your password **for the replacement step only**. There is no need to type `sudo hso update` (that would run the download and the extraction as root as well). In `~/.local/bin` it goes through without any elevation.
 
-## アンインストール
+## Uninstall
 
 ```bash
 hso uninstall
 ```
 
-削除するパスを表示して確認を取ってから、いま動いているバイナリを削除します。サーバー一覧は残り、サーバーディレクトリ内の `hso.toml` やワールドには触れません。確認を省略するには `-y` / `--yes` を付けます。
+Prints the paths to be removed, asks for confirmation, and then deletes the binary that is currently running. The server list is kept, and `hso.toml` and the worlds inside your server directory are left alone. Add `-y` / `--yes` to skip the confirmation.
 
-`/usr/local/bin` に入れているバイナリだけを削除する場合は、`sudo hso uninstall` を実行します。アンインストール自身が `sudo` / `doas` を起動することはありません。
+To remove only the binary installed in `/usr/local/bin`, run `sudo hso uninstall`. The uninstall never invokes `sudo` / `doas` by itself.
 
-サーバー一覧と pidfile も消す場合は、**sudo を付けずに**実行します。
+To remove the server list and the pidfile as well, run it **without sudo**.
 
 ```bash
 hso uninstall --purge
 ```
 
-`/usr/local/bin` に入れている場合は、先に通常ユーザーで設定を消し、残ったバイナリを root で削除します。
+If it is installed in `/usr/local/bin`, delete the configuration as your normal user first, then remove the leftover binary as root.
 
 ```bash
 hso uninstall --purge
 sudo hso uninstall
 ```
 
-バイナリが壊れて `uninstall` を実行できない場合は、手動で削除できます。
-`HSO_INSTALL_DIR` を指定していた場合は、1 行目をそのディレクトリ内の `hso` に読み替えてください。
+If the binary is broken and `uninstall` cannot run, you can remove everything by hand.
+If you set `HSO_INSTALL_DIR`, read the first line as the `hso` inside that directory.
 
 ```bash
-rm "$HOME/.local/bin/hso"                 # または sudo rm /usr/local/bin/hso
+rm "$HOME/.local/bin/hso"                 # or sudo rm /usr/local/bin/hso
 rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/hso"
 if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
   rm -rf "$XDG_RUNTIME_DIR/hso"
@@ -100,14 +102,16 @@ else
 fi
 ```
 
-pidfile は再起動でも消えます。
+The pidfile also goes away on reboot.
 
-## ドキュメント
+## Documentation
 
-- [ビルド手順](dev-docs/build.md)
-- [仕様・技術調査](dev-docs/spec.md)
+Written in Japanese.
 
-## 作者
+- [Build instructions](dev-docs/build.md)
+- [Specification and technical notes](dev-docs/spec.md)
+
+## Author
 
 hijoushoku https://github.com/hijoushoku7
 A Student Engineer from Japan🗾
