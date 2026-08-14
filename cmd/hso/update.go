@@ -224,10 +224,7 @@ func extractBinary(archivePath, destination, member string) error {
 }
 
 func replacementPrivilege(target string) (string, error) {
-	directory := filepath.Dir(target)
-	// access(2) の W_OK と X_OK。syscall はこの定数を公開していない。
-	const writeAndSearch = 2 | 1
-	if syscall.Access(directory, writeAndSearch) == nil {
+	if targetDirectoryAccess(target) == nil {
 		return "", nil
 	}
 	if os.Geteuid() == 0 {
