@@ -412,7 +412,7 @@ func TestModelNormalExitCountdownQuitsAfterDeadline(t *testing.T) {
 
 func TestModelExitModalKeysAndStoppedMode(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, nil, 1, DefaultSettings())
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
 	model.resize(80, 24)
 	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
 
@@ -491,7 +491,7 @@ func TestModelServerStartedClearsExitAndUpdatesRestartTracker(t *testing.T) {
 
 func TestModelSendsBoundedCommandInput(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, nil, 0, DefaultSettings())
+	model := New(actions, nil, 0, DefaultSettings(), ServerInfo{})
 
 	_, _ = model.Update(tea.KeyPressMsg{Text: strings.Repeat("a", maxInputRunes+10)})
 	if len(model.input) != maxInputRunes {
@@ -511,7 +511,7 @@ func TestModelSendsBoundedCommandInput(t *testing.T) {
 
 func TestModelSelectsRestartAndStopWithTab(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, nil, 0, DefaultSettings())
+	model := New(actions, nil, 0, DefaultSettings(), ServerInfo{})
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	if model.consoleFocus != consoleRestart {
@@ -895,7 +895,7 @@ func TestModelClearsServerMetricsOnRestart(t *testing.T) {
 }
 
 func TestModelIgnoresMessagesFromPreviousServer(t *testing.T) {
-	model := New(make(chan Action, 1), nil, 2, DefaultSettings())
+	model := New(make(chan Action, 1), nil, 2, DefaultSettings(), ServerInfo{})
 	_, _ = model.Update(MetricsMsg{
 		Generation: 1,
 		Memory: procstats.Memory{
@@ -986,7 +986,7 @@ func TestModelScrollsPlayersFromTheTop(t *testing.T) {
 
 func TestModelPutsPlayerCommandIntoTheConsole(t *testing.T) {
 	actions := make(chan Action, 4)
-	model := New(actions, nil, 0, DefaultSettings())
+	model := New(actions, nil, 0, DefaultSettings(), ServerInfo{})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	for _, name := range []string{"alice", "bob"} {
 		_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
@@ -1206,7 +1206,7 @@ func TestModelViewKeepsRectangularWithThreeTopPanels(t *testing.T) {
 }
 
 func newTestModel() *Model {
-	return New(make(chan Action, 8), nil, 0, DefaultSettings())
+	return New(make(chan Action, 8), nil, 0, DefaultSettings(), ServerInfo{})
 }
 
 func modelLogViewport(model *Model) bufferViewport {
@@ -1290,7 +1290,7 @@ func TestGraphRangeAddsMarginAndReportsUnavailable(t *testing.T) {
 
 func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, nil, 1, DefaultSettings())
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
 	model.resize(80, 24)
 	model.consoleFocus = consoleRestart
 
@@ -1325,7 +1325,7 @@ func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
 
 func TestModelExitModalShowsRestartProgressAndFailure(t *testing.T) {
 	actions := make(chan Action, 1)
-	model := New(actions, nil, 1, DefaultSettings())
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
 	model.resize(80, 24)
 	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
 
@@ -1578,7 +1578,7 @@ func TestModelKeepsPartiallyAvailableHeapForExitModal(t *testing.T) {
 func newAutoRestartModel(actions chan Action) *Model {
 	settings := DefaultSettings()
 	settings.AutoRestart = true
-	model := New(actions, nil, 0, settings)
+	model := New(actions, nil, 0, settings, ServerInfo{})
 	model.resize(80, 24)
 	return model
 }

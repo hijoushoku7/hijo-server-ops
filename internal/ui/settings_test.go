@@ -18,7 +18,7 @@ func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
 		saved = append(saved, settings)
 		return nil
 	}
-	model := New(make(chan Action, 1), save, 0, DefaultSettings())
+	model := New(make(chan Action, 1), save, 0, DefaultSettings(), ServerInfo{})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	// Console フォーカス中の g は文字入力。
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
@@ -67,7 +67,7 @@ func TestSettingsAreSavedEveryTimeTheModalCloses(t *testing.T) {
 	// 容量 0 の相当として、詰まったままのキューを渡す。
 	actions := make(chan Action, 1)
 	actions <- Action{Kind: ActionRestart}
-	model := New(actions, save, 0, DefaultSettings())
+	model := New(actions, save, 0, DefaultSettings(), ServerInfo{})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	model.busy = true
 	// Console の入力欄から離れないと G は文字入力になる。
@@ -90,7 +90,7 @@ func TestSettingsAreSavedEveryTimeTheModalCloses(t *testing.T) {
 func TestSettingsSaveFailureShowsStatus(t *testing.T) {
 	t.Cleanup(func() { applyTheme(DefaultSettings()) })
 	save := func(Settings) error { return errors.New("書けません") }
-	model := New(make(chan Action, 1), save, 0, DefaultSettings())
+	model := New(make(chan Action, 1), save, 0, DefaultSettings(), ServerInfo{})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
@@ -106,7 +106,7 @@ func TestSettingsSaveFailureShowsStatus(t *testing.T) {
 func TestSettingsModalShowsSectionHeadings(t *testing.T) {
 	t.Cleanup(func() { applyTheme(DefaultSettings()) })
 	model := New(make(chan Action, 1), func(Settings) error { return nil },
-		0, DefaultSettings())
+		0, DefaultSettings(), ServerInfo{})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
@@ -177,7 +177,7 @@ func TestSettingsToggleAutoRestart(t *testing.T) {
 		saved = append(saved, settings)
 		return nil
 	}
-	model := New(make(chan Action, 1), save, 0, DefaultSettings())
+	model := New(make(chan Action, 1), save, 0, DefaultSettings(), ServerInfo{})
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})

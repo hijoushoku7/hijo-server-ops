@@ -32,6 +32,12 @@ type Action struct {
 	Command string
 }
 
+// ServerInfo は画面に出す識別情報。表示専用で、取れなくても動作に影響しない。
+type ServerInfo struct {
+	Name    string
+	Version string
+}
+
 type LogMsg struct {
 	Generation uint64
 	Entry      serverlog.Entry
@@ -93,6 +99,7 @@ type ActionResultMsg struct {
 type Model struct {
 	layout layout
 	status string
+	info   ServerInfo
 	// runErr は現世代で最初に起きた終了原因。後続の終了通知でも上書きせず、
 	// ServerStartedMsg で復旧したときだけ消す。
 	runErr            error
@@ -173,11 +180,13 @@ func New(
 	save func(Settings) error,
 	generation uint64,
 	settings Settings,
+	info ServerInfo,
 ) *Model {
 	applyTheme(settings)
 	startedAt := time.Now()
 	model := &Model{
 		status:     "starting",
+		info:       info,
 		actions:    actions,
 		save:       save,
 		generation: generation,
