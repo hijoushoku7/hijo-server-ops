@@ -37,6 +37,7 @@ type startRow struct {
 
 type startModel struct {
 	rows     []startRow
+	title    string
 	cursor   int
 	selected registry.Server
 	chosen   bool
@@ -81,7 +82,7 @@ func (m *startModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *startModel) View() tea.View {
-	lines := []string{startTitleStyle.Render(msg.StartTitle), ""}
+	lines := []string{startTitleStyle.Render(m.title), ""}
 	nameWidth := 0
 	for _, row := range m.rows {
 		nameWidth = max(nameWidth, ansi.StringWidth(row.server.Name))
@@ -141,7 +142,7 @@ func runStartWithTerminal(name string, terminal bool) error {
 		return msg.StartRequiresTerminal()
 	}
 	choose := func(servers registry.Registry) (registry.Server, bool, error) {
-		return chooseServer(servers, pidfile.Running)
+		return chooseServer(servers, pidfile.Running, msg.StartTitle)
 	}
 	return startFromRegistry(name, servers, choose, pidfile.Running, launchConfig)
 }
@@ -200,6 +201,7 @@ func startFromRegistry(
 func chooseServer(
 	servers registry.Registry,
 	running func(string) (int, bool, error),
+	title string,
 ) (registry.Server, bool, error) {
 	rows := make([]startRow, 0, len(servers.Servers))
 	for _, server := range servers.Servers {
@@ -209,7 +211,7 @@ func chooseServer(
 		}
 		rows = append(rows, startRow{server: server, status: status})
 	}
-	model := &startModel{rows: rows}
+	model := &startModel{rows: rows, title: title}
 	if _, err := tea.NewProgram(model).Run(); err != nil {
 		return registry.Server{}, false, err
 	}

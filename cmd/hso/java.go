@@ -122,7 +122,7 @@ func runJavaChange(name string, output io.Writer, terminal bool) error {
 		return err
 	}
 	chooseRegistry := func(servers registry.Registry) (registry.Server, bool, error) {
-		return chooseServer(servers, pidfile.Running)
+		return chooseServer(servers, pidfile.Running, msg.StartTitle)
 	}
 	chooseInstallation := func(installed []javaenv.Installation, current string, running bool) (javaenv.Installation, bool, error) {
 		model := newJavaModel(installed, current, running)

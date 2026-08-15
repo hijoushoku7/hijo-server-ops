@@ -377,3 +377,26 @@ func TestRegisterServerSavesNameAndConfig(t *testing.T) {
 		t.Fatalf("servers = %#v", servers.Servers)
 	}
 }
+
+func TestRunRejectsRegisteredConfigBeforeWizard(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	configPath := filepath.Join(t.TempDir(), "hso.toml")
+	registryPath, err := registry.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Save(registryPath, registry.Registry{Servers: []registry.Server{
+		{Name: "survival", Config: configPath},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := Run(configPath)
+	if err == nil || !strings.Contains(err.Error(), "hso delete survival") {
+		t.Fatalf("created = %q, err = %v", created, err)
+	}
+	if _, statErr := os.Stat(configPath); !os.IsNotExist(statErr) {
+		t.Fatalf("設定ファイルを作ってはいけない: %v", statErr)
+	}
+}
