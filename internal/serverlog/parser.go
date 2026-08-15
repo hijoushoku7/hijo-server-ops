@@ -58,6 +58,7 @@ type Entry struct {
 	Kind            Kind
 	Timestamp       time.Time
 	TimestampSource TimestampSource
+	SentByHSO       bool
 	Raw             string
 	Message         string
 	Player          string
@@ -208,10 +209,40 @@ func IsCrashNotice(entry Entry) bool {
 func SentCommand(command string) Entry {
 	command = strings.TrimRight(command, "\r\n")
 	return Entry{
-		Kind:    KindCommand,
-		Message: command,
-		Command: command,
+		Kind:      KindCommand,
+		SentByHSO: true,
+		Message:   command,
+		Command:   command,
 	}
+}
+
+// Whisper はささやきコマンドから宛先と本文を取り出す。
+// 本文の前後の空白だけを除き、本文中の空白はそのまま残す。
+func Whisper(command string) (target, body string, ok bool) {
+	command = strings.TrimSpace(command)
+	command = strings.TrimPrefix(command, "/")
+
+	nameEnd := strings.IndexAny(command, " \t\r\n")
+	if nameEnd < 0 {
+		return "", "", false
+	}
+	switch command[:nameEnd] {
+	case "tell", "msg", "w":
+	default:
+		return "", "", false
+	}
+
+	remainder := strings.TrimLeft(command[nameEnd:], " \t\r\n")
+	targetEnd := strings.IndexAny(remainder, " \t\r\n")
+	if targetEnd < 0 {
+		return "", "", false
+	}
+	target = remainder[:targetEnd]
+	body = strings.TrimSpace(remainder[targetEnd:])
+	if target == "" || body == "" {
+		return "", "", false
+	}
+	return target, body, true
 }
 
 func extractLogFields(line string) (string, time.Time, TimestampSource) {

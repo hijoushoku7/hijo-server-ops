@@ -113,7 +113,18 @@ func (model *Model) addLog(entry serverlog.Entry) {
 	case serverlog.KindChat:
 		model.chat.Add(newLogRecord(entry, entry.Chat))
 	case serverlog.KindCommand:
-		model.logs.Add(newLogRecord(entry, entry.Command))
+		record := newLogRecord(entry, entry.Command)
+		model.logs.Add(record)
+		if entry.SentByHSO {
+			// サーバーログ由来のささやきはバージョンや MOD で形式が変わるため
+			// 分類せず、SentCommand が印を付けた hso 自身の送信だけを扱う。
+			if target, body, ok := serverlog.Whisper(entry.Command); ok {
+				record.kind = serverlog.KindChat
+				record.player = "→ " + target
+				record.text = body
+				model.chat.Add(record)
+			}
+		}
 	default:
 		model.logs.Add(newLogRecord(entry, entry.Message))
 	}
