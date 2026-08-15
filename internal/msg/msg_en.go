@@ -18,6 +18,7 @@ package msg
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 )
 
 // Settings modal section headings.
@@ -208,6 +209,12 @@ func SetupTarget(path string) string {
 	return "creating: " + path
 }
 
+// SetupRegisterTarget heads the register wizard, which creates no hso.toml
+// and therefore cannot say "creating".
+func SetupRegisterTarget(path string) string {
+	return "target: " + path
+}
+
 func SetupRelativeHint(dir string) string {
 	return "a path relative to " + dir + " also works"
 }
@@ -285,6 +292,11 @@ func JavaHomeNotInjected(configured string) string {
 }
 
 func ReadConfigFailed(err error, path string) error {
+	// Telling someone to delete a file that is not there is no help, so a
+	// missing file gets the "how to create it" hint instead.
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("read config file: %w%s", err, createConfig(path))
+	}
 	return fmt.Errorf("read config file: %w%s", err, reinitialize(path))
 }
 
@@ -298,12 +310,21 @@ func UnknownConfigKeys(keys, path string) error {
 
 // reinitialize explains how to recover from an unreadable config file. Stale
 // keys from an older format are the usual cause, and without spelling out
-// that deleting the file brings the setup wizard back, there is no way to
-// know what to do.
+// that deleting the file and running hso setup again brings the wizard back,
+// there is no way to know what to do. Plain hso only prints the help, so the
+// hint always points at hso setup.
 func reinitialize(path string) string {
 	return fmt.Sprintf(
-		"\nreinitialize hso.toml: delete %s and start hso to build it again"+
-			" from the setup wizard",
+		"\nreinitialize hso.toml: delete %s, then run hso setup in the"+
+			" Minecraft server directory to build it again",
+		path,
+	)
+}
+
+// createConfig explains how to create a config file that does not exist yet.
+func createConfig(path string) string {
+	return fmt.Sprintf(
+		"\nrun hso setup in the Minecraft server directory to create %s",
 		path,
 	)
 }

@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
@@ -180,6 +181,14 @@ func TestRegisterModelFlow(t *testing.T) {
 	view := model.View().Content
 	if !strings.Contains(view, cfg.Server.Command) || !strings.Contains(view, cfg.Server.WorkDir) {
 		t.Fatalf("既存設定の内容が表示されていない: %q", view)
+	}
+	// 登録ウィザードは hso.toml を作らないので、作成ウィザードの見出しを
+	// そのまま出すと嘘になる。
+	if !strings.Contains(view, msg.SetupRegisterTarget("/srv/minecraft/hso.toml")) {
+		t.Fatalf("登録ウィザードの見出しが違う: %q", view)
+	}
+	if strings.Contains(view, msg.SetupTarget("/srv/minecraft/hso.toml")) {
+		t.Fatalf("作成ウィザードの見出しが出ている: %q", view)
 	}
 
 	press(t, model, enter)

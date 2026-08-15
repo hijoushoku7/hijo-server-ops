@@ -132,17 +132,29 @@ func TestDispatchCommandRunsVersion(t *testing.T) {
 		latestReleaseURL = previousURL
 	})
 
-	var output bytes.Buffer
-	handled, err := dispatchCommand([]string{"version"}, &output)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !handled {
-		t.Fatal("version がサブコマンドとして処理されなかった")
-	}
-	want := msg.VersionOutput("v1.2.3", msg.Lang, runtime.GOARCH) + "\n"
-	if output.String() != want {
-		t.Fatalf("output = %q, want %q", output.String(), want)
+	// `-` 付きの書き方もヘルプと同じく version と同じものを出す。--help が
+	// 効くなら --version も効くと思うのが自然で、flag の使い方表示に落ちる
+	// と探しているものが出ない。
+	for _, args := range [][]string{
+		{"version"},
+		{"-v"},
+		{"--v"},
+		{"-version"},
+		{"--version"},
+		{"--version", "extra"},
+	} {
+		var output bytes.Buffer
+		handled, err := dispatchCommand(args, &output)
+		if err != nil {
+			t.Fatalf("args=%q: %v", args, err)
+		}
+		if !handled {
+			t.Fatalf("args=%q がサブコマンドとして処理されなかった", args)
+		}
+		want := msg.VersionOutput("v1.2.3", msg.Lang, runtime.GOARCH) + "\n"
+		if output.String() != want {
+			t.Fatalf("args=%q: output = %q, want %q", args, output.String(), want)
+		}
 	}
 }
 

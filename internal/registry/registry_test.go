@@ -220,6 +220,71 @@ func TestAddRejectsDuplicateConfigPath(t *testing.T) {
 	}
 }
 
+// symlink を張ったサーバーディレクトリ越しに同じ hso.toml を指されても、
+// 同じ設定ファイルだと分かる必要がある。すり抜けると同じサーバーが 2 つの
+// 名前で登録され、片方を起動したまま片方から二重起動できてしまう。
+func TestAddRejectsDuplicateConfigPathThroughSymlink(t *testing.T) {
+	directory := t.TempDir()
+	server := filepath.Join(directory, "1.21")
+	if err := os.Mkdir(server, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(server, "hso.toml")
+	if err := os.WriteFile(config, []byte("[server]\ncommand = \"./start.sh\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "current")
+	if err := os.Symlink(server, link); err != nil {
+		t.Fatal(err)
+	}
+
+	servers := Registry{Servers: []Server{{Name: "survival", Config: config}}}
+	err := servers.Add(Server{Name: "current", Config: filepath.Join(link, "hso.toml")})
+	if err == nil || !strings.Contains(err.Error(), "survival") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(servers.Servers) != 1 {
+		t.Fatalf("servers = %#v", servers.Servers)
+	}
+}
+
+// 設定ファイルが消えた登録も、自分自身のパスとは一致し続ける必要がある。
+// symlink を辿れないからと諦めると、掃除のための delete まで届かなくなる。
+func TestNameForConfigMatchesMissingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "消えた", "hso.toml")
+	servers := Registry{Servers: []Server{{Name: "survival", Config: path}}}
+	if name, found := servers.NameForConfig(path); !found || name != "survival" {
+		t.Fatalf("name = %q, found = %t", name, found)
+	}
+}
+
+// hso.toml がまだ無いディレクトリでも、symlink 越しなら既存の登録と
+// 同一だと分かる必要がある。setup は作る前に登録済みかを見るので、ここで
+// 取りこぼすとウィザードを終えてから重複で弾かれる。
+func TestNameForConfigMatchesMissingFileThroughSymlinkedDirectory(t *testing.T) {
+	directory := t.TempDir()
+	server := filepath.Join(directory, "1.21")
+	if err := os.Mkdir(server, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "current")
+	if err := os.Symlink(server, link); err != nil {
+		t.Fatal(err)
+	}
+
+	// 実体側で登録 → alias 側から引く。
+	servers := Registry{Servers: []Server{{Name: "survival", Config: filepath.Join(server, "hso.toml")}}}
+	if name, found := servers.NameForConfig(filepath.Join(link, "hso.toml")); !found || name != "survival" {
+		t.Fatalf("name = %q, found = %t", name, found)
+	}
+
+	// alias 側で登録 → 実体側から引く。
+	servers = Registry{Servers: []Server{{Name: "survival", Config: filepath.Join(link, "hso.toml")}}}
+	if name, found := servers.NameForConfig(filepath.Join(server, "hso.toml")); !found || name != "survival" {
+		t.Fatalf("name = %q, found = %t", name, found)
+	}
+}
+
 func TestRemoveIgnoresCase(t *testing.T) {
 	servers := Registry{Servers: []Server{
 		{Name: "Survival", Config: "/one/hso.toml"},

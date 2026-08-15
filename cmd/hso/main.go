@@ -41,11 +41,14 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 	if len(args) == 0 {
 		return true, writeHelp(output)
 	}
-	// ヘルプだけは `-` 付きの書き方も受ける。flag の既定の使い方表示より、
-	// コマンド一覧を出すほうが探しているものに近い。
+	// ヘルプとバージョンだけは `-` 付きの書き方も受ける。flag の既定の使い方
+	// 表示より、コマンド一覧やバージョンを出すほうが探しているものに近い。
+	// 後ろに何が付いていても同じものを出す（打ち間違いでエラーにしない）。
 	switch args[0] {
 	case "help", "-h", "-help", "--help":
 		return true, writeHelp(output)
+	case "-v", "--v", "-version", "--version":
+		return true, runVersion(output)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		return false, nil
