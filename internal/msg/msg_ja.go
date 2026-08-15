@@ -713,6 +713,10 @@ func BinaryMissingFromArchive() error {
 	return errors.New("更新用アーカイブに hso がありません")
 }
 
+func PrivilegeExplanation(target, tool string) string {
+	return fmt.Sprintf("%s を置き換えるには root 権限が必要なため、%s でパスワードを確認します:", target, tool)
+}
+
 func PrivilegeAuthenticationFailed(tool string, err error) error {
 	return fmt.Errorf("%s で権限を確認できませんでした: %w", tool, err)
 }

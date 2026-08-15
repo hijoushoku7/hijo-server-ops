@@ -230,17 +230,23 @@ func replacementPrivilege(target string) (string, error) {
 	if os.Geteuid() == 0 {
 		return "", msg.ReplaceExecutableFailed(target, syscall.EACCES)
 	}
+	return authenticatePrivilege(target, isTerminal(os.Stderr), os.Stderr)
+}
 
+func authenticatePrivilege(target string, interactive bool, notice io.Writer) (string, error) {
 	for _, name := range []string{"sudo", "doas"} {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			continue
 		}
-		args := []string{"true"}
-		if !isTerminal(os.Stderr) {
-			args = []string{"-n", "true"}
-		} else if name == "sudo" {
-			args = []string{"-v"}
+		args := []string{"-n", "true"}
+		if interactive {
+			// パスワードを聞かれる前に、なぜ root 権限が要るのかを出す。
+			fmt.Fprintln(notice, msg.PrivilegeExplanation(target, name))
+			args = []string{"true"}
+			if name == "sudo" {
+				args = []string{"-v"}
+			}
 		}
 		command := exec.Command(path, args...)
 		command.Stdin = os.Stdin
