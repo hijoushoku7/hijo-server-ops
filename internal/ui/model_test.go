@@ -813,6 +813,68 @@ func TestModelRecordsOnlySuccessfullySentCommands(t *testing.T) {
 	}
 }
 
+func TestModelRecordsSentWhisperInChatAndLog(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	action := Action{Kind: ActionSendCommand, Command: "tell bob hi"}
+
+	_, _ = model.Update(ActionResultMsg{Action: action})
+
+	if model.chat.Len() != 1 || model.logs.Len() != 1 {
+		t.Fatalf("chat = %d, logs = %d", model.chat.Len(), model.logs.Len())
+	}
+	chat := model.chat.At(0)
+	log := model.logs.At(0)
+	if chat.line() != "<→ bob> hi" {
+		t.Fatalf("chat = %q", chat.line())
+	}
+	if log.line() != "tell bob hi" {
+		t.Fatalf("log = %q", log.line())
+	}
+	if !chat.timestamp.Equal(log.timestamp) ||
+		chat.timestampSource != log.timestampSource {
+		t.Fatalf("timestamps differ: chat = %#v, log = %#v", chat, log)
+	}
+}
+
+func TestModelDoesNotRecordServerCommandInChat(t *testing.T) {
+	lines := []string{
+		"[12:34:56] [Server thread/INFO]: [alice: Stopping the server]",
+		"[12:34:56] [Server thread/INFO]: " +
+			"alice issued server command: tell bob hi",
+	}
+	for _, line := range lines {
+		t.Run(line, func(t *testing.T) {
+			model := newTestModel()
+			_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+			_, _ = model.Update(LogMsg{Entry: serverlog.Parse(line)})
+
+			if model.chat.Len() != 0 {
+				t.Fatalf("chat = %q", model.chat.At(0).line())
+			}
+			if model.logs.Len() != 1 {
+				t.Fatalf("logs = %d", model.logs.Len())
+			}
+		})
+	}
+}
+
+func TestModelDoesNotRecordSentWhisperWithoutBodyInChat(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	action := Action{Kind: ActionSendCommand, Command: "tell bob"}
+
+	_, _ = model.Update(ActionResultMsg{Action: action})
+
+	if model.chat.Len() != 0 {
+		t.Fatalf("chat = %q", model.chat.At(0).line())
+	}
+	if model.logs.Len() != 1 || model.logs.At(0).line() != "tell bob" {
+		t.Fatalf("logs = %#v", model.logs)
+	}
+}
+
 func TestModelClearsServerMetricsOnRestart(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})

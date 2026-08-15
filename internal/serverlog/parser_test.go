@@ -220,8 +220,65 @@ func TestSentCommand(t *testing.T) {
 	entry := SentCommand("say hello\n")
 
 	assertKind(t, entry, KindCommand)
-	if entry.Command != "say hello" || entry.Message != "say hello" {
+	if !entry.SentByHSO ||
+		entry.Command != "say hello" || entry.Message != "say hello" {
 		t.Fatalf("Entry = %#v", entry)
+	}
+}
+
+func TestWhisper(t *testing.T) {
+	tests := []struct {
+		name       string
+		command    string
+		wantTarget string
+		wantBody   string
+		wantOK     bool
+	}{
+		{name: "tell", command: "tell bob hi", wantTarget: "bob", wantBody: "hi", wantOK: true},
+		{name: "msg with slash", command: "/msg bob hi", wantTarget: "bob", wantBody: "hi", wantOK: true},
+		{name: "w", command: "w bob hi", wantTarget: "bob", wantBody: "hi", wantOK: true},
+		{
+			name:       "keeps spaces in body",
+			command:    "tell bob hello  world",
+			wantTarget: "bob",
+			wantBody:   "hello  world",
+			wantOK:     true,
+		},
+		{
+			name:       "selector target",
+			command:    "tell @a[team=red] hi",
+			wantTarget: "@a[team=red]",
+			wantBody:   "hi",
+			wantOK:     true,
+		},
+		// 空白を含むセレクタは最初の空白で宛先が切れる。誤った宛先と
+		// 本文を Chat に出さないよう成立させない。
+		{
+			name:    "selector with spaces",
+			command: `tell @a[nbt={CustomName:'{"text":"A B"}'}] hi`,
+		},
+		{name: "without body", command: "tell bob"},
+		{name: "without target", command: "tell"},
+		{name: "other command", command: "say hello"},
+		{name: "similar command", command: "telly bob hi"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target, body, ok := Whisper(test.command)
+			if target != test.wantTarget || body != test.wantBody || ok != test.wantOK {
+				t.Fatalf(
+					"Whisper(%q) = (%q, %q, %t), want (%q, %q, %t)",
+					test.command,
+					target,
+					body,
+					ok,
+					test.wantTarget,
+					test.wantBody,
+					test.wantOK,
+				)
+			}
+		})
 	}
 }
 
