@@ -148,8 +148,10 @@ func validateUninstallRoot(purge bool, euid int) error {
 	}
 	return errors.New("--purge must not be run as root.\n\n" +
 		"As root, hso would look for the config in root's home directory, not yours.\n" +
-		"Run it as your normal user:\n\n" +
-		"    hso uninstall --purge")
+		"Run it as your normal user first:\n\n" +
+		"    hso uninstall --purge\n\n" +
+		"If that reports the binary itself needs root, finish with:\n\n" +
+		"    sudo hso uninstall")
 }
 
 func prepareUninstall(options uninstallOptions) (uninstallPlan, error) {

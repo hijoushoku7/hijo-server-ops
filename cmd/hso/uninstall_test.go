@@ -64,7 +64,7 @@ func TestValidateUninstallRootRejectsOnlyPurge(t *testing.T) {
 	if err == nil {
 		t.Fatal("root の --purge が通った")
 	}
-	for _, want := range []string{"must not be run as root", "hso uninstall --purge"} {
+	for _, want := range []string{"must not be run as root", "hso uninstall --purge", "sudo hso uninstall"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q に %q がない", err, want)
 		}
