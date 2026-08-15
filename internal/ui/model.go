@@ -106,6 +106,8 @@ type Model struct {
 	actions           chan<- Action
 	save              func(Settings) error
 	input             []rune
+	completionOpen    bool
+	completionCursor  int
 	mode              mode
 	panel             panel
 	consoleFocus      consoleFocus

@@ -91,6 +91,9 @@ func (model *Model) View() tea.View {
 			model.playerStage == playerStageCommands:
 			box, x, y := model.commandModal()
 			content = overlay(content, box, x, y)
+		case model.editingConsole() && model.completionOpen:
+			box, x, y := model.completionModal()
+			content = overlay(content, box, x, y)
 		}
 		// モーダルが重なっている間はキーが入力欄へ届かない。
 		if model.exit != nil || model.timeModal != nil || model.settingsOpen {
@@ -148,11 +151,20 @@ func (model *Model) consoleLine() (string, int) {
 	)
 	input := tail(string(model.input), max(0, inputWidth-stringWidth(caret)))
 	caretX := -1
-	if caret != "" {
+	hint := ""
+	if model.editingConsole() {
 		// 枠の 1 桁と "> " の 2 桁の右、入力の末尾がキャレットの位置。
 		caretX = 3 + stringWidth(input)
+		// 候補は装飾なので、入力とキャレットを引いた残りに収まるぶんだけ出す。
+		hintWidth := max(0, inputWidth-stringWidth(input)-stringWidth(caret))
+		if text := truncate(model.completionHint(), hintWidth); text != "" {
+			hint = dimStyle.Render(text)
+			// 候補を出すときはキャレットの桁を空けない。1 文字目に端末の
+			// カーソルが重なるが、まだ確定していない文字なので隠れて困らない。
+			caret = ""
+		}
 	}
-	return fitLine("> "+input+caret+" "+buttons, model.layout.width-2), caretX
+	return fitLine("> "+input+caret+hint+" "+buttons, model.layout.width-2), caretX
 }
 
 func tail(value string, width int) string {
@@ -336,10 +348,21 @@ func (model *Model) keybar() string {
 			{"G", msg.BarSettings},
 			{"^C", msg.BarExit},
 		}
+	case model.completionOpen:
+		keys = [][2]string{
+			{"Tab/↑↓", msg.BarCandidate},
+			{"Enter", msg.BarConfirm},
+			{"Esc", msg.BarClose},
+			{"^C", msg.BarExit},
+		}
 	case model.panel == panelConsole:
+		tab := msg.BarConsoleTab
+		if model.editingConsole() && len(model.completions()) > 0 {
+			tab = msg.BarComplete
+		}
 		keys = [][2]string{
 			{"Esc", msg.BarBackToSelect},
-			{"Tab", msg.BarConsoleTab},
+			{"Tab", tab},
 			{"Enter", msg.BarExecute},
 			{"^C", msg.BarExit},
 		}

@@ -219,10 +219,25 @@ func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
 }
 
 func (model *Model) handleConsoleKey(key tea.Key) (tea.Model, tea.Cmd) {
+	if model.completionOpen {
+		return model.handleCompletionKey(key)
+	}
 	switch key.Code {
 	case tea.KeyEscape:
 		model.mode = modeSelect
 	case tea.KeyTab:
+		if model.consoleFocus == consoleInput {
+			candidates := model.completions()
+			if len(candidates) == 1 {
+				model.insertCompletion(candidates[0])
+				return model, nil
+			}
+			if len(candidates) > 1 {
+				model.completionOpen = true
+				model.completionCursor = 0
+				return model, nil
+			}
+		}
 		model.consoleFocus = (model.consoleFocus + 1) % consoleFocusCount
 	case tea.KeyBackspace:
 		if model.consoleFocus == consoleInput && len(model.input) > 0 {
@@ -307,6 +322,7 @@ func (model *Model) appendInput(text string) {
 }
 
 func (model *Model) sendInput() {
+	defer model.closeCompletion()
 	command := strings.TrimSpace(string(model.input))
 	if command == "" {
 		return

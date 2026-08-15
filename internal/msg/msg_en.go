@@ -160,6 +160,7 @@ func ExitAutoQuit(seconds int) string {
 const (
 	BarItem         = "item"
 	BarValue        = "value"
+	BarCandidate    = "candidate"
 	BarClose        = "close"
 	BarExit         = "exit"
 	BarSelectPanel  = "select"
@@ -167,6 +168,7 @@ const (
 	BarSettings     = "settings"
 	BarBackToSelect = "select"
 	BarConsoleTab   = "input/restart/stop"
+	BarComplete     = "complete"
 	BarExecute      = "execute"
 	BarBack         = "back"
 	BarCommand      = "command"
