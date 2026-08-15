@@ -16,9 +16,12 @@ var (
 func (model *Model) completionScan() (string, []string) {
 	original := string(model.input)
 	input := strings.TrimPrefix(original, "/")
-	words := strings.Split(input, " ")
-	for len(words) > 0 && words[0] == "" {
-		words = words[1:]
+	// 空白で区切った語だけを見る。末尾の空白は「次の引数を打ち始めていない」
+	// という情報なので、空の語として 1 つだけ残す。Split で作った空要素を
+	// そのまま語として扱うと、空白が 2 つ続いただけで並びが一致しなくなる。
+	words := strings.Fields(input)
+	if strings.HasSuffix(input, " ") {
+		words = append(words, "")
 	}
 
 	candidatesFor := func(command []string) []string {

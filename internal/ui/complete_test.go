@@ -32,6 +32,10 @@ func TestModelCompletions(t *testing.T) {
 		{name: "対象外", input: "gamemode ", want: nil},
 		// 先頭に空白があってもコマンド語を見失わない。
 		{name: "先頭の空白", input: "  weather ", want: []string{"clear", "rain", "thunder"}},
+		// 空白が 2 つ続いても並びの一致は変わらない。
+		{name: "連続する空白", input: "weather  c", want: []string{"clear"}},
+		{name: "連続する空白 打ちかけ無し", input: "weather  ", want: []string{"clear", "rain", "thunder"}},
+		{name: "連続する空白 time set", input: "time set  n", want: []string{"night", "noon"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -53,6 +57,19 @@ func TestModelInsertsTimeSetCompletionOnTab(t *testing.T) {
 		if got := string(model.input); got != "time set " {
 			t.Fatalf("input %q: got %q, want %q", input, got, "time set ")
 		}
+	}
+}
+
+// TestModelKeepsSpacingWhenInserting は打った空白をそのまま残すことを見る。
+// 候補で置き換えるのは打ちかけの語だけで、その手前には触らない。
+func TestModelKeepsSpacingWhenInserting(t *testing.T) {
+	model := newTestModel()
+	model.input = []rune("weather  c")
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	if got := string(model.input); got != "weather  clear " {
+		t.Fatalf("input = %q, want %q", got, "weather  clear ")
 	}
 }
 
