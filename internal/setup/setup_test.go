@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
 
@@ -165,6 +166,73 @@ func typeText(text string) tea.KeyPressMsg {
 }
 
 var enter = tea.KeyPressMsg{Code: tea.KeyEnter}
+
+var escape = tea.KeyPressMsg{Code: tea.KeyEscape}
+
+var ctrlC = tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+
+func TestRegisterModelFlow(t *testing.T) {
+	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: "/srv/minecraft"}}
+	model := newRegisterModel("/srv/minecraft/hso.toml", cfg, registry.Registry{})
+	if model.step != stepRegisterNotice {
+		t.Fatalf("step = %d", model.step)
+	}
+	view := model.View().Content
+	if !strings.Contains(view, cfg.Server.Command) || !strings.Contains(view, cfg.Server.WorkDir) {
+		t.Fatalf("既存設定の内容が表示されていない: %q", view)
+	}
+
+	press(t, model, enter)
+	if model.step != stepName || string(model.input) != "minecraft" {
+		t.Fatalf("step = %d, input = %q", model.step, model.input)
+	}
+	press(t, model, enter)
+	if !model.created || model.name != "minecraft" {
+		t.Fatalf("created = %v, name = %q", model.created, model.name)
+	}
+}
+
+func TestRegisterModelCanDeclineAndGoBack(t *testing.T) {
+	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: "/srv/minecraft"}}
+	declined := newRegisterModel("/srv/minecraft/hso.toml", cfg, registry.Registry{})
+	press(t, declined, escape)
+	if declined.created {
+		t.Fatal("追加を断ったのに登録済みになった")
+	}
+
+	model := newRegisterModel("/srv/minecraft/hso.toml", cfg, registry.Registry{})
+	press(t, model, enter, escape)
+	if model.step != stepRegisterNotice {
+		t.Fatalf("step = %d", model.step)
+	}
+}
+
+func TestRegisterModelCtrlCCancels(t *testing.T) {
+	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: "/srv/minecraft"}}
+	for _, step := range []string{"案内画面", "名前入力画面"} {
+		t.Run(step, func(t *testing.T) {
+			model := newRegisterModel("/srv/minecraft/hso.toml", cfg, registry.Registry{})
+			if step == "名前入力画面" {
+				press(t, model, enter)
+			}
+			press(t, model, ctrlC)
+			if !model.canceled || model.created {
+				t.Fatalf("canceled = %v, created = %v", model.canceled, model.created)
+			}
+		})
+	}
+}
+
+func TestRegisterModelRejectsDuplicateNameIgnoringCase(t *testing.T) {
+	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: "/srv/minecraft"}}
+	model := newRegisterModel("/srv/minecraft/hso.toml", cfg, registry.Registry{Servers: []registry.Server{
+		{Name: "Minecraft", Config: "/srv/other/hso.toml"},
+	}})
+	press(t, model, enter, enter)
+	if model.step != stepName || model.message == "" || model.created {
+		t.Fatalf("step = %d, message = %q, created = %v", model.step, model.message, model.created)
+	}
+}
 
 func TestModelCreatesConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -398,5 +466,55 @@ func TestRunRejectsRegisteredConfigBeforeWizard(t *testing.T) {
 	}
 	if _, statErr := os.Stat(configPath); !os.IsNotExist(statErr) {
 		t.Fatalf("設定ファイルを作ってはいけない: %v", statErr)
+	}
+}
+
+func TestRegisterRejectsRegisteredConfigBeforeWizard(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	configPath := filepath.Join(t.TempDir(), "hso.toml")
+	registryPath, err := registry.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Save(registryPath, registry.Registry{Servers: []registry.Server{
+		{Name: "survival", Config: configPath},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	name, canceled, err := Register(configPath, config.Config{})
+	if err == nil || !strings.Contains(err.Error(), "hso delete survival") {
+		t.Fatalf("name = %q, canceled = %v, err = %v", name, canceled, err)
+	}
+}
+
+func TestRegisterSavesNameAndConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configPath := filepath.Join(t.TempDir(), "hso.toml")
+	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: filepath.Dir(configPath)}}
+
+	name, canceled, err := register(configPath, cfg, func(model *model) error {
+		model.name = "survival"
+		model.created = true
+		return nil
+	})
+	if err != nil || canceled || name != "survival" {
+		t.Fatalf("name = %q, canceled = %v, err = %v", name, canceled, err)
+	}
+	registryPath, err := registry.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers, err := registry.Load(registryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath, err := filepath.Abs(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers.Servers) != 1 || servers.Servers[0] != (registry.Server{Name: "survival", Config: wantPath}) {
+		t.Fatalf("servers = %#v", servers.Servers)
 	}
 }

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
@@ -23,6 +24,7 @@ const (
 	stepCommand
 	stepCommandInput
 	stepConfirm
+	stepRegisterNotice
 )
 
 type model struct {
@@ -42,7 +44,21 @@ type model struct {
 	grantChmod bool   // 実行権限を付けてよいという同意
 	message    string
 	created    bool
+	canceled   bool
 	err        error
+	register   bool
+}
+
+func newRegisterModel(configPath string, cfg config.Config, servers registry.Registry) *model {
+	return &model{
+		configPath: configPath,
+		configDir:  filepath.Dir(configPath),
+		step:       stepRegisterNotice,
+		workDir:    cfg.Server.WorkDir,
+		command:    cfg.Server.Command,
+		servers:    servers,
+		register:   true,
+	}
 }
 
 func newModel(configPath string, servers registry.Registry) *model {
@@ -67,11 +83,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if key.String() == "ctrl+c" {
+		m.canceled = true
 		return m, tea.Quit
 	}
 
 	m.message = ""
 	switch m.step {
+	case stepRegisterNotice:
+		return m.updateRegisterNotice(key.Key())
 	case stepWorkDir:
 		return m.updateWorkDir(key.Key())
 	case stepName:
@@ -83,6 +102,17 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		return m.updateConfirm(key.Key())
 	}
+}
+
+func (m *model) updateRegisterNotice(key tea.Key) (tea.Model, tea.Cmd) {
+	switch key.Code {
+	case tea.KeyEscape:
+		return m, tea.Quit
+	case tea.KeyEnter, tea.KeyKpEnter:
+		m.input = []rune(defaultServerName(m.workDir))
+		m.step = stepName
+	}
+	return m, nil
 }
 
 func (m *model) updateWorkDir(key tea.Key) (tea.Model, tea.Cmd) {
@@ -107,6 +137,10 @@ func (m *model) updateWorkDir(key tea.Key) (tea.Model, tea.Cmd) {
 func (m *model) updateName(key tea.Key) (tea.Model, tea.Cmd) {
 	switch key.Code {
 	case tea.KeyEscape:
+		if m.register {
+			m.step = stepRegisterNotice
+			return m, nil
+		}
 		m.step = stepWorkDir
 		m.input = []rune(m.workDir)
 	case tea.KeyEnter, tea.KeyKpEnter:
@@ -120,6 +154,10 @@ func (m *model) updateName(key tea.Key) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.name = name
+		if m.register {
+			m.created = true
+			return m, tea.Quit
+		}
 		m.candidates = scanCommands(m.workDir)
 		m.cursor = 0
 		m.step = stepCommand
@@ -258,6 +296,9 @@ func moveCursor(key tea.Key, cursor, count int) int {
 }
 
 func (m *model) preview() string {
+	if m.register {
+		return render(m.command, m.workDir, "")
+	}
 	return render(m.command, m.workDir, m.configDir)
 }
 

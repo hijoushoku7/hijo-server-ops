@@ -99,14 +99,19 @@ func run() error {
 			fmt.Fprintln(os.Stderr, "hso: "+msg.Aborted)
 			return nil
 		}
+		return launchConfig(created)
 	}
-
-	return launchConfig(*configPath)
+	return runExistingConfig(*configPath, false, interactive(), os.Stderr,
+		config.Load, registeredName, setup.Register, launchLoaded)
 }
 
 func runSetup(output io.Writer) error {
 	if !interactive() {
 		return msg.SetupRequiresTerminal()
+	}
+	if !missingConfig("hso.toml") {
+		return runExistingConfig("hso.toml", true, true, output,
+			config.Load, registeredName, setup.Register, launchLoaded)
 	}
 	created, err := setup.Run("hso.toml")
 	if err != nil {
@@ -125,7 +130,53 @@ func launchConfig(configPath string) error {
 	if err != nil {
 		return err
 	}
+	return launchLoaded(configPath, cfg)
+}
+
+func launchLoaded(configPath string, cfg config.Config) error {
 	return runTrackedTUI(configPath, cfg, trackRegisteredServer, runTUI)
+}
+
+func runExistingConfig(
+	configPath string,
+	setupCommand bool,
+	terminal bool,
+	output io.Writer,
+	load func(string) (config.Config, error),
+	lookup func(string) (string, bool, error),
+	prompt func(string, config.Config) (string, bool, error),
+	launch func(string, config.Config) error,
+) error {
+	if setupCommand && !terminal {
+		return msg.SetupRequiresTerminal()
+	}
+	cfg, err := load(configPath)
+	if err != nil {
+		return err
+	}
+	name, found, err := lookup(configPath)
+	if err != nil {
+		return err
+	}
+	if found {
+		if setupCommand {
+			return msg.ConfigAlreadyRegistered(name, configPath)
+		}
+		return launch(configPath, cfg)
+	}
+	if terminal {
+		name, canceled, err := prompt(configPath, cfg)
+		if err != nil {
+			return err
+		}
+		// Ctrl+C の中止はどちらの経路でも起動しない。Esc の「追加しない」で
+		// 起動を止めるのは setup のときだけで、素の hso は起動しに来ている。
+		if canceled || (name == "" && setupCommand) {
+			_, err := fmt.Fprintln(output, msg.Aborted)
+			return err
+		}
+	}
+	return launch(configPath, cfg)
 }
 
 func runTrackedTUI(

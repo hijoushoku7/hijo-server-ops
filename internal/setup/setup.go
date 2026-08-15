@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/hijoushoku7/hijo-server-ops/internal/config"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
@@ -53,6 +54,48 @@ func Run(configPath string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// Register は既存の hso.toml をサーバー一覧へ登録する。
+// Esc で追加を断ったときは name == ""、Ctrl+C で中止したときは canceled == true。
+func Register(configPath string, cfg config.Config) (name string, canceled bool, err error) {
+	return register(configPath, cfg, func(model *model) error {
+		_, err := tea.NewProgram(model).Run()
+		return err
+	})
+}
+
+func register(configPath string, cfg config.Config, runWizard func(*model) error) (name string, canceled bool, err error) {
+	path, err := filepath.Abs(configPath)
+	if err != nil {
+		return "", false, msg.ConfigAbsPathFailed(err)
+	}
+	registryPath, err := registry.Path()
+	if err != nil {
+		return "", false, err
+	}
+	servers, err := registry.Load(registryPath)
+	if err != nil {
+		return "", false, err
+	}
+	if name, found := servers.NameForConfig(path); found {
+		return "", false, msg.ConfigAlreadyRegistered(name, path)
+	}
+
+	model := newRegisterModel(path, cfg, servers)
+	if err := runWizard(model); err != nil {
+		return "", false, err
+	}
+	if model.err != nil {
+		return "", false, model.err
+	}
+	if !model.created {
+		return "", model.canceled, nil
+	}
+	if err := registerServer(registryPath, model.name, path); err != nil {
+		return "", false, err
+	}
+	return model.name, false, nil
 }
 
 func registerServer(path, name, configPath string) error {
