@@ -258,6 +258,33 @@ func TestNameForConfigMatchesMissingFile(t *testing.T) {
 	}
 }
 
+// hso.toml がまだ無いディレクトリでも、symlink 越しなら既存の登録と
+// 同一だと分かる必要がある。setup は作る前に登録済みかを見るので、ここで
+// 取りこぼすとウィザードを終えてから重複で弾かれる。
+func TestNameForConfigMatchesMissingFileThroughSymlinkedDirectory(t *testing.T) {
+	directory := t.TempDir()
+	server := filepath.Join(directory, "1.21")
+	if err := os.Mkdir(server, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "current")
+	if err := os.Symlink(server, link); err != nil {
+		t.Fatal(err)
+	}
+
+	// 実体側で登録 → alias 側から引く。
+	servers := Registry{Servers: []Server{{Name: "survival", Config: filepath.Join(server, "hso.toml")}}}
+	if name, found := servers.NameForConfig(filepath.Join(link, "hso.toml")); !found || name != "survival" {
+		t.Fatalf("name = %q, found = %t", name, found)
+	}
+
+	// alias 側で登録 → 実体側から引く。
+	servers = Registry{Servers: []Server{{Name: "survival", Config: filepath.Join(link, "hso.toml")}}}
+	if name, found := servers.NameForConfig(filepath.Join(server, "hso.toml")); !found || name != "survival" {
+		t.Fatalf("name = %q, found = %t", name, found)
+	}
+}
+
 func TestRemoveIgnoresCase(t *testing.T) {
 	servers := Registry{Servers: []Server{
 		{Name: "Survival", Config: "/one/hso.toml"},

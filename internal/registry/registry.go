@@ -169,18 +169,26 @@ func (r Registry) NameForConfig(path string) (string, bool) {
 
 // resolveConfig は hso.toml のパスを比較できる形にする。symlink を張った
 // サーバーディレクトリ（/srv/mc/current -> /srv/mc/1.21 など）越しに同じ
-// ファイルを指されても同一と判定できるよう実体まで辿る。辿れないとき
-// （まだ存在しない、消された登録）は絶対パスのまま比べる。
+// ファイルを指されても同一と判定できるよう実体まで辿る。
+//
+// hso.toml がまだ無い（setup 直前）／消えた登録でもディレクトリの symlink は
+// 辿れるので、そのときは親だけ解決してファイル名を繋ぎ直す。ここで諦めると
+// alias 越しの setup が既存の登録を見落とし、ウィザードを終えてから重複で
+// 弾かれる。親も辿れなければ絶対パスのまま比べる。
 func resolveConfig(path string) (string, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
 	}
-	resolved, err := filepath.EvalSymlinks(absolute)
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return resolved, nil
+	}
+	directory, base := filepath.Split(filepath.Clean(absolute))
+	resolvedDirectory, err := filepath.EvalSymlinks(filepath.Clean(directory))
 	if err != nil {
 		return filepath.Clean(absolute), nil
 	}
-	return resolved, nil
+	return filepath.Join(resolvedDirectory, base), nil
 }
 
 func validate(registry Registry) error {
