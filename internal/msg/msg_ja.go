@@ -159,6 +159,7 @@ func ExitAutoQuit(seconds int) string {
 const (
 	BarItem         = "項目"
 	BarValue        = "値"
+	BarCandidate    = "候補"
 	BarClose        = "閉じる"
 	BarExit         = "終了"
 	BarSelectPanel  = "選ぶ"
@@ -166,6 +167,7 @@ const (
 	BarSettings     = "設定"
 	BarBackToSelect = "選択"
 	BarConsoleTab   = "入力/再起動/停止"
+	BarComplete     = "補完"
 	BarExecute      = "実行"
 	BarBack         = "戻る"
 	BarCommand      = "コマンド"

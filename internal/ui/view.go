@@ -87,6 +87,9 @@ func (model *Model) View() tea.View {
 			model.playerStage == playerStageCommands:
 			box, x, y := model.commandModal()
 			content = overlay(content, box, x, y)
+		case model.editingConsole() && model.completionOpen:
+			box, x, y := model.completionModal()
+			content = overlay(content, box, x, y)
 		}
 	}
 
@@ -131,7 +134,15 @@ func (model *Model) consoleLine() string {
 		model.layout.width-2-stringWidth(buttons)-3,
 	)
 	input := tail(string(model.input), max(0, inputWidth-stringWidth(cursor)))
-	return fitLine("> "+input+cursor+" "+buttons, model.layout.width-2)
+	// 候補は装飾なので、入力とカーソルを引いた残りに収まるぶんだけ出す。
+	hint := ""
+	if model.editingConsole() {
+		hintWidth := max(0, inputWidth-stringWidth(input)-stringWidth(cursor))
+		if text := truncate(model.completionHint(), hintWidth); text != "" {
+			hint = dimStyle.Render(text)
+		}
+	}
+	return fitLine("> "+input+cursor+hint+" "+buttons, model.layout.width-2)
 }
 
 func tail(value string, width int) string {
@@ -315,10 +326,21 @@ func (model *Model) keybar() string {
 			{"G", msg.BarSettings},
 			{"^C", msg.BarExit},
 		}
+	case model.completionOpen:
+		keys = [][2]string{
+			{"Tab/↑↓", msg.BarCandidate},
+			{"Enter", msg.BarConfirm},
+			{"Esc", msg.BarClose},
+			{"^C", msg.BarExit},
+		}
 	case model.panel == panelConsole:
+		tab := msg.BarConsoleTab
+		if model.editingConsole() && len(model.completions()) > 0 {
+			tab = msg.BarComplete
+		}
 		keys = [][2]string{
 			{"Esc", msg.BarBackToSelect},
-			{"Tab", msg.BarConsoleTab},
+			{"Tab", tab},
 			{"Enter", msg.BarExecute},
 			{"^C", msg.BarExit},
 		}

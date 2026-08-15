@@ -80,6 +80,8 @@ func (model *Model) resetServerState() {
 	model.gcStats = gclog.Stats{}
 	model.tracker = serverlog.Tracker{}
 	model.playerList = nil
+	model.completionOpen = false
+	model.completionCursor = 0
 	model.playerCursor = 0
 	model.playerStage = playerStagePlayers
 	model.samples = sampleBuffer{}
@@ -107,6 +109,9 @@ func (model *Model) addLog(entry serverlog.Entry) {
 			0,
 			max(0, len(model.playerList)-1),
 		)
+		if model.completionOpen {
+			model.refreshCompletions()
+		}
 	}
 
 	switch entry.Kind {
