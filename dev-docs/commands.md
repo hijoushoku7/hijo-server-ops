@@ -19,6 +19,7 @@ hso <コマンド> [引数]
 | `hso delete [name]` | サーバー一覧から登録を外す |
 | `hso java change [name]` | サーバーが使う Java を変更する |
 | `hso java list` | 自動検出した Java と、それを使っているサーバーを表示する |
+| `hso completion <shell>` | bash / zsh / fish の補完スクリプトを出力する |
 | `hso version` | バージョン・表示言語・アーキテクチャを表示する |
 | `hso update` | 最新リリースへ自己更新する |
 | `hso uninstall` | hso 自身を削除する |
@@ -90,6 +91,11 @@ pidfile のファイル名になるため（→ [cli.md](cli.md) の「サーバ
 `-v` / `--v` / `-version` / `--version` も同じ出力になる。`hso version` は引数を取らないが、
 `-` 付きの書き方は後ろに何が付いていてもバージョンを表示する。
 
+## `hso completion <shell>`
+
+bash / zsh / fish のいずれかを指定し、そのシェル用の補完スクリプトを標準出力へ出す。
+通常は `install.sh` が自動で設置するため、手動で設置し直すときに使う。
+
 ## `hso update`
 
 同じアーキテクチャ・同じ表示言語のバイナリを最新リリースから取得し、SHA-256 で照合してから
@@ -109,6 +115,7 @@ pidfile のファイル名になるため（→ [cli.md](cli.md) の「サーバ
 
 - サーバーディレクトリの `hso.toml` とワールドには**触れない**
 - 既定ではサーバー一覧を残す。入れ直す人のほうが多いため
+- install.sh が設置した bash / zsh / fish の補完ファイルは既定で削除する
 - **`--purge` は root で実行しない。** root の `~/.config` を見に行き、消したい一覧が残る
 - `/usr/local/bin` のバイナリを消すには `sudo hso uninstall`。uninstall 自身が
   `sudo` / `doas` を起動することはない

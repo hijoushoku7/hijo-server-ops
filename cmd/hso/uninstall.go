@@ -17,6 +17,7 @@ import (
 )
 
 var uninstallEUID = os.Geteuid
+var uninstallHomeDir = os.UserHomeDir
 
 type uninstallOptions struct {
 	purge bool
@@ -29,6 +30,7 @@ type uninstallPlan struct {
 	configFile       string
 	configDir        string
 	pidDir           string
+	completionPaths  []string
 	running          []string
 	runningUnchecked bool
 	serverListKept   bool
@@ -97,6 +99,9 @@ func runUninstall(args []string, input io.Reader, output io.Writer, terminal boo
 		if result.state != removalFailed {
 			continue
 		}
+		if plan.isCompletionPath(result.path) {
+			continue
+		}
 		failed = true
 		if result.path == plan.executable &&
 			(errors.Is(result.err, syscall.EACCES) || errors.Is(result.err, syscall.EPERM)) {
@@ -110,6 +115,15 @@ func runUninstall(args []string, input io.Reader, output io.Writer, terminal boo
 		return errors.New("uninstall incomplete; see the removal summary above")
 	}
 	return nil
+}
+
+func (plan uninstallPlan) isCompletionPath(path string) bool {
+	for _, candidate := range plan.completionPaths {
+		if candidate == path {
+			return true
+		}
+	}
+	return false
 }
 
 func parseUninstallOptions(args []string) (uninstallOptions, error) {
@@ -151,6 +165,10 @@ func prepareUninstall(options uninstallOptions) (uninstallPlan, error) {
 	}
 	if !plan.binaryWritable && !options.purge {
 		return plan, nil
+	}
+	plan.completionPaths, err = uninstallCompletionPaths(uninstallEUID() == 0)
+	if err != nil {
+		return uninstallPlan{}, err
 	}
 
 	// root の通常アンインストールはバイナリだけを扱い、root のホームにある
@@ -283,7 +301,7 @@ func printUninstallPlan(output io.Writer, plan uninstallPlan) error {
 }
 
 func (plan uninstallPlan) removalPaths() []string {
-	paths := []string{plan.executable}
+	paths := append([]string{plan.executable}, plan.completionPaths...)
 	if plan.options.purge {
 		paths = append(paths, plan.configDir, plan.pidDir)
 	}
@@ -318,7 +336,7 @@ func confirmUninstall(
 }
 
 func removeUninstallTargets(plan uninstallPlan) []removalResult {
-	results := make([]removalResult, 0, 3)
+	results := make([]removalResult, 0, 6)
 	if plan.options.purge {
 		results = append(results, removeDirectory(plan.configDir), removeDirectory(plan.pidDir))
 	}
@@ -326,8 +344,53 @@ func removeUninstallTargets(plan uninstallPlan) []removalResult {
 		results = append(results, removalResult{path: plan.executable, state: removalKept})
 		return results
 	}
+	for _, path := range plan.completionPaths {
+		results = append(results, removeCompletion(path))
+	}
 	results = append(results, removeExecutable(plan.executable, plan.executableInfo))
 	return results
+}
+
+// uninstallCompletionPaths は install.sh が置いた補完ファイルのうち、実際に
+// あるものだけを返す。無いパスまで削除予定として並べると、確認画面が置いて
+// いないシェルの分まで長くなる。
+func uninstallCompletionPaths(system bool) ([]string, error) {
+	candidates := []string{
+		"/usr/share/bash-completion/completions/hso",
+		"/usr/local/share/zsh/site-functions/_hso",
+		"/usr/share/fish/vendor_completions.d/hso.fish",
+	}
+	if !system {
+		home, err := uninstallHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("cannot determine completion paths: %w", err)
+		}
+		candidates = []string{
+			filepath.Join(home, ".local/share/bash-completion/completions/hso"),
+			filepath.Join(home, ".local/share/zsh/site-functions/_hso"),
+			filepath.Join(home, ".config/fish/completions/hso.fish"),
+		}
+	}
+	var paths []string
+	for _, path := range candidates {
+		if _, err := os.Lstat(path); err == nil {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+func removeCompletion(path string) removalResult {
+	result := removalResult{path: path}
+	if err := os.Remove(path); errors.Is(err, fs.ErrNotExist) {
+		result.state = removalAbsent
+	} else if err != nil {
+		result.state = removalFailed
+		result.err = err
+	} else {
+		result.state = removalRemoved
+	}
+	return result
 }
 
 func removeDirectory(path string) removalResult {

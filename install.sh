@@ -216,6 +216,68 @@ install_binary() {
 }
 
 # shellcheck disable=SC3043
+install_completion_file() {
+    local privileged="$1"
+    local source="$2"
+    local destination="$3"
+    local completion_dir
+
+    completion_dir=$(dirname "$destination")
+    # shellcheck disable=SC2016
+    set -- sh -c '
+        mkdir -p "$2" || exit 1
+        staging=$(mktemp "$2/.hso-completion-XXXXXX") || exit 1
+        trap '\''rm -f "$staging"'\'' 0
+        trap '\''exit 1'\'' 1 2 15
+        cp "$1" "$staging" || exit $?
+        chmod 0644 "$staging" || exit $?
+        mv -f "$staging" "$3" || exit $?
+        trap - 0 1 2 15
+    ' _ "$source" "$completion_dir" "$destination"
+
+    if [ -n "$privileged" ]; then
+        "$privileged" "$@"
+    else
+        "$@"
+    fi
+}
+
+# 表示する $fpath は、案内を実行したときに展開させる。
+# shellcheck disable=SC3043,SC2016
+install_completions() {
+    local privileged="$1"
+    local binary="$2"
+    local system="$3"
+    local work="$4"
+    local shell_name destination generated zsh_installed=false
+
+    for shell_name in bash zsh fish; do
+        command -v "$shell_name" >/dev/null 2>&1 || continue
+        case "$system:$shell_name" in
+            true:bash) destination=/usr/share/bash-completion/completions/hso ;;
+            true:zsh) destination=/usr/local/share/zsh/site-functions/_hso ;;
+            true:fish) destination=/usr/share/fish/vendor_completions.d/hso.fish ;;
+            false:bash) destination=$HOME/.local/share/bash-completion/completions/hso ;;
+            false:zsh) destination=$HOME/.local/share/zsh/site-functions/_hso ;;
+            false:fish) destination=$HOME/.config/fish/completions/hso.fish ;;
+        esac
+        generated=$work/completion-$shell_name
+        if "$binary" completion "$shell_name" > "$generated" 2>/dev/null && \
+            install_completion_file "$privileged" "$generated" "$destination"; then
+            printf '==> shell completion installed to %s\n' "$destination"
+            [ "$shell_name" = zsh ] && zsh_installed=true
+        else
+            printf 'Warning: could not install shell completion to %s\n' "$destination" >&2
+        fi
+    done
+
+    if [ "$system" = false ] && [ "$zsh_installed" = true ]; then
+        printf '\n   Add this before compinit in ~/.zshrc:\n\n'
+        printf '       %s\n' 'fpath=(~/.local/share/zsh/site-functions $fpath)'
+    fi
+}
+
+# shellcheck disable=SC3043
 main() {
     local system=false
     local lang="${HSO_LANG:-en}"
@@ -373,6 +435,7 @@ main() {
 
     if [ -f "$dir/hso" ] && cmp -s "$binary" "$dir/hso"; then
         printf '==> hso %s is already installed at %s/hso\n' "$tag" "$dir"
+        install_completions "$privileged" "$dir/hso" "$system" "$work"
         rm -rf "$work"
         trap - 0 1 2 15
         return
@@ -383,6 +446,7 @@ main() {
     fi
 
     print_path_guidance "$tag" "$dir/hso" "$dir"
+    install_completions "$privileged" "$dir/hso" "$system" "$work"
 
     rm -rf "$work"
     trap - 0 1 2 15

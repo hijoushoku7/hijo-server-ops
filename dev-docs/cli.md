@@ -3,7 +3,8 @@
 > 管理 issue: hijoushoku7/hijo-server-ops#53（#51 を吸収）
 
 `hso` をサーバーディレクトリに置くバイナリから、どこからでも呼べるコマンドへ広げる。
-全体の仕様と位置づけは [spec.md](spec.md)、ビルド手順は [build.md](build.md)。
+全体の仕様と位置づけは [spec.md](spec.md)、ビルド手順は [build.md](build.md)、
+シェル補完は [completion.md](completion.md)。
 
 ## 目的
 
@@ -85,6 +86,7 @@ ja / en で 2 本という配布形態はそのまま。言語で実行ファイ
 | `hso java` | Java 関連コマンドの使い方を表示 |
 | `hso java change [name]` | 登録済みサーバーが使う Java を変更 |
 | `hso java list` | 自動検出した JVM と利用中サーバーを表示 |
+| `hso completion <shell>` | bash / zsh / fish の補完スクリプトを標準出力へ出す |
 | `hso version` | バージョン・言語・アーキテクチャ（`-v` / `--v` / `-version` / `--version` も同じ） |
 | `hso update` | 最新リリースへ自己更新 |
 | `hso uninstall` | 自分自身のバイナリを消す。`--purge` で設定と pidfile も |
@@ -407,11 +409,12 @@ tag=$(printf '%s\n' "$body" |
 **入れたものを消すコマンドを持つ。** `curl | sh` で入れた人に「消し方は README を読んで
 `rm` を打て」と言わせない。入れる手順がコマンド 1 本なら、消す手順もコマンド 1 本にする。
 
-やることは 3 つだけ。
+やることは次の 4 つだけ。
 
 1. 自分自身のパス（`os.Executable()`）を確かめ、消してよいか確認を取る
 2. そのファイルを `unlink` する
 3. `--purge` が付いていれば、設定ディレクトリと pidfile も消す
+4. install.sh が設置したシェル補完ファイルを消す（`--purge` の有無にかかわらない）
 
 #### 権限が無いときは、昇格せずエラーで止める
 
@@ -456,6 +459,7 @@ If sudo is not available on this machine, run it as root.
 | | 既定 | `--purge` |
 |---|---|---|
 | バイナリ（自分自身） | 消す | 消す |
+| bash / zsh / fish の補完ファイル | **消す** | **消す** |
 | `~/.config/hso/config.toml`（サーバー一覧） | **残す** | 消す |
 | pidfile のディレクトリ | **残す** | 消す |
 | サーバーディレクトリの `hso.toml` / ワールド | **触れない** | **触れない** |
@@ -728,7 +732,12 @@ https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh
 4. 最新のタグを取る（**`hso update` と同じ経路を使う** → 未決定の「最新バージョンの取得先」）
 5. `hso_<tag>_linux_<arch>_<lang>.tar.gz` と `checksums.txt` を落として **SHA-256 を照合**
 6. インストール先を `mkdir -p` して、中の `hso` を `0755` で置く
-7. インストール先が `PATH` に無ければ、追記すべき 1 行を添えて警告する
+7. 利用できる bash / zsh / fish の補完スクリプトを、それぞれの標準の場所へ置く
+8. インストール先が `PATH` に無ければ、追記すべき 1 行を添えて警告する
+
+補完ファイルの設置に失敗してもインストールは続け、警告と設置できたパスを表示する。
+ユーザーインストールで zsh の補完を置いた場合だけ、`compinit` より前に
+`fpath=(~/.local/share/zsh/site-functions $fpath)` を加えるよう案内する。rc ファイルは編集しない。
 
 `--system` の有無による権限の検査は 1 より前、**何もダウンロードしないうちに**行う。
 

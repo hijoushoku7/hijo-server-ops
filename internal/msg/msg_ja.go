@@ -736,6 +736,33 @@ func UnknownCommand(command string) error {
 	)
 }
 
+// シェル補完で候補に添える説明。
+const (
+	CompletionSetupDescription      = "セットアップを始める"
+	CompletionStartDescription      = "登録済みのサーバーを起動する"
+	CompletionListDescription       = "登録済みのサーバーを表示する"
+	CompletionDeleteDescription     = "サーバー一覧から登録を外す"
+	CompletionJavaDescription       = "Java の設定と確認"
+	CompletionCommandDescription    = "シェル補完スクリプトを出力する"
+	CompletionVersionDescription    = "バージョン情報を表示する"
+	CompletionUpdateDescription     = "最新リリースへ自己更新する"
+	CompletionUninstallDescription  = "hso 自身を削除する"
+	CompletionHelpDescription       = "コマンド一覧を表示する"
+	CompletionConfigDescription     = "指定した hso.toml で起動する"
+	CompletionJavaChangeDescription = "サーバーが使う Java を変更する"
+	CompletionJavaListDescription   = "自動検出した Java と利用中サーバーを表示する"
+	CompletionPurgeDescription      = "設定と pidfile も削除する"
+	CompletionYesDescription        = "確認を省略する"
+)
+
+func CompletionArgumentsInvalid() error {
+	return errors.New("completion には bash、zsh、fish のいずれかを指定してください")
+}
+
+func UnsupportedCompletionShell(shell string) error {
+	return fmt.Errorf("未対応のシェルです: %s（bash、zsh、fish のいずれかを指定してください）", shell)
+}
+
 // CommandHelp は hso / hso help で出すコマンド一覧。オプションは主要なものだけを
 // 載せ、それぞれの細かい説明は dev-docs/commands.md に置く。
 const CommandHelp = `hso — Minecraft サーバー用のラッパー型 TUI コンソール
@@ -750,6 +777,7 @@ const CommandHelp = `hso — Minecraft サーバー用のラッパー型 TUI コ
   delete [name]           サーバー一覧から登録を外す。hso.toml とワールドは消さない
   java change [name]      サーバーが使う Java を変更する
   java list               自動検出した Java と、それを使っているサーバーを表示する
+  completion <shell>      bash / zsh / fish の補完スクリプトを出力する
   version                 バージョン・表示言語・アーキテクチャを表示する
   update                  最新リリースへ自己更新する
   uninstall               hso 自身を削除する。--purge で設定と pidfile も消す

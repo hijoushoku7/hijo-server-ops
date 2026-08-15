@@ -114,7 +114,7 @@ func TestRunExistingConfigBranches(t *testing.T) {
 func TestCommandHelpListsEveryCommand(t *testing.T) {
 	for _, command := range []string{
 		"setup", "start", "list", "ls", "delete",
-		"java change", "java list", "version", "update", "uninstall", "help",
+		"java change", "java list", "completion", "version", "update", "uninstall", "help",
 	} {
 		if !strings.Contains(msg.CommandHelp, command) {
 			t.Errorf("ヘルプに %q がない", command)

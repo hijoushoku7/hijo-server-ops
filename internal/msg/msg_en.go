@@ -738,6 +738,33 @@ func UnknownCommand(command string) error {
 	)
 }
 
+// シェル補完で候補に添える説明。
+const (
+	CompletionSetupDescription      = "Start the setup"
+	CompletionStartDescription      = "Start a registered server"
+	CompletionListDescription       = "Show registered servers"
+	CompletionDeleteDescription     = "Drop a server from the list"
+	CompletionJavaDescription       = "Configure and inspect Java"
+	CompletionCommandDescription    = "Print a shell completion script"
+	CompletionVersionDescription    = "Show version information"
+	CompletionUpdateDescription     = "Update to the latest release"
+	CompletionUninstallDescription  = "Remove hso itself"
+	CompletionHelpDescription       = "Show the command list"
+	CompletionConfigDescription     = "Start with the given hso.toml"
+	CompletionJavaChangeDescription = "Change the Java used by a server"
+	CompletionJavaListDescription   = "Show detected Java and servers using it"
+	CompletionPurgeDescription      = "Also remove config and pidfiles"
+	CompletionYesDescription        = "Skip confirmation"
+)
+
+func CompletionArgumentsInvalid() error {
+	return errors.New("completion requires one of bash, zsh, or fish")
+}
+
+func UnsupportedCompletionShell(shell string) error {
+	return fmt.Errorf("unsupported shell: %s (expected bash, zsh, or fish)", shell)
+}
+
 // CommandHelp は hso / hso help で出すコマンド一覧。オプションは主要なものだけを
 // 載せ、それぞれの細かい説明は dev-docs/commands.md に置く。
 const CommandHelp = `hso — a wrapper-style TUI console for Minecraft servers
@@ -752,6 +779,7 @@ Commands:
   delete [name]           Drop a server from the list. hso.toml and the worlds are kept
   java change [name]      Change the Java a server uses
   java list               Show detected Java installations and the servers using them
+  completion <shell>      Print the completion script for bash, zsh, or fish
   version                 Show the version, interface language and architecture
   update                  Update itself to the latest release
   uninstall               Remove hso itself. --purge also removes the config and the pidfile

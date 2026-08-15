@@ -15,9 +15,13 @@ func preserveUninstallGlobals(t *testing.T) {
 	t.Helper()
 	previousExecutablePath := executablePath
 	previousEUID := uninstallEUID
+	previousHomeDir := uninstallHomeDir
+	isolateHome := t.TempDir()
+	uninstallHomeDir = func() (string, error) { return isolateHome, nil }
 	t.Cleanup(func() {
 		executablePath = previousExecutablePath
 		uninstallEUID = previousEUID
+		uninstallHomeDir = previousHomeDir
 	})
 }
 
@@ -257,6 +261,40 @@ func TestRemoveExecutableRefusesChangedTarget(t *testing.T) {
 	}
 	if string(contents) != "new" {
 		t.Fatalf("置換後のファイルが変更された: %q", contents)
+	}
+}
+
+func TestRemoveUninstallTargetsRemovesCompletionsByDefault(t *testing.T) {
+	directory := t.TempDir()
+	executable := filepath.Join(directory, "hso")
+	completionPath := filepath.Join(directory, "completion", "hso")
+	if err := os.MkdirAll(filepath.Dir(completionPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{executable, completionPath} {
+		if err := os.WriteFile(path, []byte("hso"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	executableInfo, err := os.Lstat(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := removeUninstallTargets(uninstallPlan{
+		executable:      executable,
+		executableInfo:  executableInfo,
+		completionPaths: []string{completionPath},
+		binaryWritable:  true,
+	})
+	if len(results) != 2 || results[0].state != removalRemoved || results[1].state != removalRemoved {
+		t.Fatalf("results = %#v", results)
+	}
+}
+
+func TestCompletionRemovalFailureDoesNotFailUninstall(t *testing.T) {
+	plan := uninstallPlan{completionPaths: []string{"/completion"}}
+	if !plan.isCompletionPath("/completion") || plan.isCompletionPath("/other") {
+		t.Fatalf("completionPaths = %q", plan.completionPaths)
 	}
 }
 
