@@ -54,6 +54,29 @@ func TestStatsTitleDropsVersionOnNarrowTerminal(t *testing.T) {
 	}
 }
 
+// TestStatsTitleTruncatesLongNameToKeepStatus は、登録名が長いだけで運転状況が
+// 消えないことを見る。名前は 30 文字まで登録できるのに対し、最小幅の Stats の
+// タイトルは 29 桁しかない。
+func TestStatsTitleTruncatesLongNameToKeepStatus(t *testing.T) {
+	model := New(
+		make(chan Action, 1),
+		nil,
+		0,
+		DefaultSettings(),
+		ServerInfo{Name: strings.Repeat("a", 30), Version: "v1.2.3"},
+	)
+	model.resize(minimumWidth, minimumHeight)
+
+	got := model.statsTitle()
+	if !strings.Contains(got, "starting") || !strings.HasPrefix(got, "a") {
+		t.Fatalf("title = %q", got)
+	}
+	if width := stringWidth(got); width > model.layout.statsWidth-5 {
+		t.Fatalf("title = %q, width = %d, budget = %d",
+			got, width, model.layout.statsWidth-5)
+	}
+}
+
 func TestStatsTitleKeepsMetricsDegraded(t *testing.T) {
 	model := New(
 		make(chan Action, 1),

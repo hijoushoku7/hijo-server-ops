@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
 func (model *Model) statsTitle() string {
@@ -10,34 +11,41 @@ func (model *Model) statsTitle() string {
 	if name == "" {
 		name = "hijo-server-ops"
 	}
-	uptime := formatUptime(model.metrics.Uptime)
+	status := " · " + model.status
+	uptime := " · uptime " + formatUptime(model.metrics.Uptime)
+	version := ""
+	if model.info.Version != "" {
+		version = " · hso " + model.info.Version
+	}
 	degraded := ""
 	if model.jvmMetricError != "" || model.memoryMetricError != "" {
 		degraded = " · metrics degraded"
 	}
-	title := fmt.Sprintf(
-		"%s · %s · uptime %s%s",
-		name,
-		model.status,
-		uptime,
-		degraded,
-	)
-	if model.info.Version != "" {
-		withVersion := fmt.Sprintf(
-			"%s · hso %s · %s · uptime %s%s",
-			name,
-			model.info.Version,
-			model.status,
-			uptime,
-			degraded,
-		)
-		// 複数端末を並べたときの識別と運転状況を優先し、
-		// 幅が足りないときはバージョン区画をまとめて省く。
-		if stringWidth(withVersion) <= max(0, model.layout.statsWidth-5) {
-			title = withVersion
+
+	// タイトルは renderPanelLines が幅 - 5 で切り詰めるので、同じ幅で自分で
+	// 組み立てる。末尾から機械的に切られると、名前が長いだけで運転状況が
+	// 消えてしまう。落とす順はバージョン → uptime で、サーバー名と status・
+	// metrics degraded は最後まで残す。端末を並べたときに最初に要るのは
+	// どのサーバーかと、動いているかどうかのため。
+	budget := max(0, model.layout.statsWidth-5)
+	for _, tail := range []string{
+		version + status + uptime + degraded,
+		status + uptime + degraded,
+		status + degraded,
+	} {
+		if stringWidth(name)+stringWidth(tail) <= budget {
+			return name + tail
 		}
 	}
-	return title
+
+	// それでも入らないときは名前のほうを削る。
+	tail := status + degraded
+	nameWidth := budget - stringWidth(tail)
+	if nameWidth <= 0 {
+		// 名前を入れる余地が無い幅では運転状況だけ残す。
+		return strings.TrimPrefix(tail, " · ")
+	}
+	return truncate(name, nameWidth) + tail
 }
 
 func (model *Model) statsLines() []string {
