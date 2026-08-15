@@ -273,6 +273,32 @@ func TestReplacementPrivilegeUsesSudoForProtectedDirectory(t *testing.T) {
 	}
 }
 
+func TestAuthenticatePrivilegeExplainsWhyRootIsNeeded(t *testing.T) {
+	commandDirectory := t.TempDir()
+	sudo := filepath.Join(commandDirectory, "sudo")
+	if err := os.WriteFile(sudo, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", commandDirectory)
+	target := "/usr/local/bin/hso"
+
+	var notice bytes.Buffer
+	if _, err := authenticatePrivilege(target, true, &notice); err != nil {
+		t.Fatal(err)
+	}
+	if notice.String() != msg.PrivilegeExplanation(target, "sudo")+"\n" {
+		t.Fatalf("notice = %q", notice.String())
+	}
+
+	notice.Reset()
+	if _, err := authenticatePrivilege(target, false, &notice); err != nil {
+		t.Fatal(err)
+	}
+	if notice.Len() != 0 {
+		t.Fatalf("notice = %q, want empty when not interactive", notice.String())
+	}
+}
+
 func TestPrivilegedReplacementRunsCreateCopyChmodMove(t *testing.T) {
 	directory := t.TempDir()
 	source := filepath.Join(directory, "downloaded-hso")

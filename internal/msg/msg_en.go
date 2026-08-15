@@ -715,6 +715,10 @@ func BinaryMissingFromArchive() error {
 	return errors.New("the update archive does not contain hso")
 }
 
+func PrivilegeExplanation(target, tool string) string {
+	return fmt.Sprintf("hso needs root to replace %s, so it will ask %s for your password:", target, tool)
+}
+
 func PrivilegeAuthenticationFailed(tool string, err error) error {
 	return fmt.Errorf("could not authenticate with %s: %w", tool, err)
 }

@@ -335,6 +335,7 @@ main() {
         if command -v sudo >/dev/null 2>&1; then
             privileged=sudo
             if [ -t 2 ]; then
+                printf 'Installing into %s needs root, so sudo will ask for your password:\n' "$dir" >&2
                 sudo -v || die "sudo authentication failed"
             else
                 sudo -n true || die "sudo requires a terminal or cached credentials"
@@ -342,6 +343,7 @@ main() {
         elif command -v doas >/dev/null 2>&1; then
             privileged=doas
             if [ -t 2 ]; then
+                printf 'Installing into %s needs root, so doas will ask for your password:\n' "$dir" >&2
                 doas true || die "doas authentication failed"
             else
                 doas -n true || die "doas requires a terminal or cached credentials"
