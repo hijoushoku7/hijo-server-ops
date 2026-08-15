@@ -111,7 +111,7 @@ func TestModelConsoleLineShowsHintWithoutOverflow(t *testing.T) {
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 72, Height: 24})
 	model.input = []rune("weather")
 
-	line := model.consoleLine()
+	line := consoleText(model)
 	if !strings.Contains(line, dimStyle.Render(" clear")) {
 		t.Fatalf("Console 行に灰色の候補が無い: %q", line)
 	}
@@ -120,7 +120,7 @@ func TestModelConsoleLineShowsHintWithoutOverflow(t *testing.T) {
 	}
 
 	model.input = []rune(strings.Repeat("x", 512) + " weather")
-	if width := stringWidth(model.consoleLine()); width != model.layout.width-2 {
+	if width := stringWidth(consoleText(model)); width != model.layout.width-2 {
 		t.Fatalf("長い入力の Console 行の桁数 = %d, want %d", width, model.layout.width-2)
 	}
 }

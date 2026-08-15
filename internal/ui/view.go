@@ -12,6 +12,8 @@ import (
 
 func (model *Model) View() tea.View {
 	var content string
+	// caretX は入力欄のキャレットの桁。入力欄に居ないときは -1。
+	caretX := -1
 	if !model.layout.ready {
 		content = fmt.Sprintf(
 			"hijo-server-ops\n\nterminal is too small: %dx%d\nminimum: %dx%d",
@@ -59,9 +61,11 @@ func (model *Model) View() tea.View {
 			model.layout.bodyHeight,
 		)
 		body := joinColumns(left, logs)
+		var consoleText string
+		consoleText, caretX = model.consoleLine()
 		footer := renderPanel(
 			panelConsole.title(),
-			[]string{model.consoleLine()},
+			[]string{consoleText},
 			model.layout.width,
 			footerHeight,
 			false,
@@ -91,11 +95,20 @@ func (model *Model) View() tea.View {
 			box, x, y := model.completionModal()
 			content = overlay(content, box, x, y)
 		}
+		// モーダルが重なっている間はキーが入力欄へ届かない。
+		if model.exit != nil || model.timeModal != nil || model.settingsOpen {
+			caretX = -1
+		}
 	}
 
 	view := tea.NewView(content)
 	view.AltScreen = true
 	view.WindowTitle = model.windowTitle()
+	// IME の候補窓は端末のカーソル位置に出る。キャレットを入力欄へ置かないと
+	// 直前の描画位置に取り残され、仮入力が画面の途中に現れる。
+	if caretX >= 0 {
+		view.Cursor = tea.NewCursor(caretX, statsHeight+model.layout.bodyHeight+1)
+	}
 	return view
 }
 
@@ -106,16 +119,19 @@ func (model *Model) windowTitle() string {
 	return model.info.Name + " · hijo-server-ops"
 }
 
-func (model *Model) consoleLine() string {
+// consoleLine は入力欄の行と、そこに置くキャレットの桁を返す。桁は入力欄に
+// 居ないとき -1。キャレットは文字で描かず端末のカーソルそのものを置くので、
+// 行の側では 1 桁ぶんの空きだけ確保する。
+func (model *Model) consoleLine() (string, int) {
 	restart := "[restart]"
 	if model.restartPhase != 0 {
 		restart = "[restarting" + model.restartDots() + "]"
 	}
 	stop := "[stop]"
 	focused := model.mode == modeFocus && model.panel == panelConsole
-	cursor := ""
+	caret := ""
 	if focused && model.consoleFocus == consoleInput {
-		cursor = "█"
+		caret = " "
 	}
 	if focused && model.consoleFocus == consoleRestart {
 		restart = selectedStyle.Render(restart)
@@ -133,16 +149,22 @@ func (model *Model) consoleLine() string {
 		0,
 		model.layout.width-2-stringWidth(buttons)-3,
 	)
-	input := tail(string(model.input), max(0, inputWidth-stringWidth(cursor)))
-	// 候補は装飾なので、入力とカーソルを引いた残りに収まるぶんだけ出す。
+	input := tail(string(model.input), max(0, inputWidth-stringWidth(caret)))
+	caretX := -1
 	hint := ""
 	if model.editingConsole() {
-		hintWidth := max(0, inputWidth-stringWidth(input)-stringWidth(cursor))
+		// 枠の 1 桁と "> " の 2 桁の右、入力の末尾がキャレットの位置。
+		caretX = 3 + stringWidth(input)
+		// 候補は装飾なので、入力とキャレットを引いた残りに収まるぶんだけ出す。
+		hintWidth := max(0, inputWidth-stringWidth(input)-stringWidth(caret))
 		if text := truncate(model.completionHint(), hintWidth); text != "" {
 			hint = dimStyle.Render(text)
+			// 候補を出すときはキャレットの桁を空けない。1 文字目に端末の
+			// カーソルが重なるが、まだ確定していない文字なので隠れて困らない。
+			caret = ""
 		}
 	}
-	return fitLine("> "+input+cursor+hint+" "+buttons, model.layout.width-2)
+	return fitLine("> "+input+caret+hint+" "+buttons, model.layout.width-2), caretX
 }
 
 func tail(value string, width int) string {
