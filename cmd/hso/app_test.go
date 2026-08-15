@@ -96,6 +96,30 @@ func TestServerDisplayName(t *testing.T) {
 				return "", false, nil
 			},
 		},
+		{
+			name:    "ディレクトリ名の制御文字を落とす",
+			workDir: "/srv/minecraft/ev\x1b]0;il\aserver",
+			want:    "ev]0;ilserver",
+			lookup: func(string) (string, bool, error) {
+				return "", false, nil
+			},
+		},
+		{
+			name:    "登録名の制御文字も落とす",
+			workDir: "/srv/minecraft/survival",
+			want:    "main-server",
+			lookup: func(string) (string, bool, error) {
+				return "main-\x07server", true, nil
+			},
+		},
+		{
+			name:    "長い名前は 30 文字で切る",
+			workDir: "/srv/minecraft/" + strings.Repeat("a", 40),
+			want:    strings.Repeat("a", 30),
+			lookup: func(string) (string, bool, error) {
+				return "", false, nil
+			},
+		},
 	}
 
 	for _, test := range tests {
