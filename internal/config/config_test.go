@@ -72,8 +72,25 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	// 何をすればいいか分かるよう、直し方とファイルの場所も添える。
-	if !strings.Contains(err.Error(), path) {
+	if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "hso setup") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// 設定ファイルがまだ無いだけのときに、削除を促す案内を出してはいけない。
+// 引数なしの hso はヘルプを出すだけなので、案内先は hso setup になる。
+func TestLoadMissingFileGuidesToSetup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hso.toml")
+
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "hso setup") {
+		t.Fatalf("err = %v", err)
+	}
+	// ja / en どちらの古い案内も残っていないことを見る。
+	for _, stale := range []string{"削除", "delete", "hso を起動", "start hso"} {
+		if strings.Contains(err.Error(), stale) {
+			t.Fatalf("案内に %q が残っている: %v", stale, err)
+		}
 	}
 }
 

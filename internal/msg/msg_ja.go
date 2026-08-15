@@ -16,6 +16,7 @@ package msg
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 )
 
 // 設定モーダルの見出し。
@@ -207,6 +208,12 @@ func SetupTarget(path string) string {
 	return "作成先: " + path
 }
 
+// SetupRegisterTarget は登録ウィザードの見出し。こちらは hso.toml を作らない
+// ので「作成先」とは書けない。
+func SetupRegisterTarget(path string) string {
+	return "対象: " + path
+}
+
 func SetupRelativeHint(dir string) string {
 	return dir + " からの相対パスも書ける"
 }
@@ -284,6 +291,11 @@ func JavaHomeNotInjected(configured string) string {
 }
 
 func ReadConfigFailed(err error, path string) error {
+	// まだファイルが無いだけのときに「削除してください」とは言えないので、
+	// 作り方の案内へ分ける。
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("設定ファイルを読む: %w%s", err, createConfig(path))
+	}
 	return fmt.Errorf("設定ファイルを読む: %w%s", err, reinitialize(path))
 }
 
@@ -296,12 +308,21 @@ func UnknownConfigKeys(keys, path string) error {
 }
 
 // reinitialize は設定ファイルが読めないときの直し方を添える。古い形式の
-// 項目が残っているのが主な原因で、消して起動し直せばセットアップから
-// 作り直せる、というところまで書かないと何をすればいいか分からない。
+// 項目が残っているのが主な原因で、消して hso setup をやり直せば作り直せる、
+// というところまで書かないと何をすればいいか分からない。引数なしの hso は
+// ヘルプを出すだけなので、案内先は必ず hso setup にする。
 func reinitialize(path string) string {
 	return fmt.Sprintf(
-		"\nhso.toml を初期化してください: %s を削除して hso を起動すると"+
-			"セットアップから作り直せます",
+		"\nhso.toml を初期化してください: %s を削除してから、"+
+			"Minecraft サーバーのディレクトリで hso setup を実行すると作り直せます",
+		path,
+	)
+}
+
+// createConfig は設定ファイルがまだ無いときの作り方を添える。
+func createConfig(path string) string {
+	return fmt.Sprintf(
+		"\nMinecraft サーバーのディレクトリで hso setup を実行すると %s を作成できます",
 		path,
 	)
 }

@@ -154,17 +154,33 @@ func save(
 
 // NameForConfig は指定された hso.toml が一覧にあれば、その登録名を返す。
 func (r Registry) NameForConfig(path string) (string, bool) {
-	target, err := filepath.Abs(path)
+	target, err := resolveConfig(path)
 	if err != nil {
 		return "", false
 	}
 	for _, server := range r.Servers {
-		candidate, err := filepath.Abs(server.Config)
-		if err == nil && filepath.Clean(candidate) == filepath.Clean(target) {
+		candidate, err := resolveConfig(server.Config)
+		if err == nil && candidate == target {
 			return server.Name, true
 		}
 	}
 	return "", false
+}
+
+// resolveConfig は hso.toml のパスを比較できる形にする。symlink を張った
+// サーバーディレクトリ（/srv/mc/current -> /srv/mc/1.21 など）越しに同じ
+// ファイルを指されても同一と判定できるよう実体まで辿る。辿れないとき
+// （まだ存在しない、消された登録）は絶対パスのまま比べる。
+func resolveConfig(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return filepath.Clean(absolute), nil
+	}
+	return resolved, nil
 }
 
 func validate(registry Registry) error {

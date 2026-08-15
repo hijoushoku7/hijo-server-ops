@@ -28,12 +28,14 @@ var (
 
 func (m *model) View() tea.View {
 	title := msg.SetupTitle
+	target := msg.SetupTarget(m.configPath)
 	if m.register {
 		title = msg.SetupRegisterTitle
+		target = msg.SetupRegisterTarget(m.configPath)
 	}
 	lines := []string{
 		titleStyle.Render(title),
-		dimStyle.Render(msg.SetupTarget(m.configPath)),
+		dimStyle.Render(target),
 		"",
 	}
 	lines = append(lines, m.body()...)
