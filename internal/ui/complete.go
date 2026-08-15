@@ -15,7 +15,9 @@ var (
 // completionScan は打ちかけの入力を解析し、候補の手前に残す文字列と候補を返す。
 func (model *Model) completionScan() (string, []string) {
 	original := string(model.input)
-	input := strings.TrimPrefix(original, "/")
+	// 先頭の空白と "/" は打ち方の揺れなので、語の切り出しからだけ外す。
+	// 置き換え位置は original から取るため、打った空白はそのまま残る。
+	input := strings.TrimPrefix(strings.TrimLeft(original, " "), "/")
 	// 空白で区切った語だけを見る。末尾の空白は「次の引数を打ち始めていない」
 	// という情報なので、空の語として 1 つだけ残す。Split で作った空要素を
 	// そのまま語として扱うと、空白が 2 つ続いただけで並びが一致しなくなる。

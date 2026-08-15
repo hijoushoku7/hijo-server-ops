@@ -30,8 +30,9 @@ func TestModelCompletions(t *testing.T) {
 		{name: "tell 引数の後", input: "tell Alice ", players: []string{"Alice"}, want: nil},
 		{name: "weather 引数の後", input: "weather clear ", want: nil},
 		{name: "対象外", input: "gamemode ", want: nil},
-		// 先頭に空白があってもコマンド語を見失わない。
+		// 先頭に空白があってもコマンド語を見失わない。"/" との併用も同じ。
 		{name: "先頭の空白", input: "  weather ", want: []string{"clear", "rain", "thunder"}},
+		{name: "先頭の空白と /", input: "  /tell Al", players: []string{"Alice"}, want: []string{"Alice"}},
 		// 空白が 2 つ続いても並びの一致は変わらない。
 		{name: "連続する空白", input: "weather  c", want: []string{"clear"}},
 		{name: "連続する空白 打ちかけ無し", input: "weather  ", want: []string{"clear", "rain", "thunder"}},
