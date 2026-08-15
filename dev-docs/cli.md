@@ -482,9 +482,13 @@ If sudo is not available on this machine, run it as root.
 Error: --purge must not be run as root.
 
 As root, hso would look for the config in root's home directory, not yours.
-Run it as your normal user:
+Run it as your normal user first:
 
     hso uninstall --purge
+
+If that reports the binary itself needs root, finish with:
+
+    sudo hso uninstall
 ```
 
 `SUDO_UID` から呼び出し元のホームを推測して消しにいく、という実装はしない。
