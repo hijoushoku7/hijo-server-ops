@@ -36,6 +36,10 @@ func main() {
 }
 
 func dispatchCommand(args []string, output io.Writer) (bool, error) {
+	if len(args) > 0 && args[0] == "__complete" {
+		runComplete(args[1:], output)
+		return true, nil
+	}
 	// 引数なしの hso は何も起動せずヘルプを出す。設定を読んで起動する経路は
 	// start か -config に集約し、打ち間違いでセットアップが始まらないようにする。
 	if len(args) == 0 {
@@ -73,6 +77,8 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 		return true, runDelete(args[1:], os.Stdin, output, interactive())
 	case "java":
 		return true, runJava(args[1:], output, os.Stderr, interactive())
+	case "completion":
+		return true, runCompletion(args[1:], output)
 	case "version":
 		if len(args) != 1 {
 			return true, msg.VersionArgumentsNotAllowed()

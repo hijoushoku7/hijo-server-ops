@@ -1,0 +1,18 @@
+#compdef hso
+
+_hso() {
+    local out
+    local -a candidates
+    # words は 1 始まりだが ${...:offset:length} の offset は 0 始まり。
+    # 先頭の hso から、いま打ちかけの CURRENT 番目までをそのまま渡す。
+    out=$(hso __complete "${words[@]:0:$CURRENT}" 2>/dev/null)
+    if [[ $out == ':files' ]]; then
+        _files
+        return
+    fi
+    candidates=("${(@f)out}")
+    candidates=("${candidates[@]/$'\t'/:}")
+    _describe 'hso' candidates
+}
+
+compdef _hso hso
