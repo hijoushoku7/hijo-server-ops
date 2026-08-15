@@ -74,7 +74,7 @@ func TestReopenAndConfirmKeepsOffset(t *testing.T) {
 	for _, offset := range []int{0, 30, 60, 90, -90, -690, 720} {
 		settings := DefaultSettings()
 		settings.TimeOffsetMinutes = offset
-		model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, settings)
+		model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, settings, ServerInfo{})
 		model.resize(100, 40)
 
 		model.openTimeModal()
@@ -98,7 +98,7 @@ func TestReopenAndConfirmKeepsOffset(t *testing.T) {
 func TestConfirmIgnoresClockDriftWhileOpen(t *testing.T) {
 	settings := DefaultSettings()
 	settings.TimeOffsetMinutes = 60
-	model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, settings)
+	model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, settings, ServerInfo{})
 	model.resize(100, 40)
 
 	// 30 分前に開いたモーダルを、そのときの openTimeModal が作るとおりに
@@ -118,7 +118,7 @@ func TestConfirmIgnoresClockDriftWhileOpen(t *testing.T) {
 // TestConfirmAppliesEditedHours は編集した分だけがオフセットに乗ることを
 // 見る。↑ 1 回で 1 時間、分のトグルで 30 分。
 func TestConfirmAppliesEditedHours(t *testing.T) {
-	model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, DefaultSettings())
+	model := New(make(chan Action, 1), func(Settings) error { return nil }, 0, DefaultSettings(), ServerInfo{})
 	model.resize(100, 40)
 
 	model.openTimeModal()
@@ -152,7 +152,7 @@ func TestTimeOffsetForStaysInRange(t *testing.T) {
 }
 
 func TestTimeModalOpensFromSettingsAndHandlesKeys(t *testing.T) {
-	model := New(make(chan Action, 1), nil, 0, DefaultSettings())
+	model := New(make(chan Action, 1), nil, 0, DefaultSettings(), ServerInfo{})
 	model.resize(100, 40)
 	model.settingsOpen = true
 	model.settingCursor = len(settingItems) - 1
@@ -206,7 +206,7 @@ func TestTimeModalOKSavesAndInvalidatesExistingLogTimestamps(t *testing.T) {
 	model := New(make(chan Action, 1), func(settings Settings) error {
 		saved = append(saved, settings)
 		return nil
-	}, 0, DefaultSettings())
+	}, 0, DefaultSettings(), ServerInfo{})
 	model.resize(100, 40)
 	timestamp := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	record := logRecord{
@@ -246,7 +246,7 @@ func TestTimeModalOKSavesAndInvalidatesExistingLogTimestamps(t *testing.T) {
 func TestExitModalUsesTimeOffset(t *testing.T) {
 	settings := DefaultSettings()
 	settings.TimeOffsetMinutes = 90
-	model := New(make(chan Action, 1), nil, 0, settings)
+	model := New(make(chan Action, 1), nil, 0, settings, ServerInfo{})
 	model.resize(100, 40)
 	model.exit = &exitState{
 		exitedAt: time.Date(2026, 8, 8, 23, 15, 0, 0, time.UTC),

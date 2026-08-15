@@ -92,8 +92,15 @@ func (model *Model) View() tea.View {
 
 	view := tea.NewView(content)
 	view.AltScreen = true
-	view.WindowTitle = "hijo-server-ops"
+	view.WindowTitle = model.windowTitle()
 	return view
+}
+
+func (model *Model) windowTitle() string {
+	if model.info.Name == "" {
+		return "hijo-server-ops"
+	}
+	return model.info.Name + " · hijo-server-ops"
 }
 
 func (model *Model) consoleLine() string {

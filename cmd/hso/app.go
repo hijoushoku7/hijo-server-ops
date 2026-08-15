@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -22,7 +23,16 @@ func runTUI(configPath string, cfg config.Config) error {
 	save := func(settings ui.Settings) error {
 		return saveSettings(configPath, cfg, settings)
 	}
-	model := ui.New(actions, save, initialGeneration, settingsFrom(cfg))
+	model := ui.New(
+		actions,
+		save,
+		initialGeneration,
+		settingsFrom(cfg),
+		ui.ServerInfo{
+			Name:    serverDisplayName(configPath, cfg, registeredName),
+			Version: version,
+		},
+	)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 
 	controller := newServerController(ctx, cfg, program)
@@ -45,6 +55,20 @@ func runTUI(configPath string, cfg config.Config) error {
 		return nil
 	}
 	return programErr
+}
+
+func serverDisplayName(
+	configPath string,
+	cfg config.Config,
+	lookup func(string) (string, bool, error),
+) string {
+	if name, found, err := lookup(configPath); err == nil && found {
+		return name
+	}
+	if cfg.Server.WorkDir == "" {
+		return ""
+	}
+	return filepath.Base(cfg.Server.WorkDir)
 }
 
 func settingsFrom(cfg config.Config) ui.Settings {

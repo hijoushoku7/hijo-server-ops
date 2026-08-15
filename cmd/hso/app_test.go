@@ -59,6 +59,64 @@ func TestReadServerOutputParsesLines(t *testing.T) {
 	}
 }
 
+func TestServerDisplayName(t *testing.T) {
+	tests := []struct {
+		name    string
+		workDir string
+		lookup  func(string) (string, bool, error)
+		want    string
+	}{
+		{
+			name:    "登録名を優先する",
+			workDir: "/srv/minecraft/survival",
+			want:    "main-server",
+			lookup: func(string) (string, bool, error) {
+				return "main-server", true, nil
+			},
+		},
+		{
+			name:    "未登録なら作業ディレクトリ名を使う",
+			workDir: "/srv/minecraft/creative",
+			want:    "creative",
+			lookup: func(string) (string, bool, error) {
+				return "", false, nil
+			},
+		},
+		{
+			name:    "一覧の読み取り失敗でも作業ディレクトリ名を使う",
+			workDir: "/srv/minecraft/modded",
+			want:    "modded",
+			lookup: func(string) (string, bool, error) {
+				return "", false, errors.New("一覧を読めません")
+			},
+		},
+		{
+			name: "作業ディレクトリも空なら空文字を返す",
+			lookup: func(string) (string, bool, error) {
+				return "", false, nil
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const configPath = "/etc/hso.toml"
+			lookup := func(path string) (string, bool, error) {
+				if path != configPath {
+					t.Fatalf("lookup path = %q", path)
+				}
+				return test.lookup(path)
+			}
+			got := serverDisplayName(configPath, config.Config{
+				Server: config.Server{WorkDir: test.workDir},
+			}, lookup)
+			if got != test.want {
+				t.Fatalf("serverDisplayName() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestReadServerOutputUsesReceiveTimeWithoutLogTimestamp(t *testing.T) {
 	logs := make(chan serverlog.Entry, 1)
 	readServerOutput(strings.NewReader("plain output\n"), logs, nil)
@@ -420,7 +478,7 @@ func TestServerControllerSendsCommandsAndRestarts(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	actions := make(chan ui.Action, actionQueueSize)
-	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings())
+	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings(), ui.ServerInfo{})
 	program := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),
@@ -575,7 +633,7 @@ func TestServerControllerKeepsJavaWarningOffStderr(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	actions := make(chan ui.Action, actionQueueSize)
-	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings())
+	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings(), ui.ServerInfo{})
 	program := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),
@@ -686,7 +744,7 @@ func TestPumpLogsDrainsRemainingOutputBeforeDone(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	actions := make(chan ui.Action, 1)
-	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings())
+	model := ui.New(actions, nil, initialGeneration, ui.DefaultSettings(), ui.ServerInfo{})
 	program := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),

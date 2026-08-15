@@ -6,13 +6,36 @@ import (
 )
 
 func (model *Model) statsTitle() string {
-	title := fmt.Sprintf(
-		"hijo-server-ops · %s · uptime %s",
-		model.status,
-		formatUptime(model.metrics.Uptime),
-	)
+	name := model.info.Name
+	if name == "" {
+		name = "hijo-server-ops"
+	}
+	uptime := formatUptime(model.metrics.Uptime)
+	degraded := ""
 	if model.jvmMetricError != "" || model.memoryMetricError != "" {
-		title += " · metrics degraded"
+		degraded = " · metrics degraded"
+	}
+	title := fmt.Sprintf(
+		"%s · %s · uptime %s%s",
+		name,
+		model.status,
+		uptime,
+		degraded,
+	)
+	if model.info.Version != "" {
+		withVersion := fmt.Sprintf(
+			"%s · hso %s · %s · uptime %s%s",
+			name,
+			model.info.Version,
+			model.status,
+			uptime,
+			degraded,
+		)
+		// 複数端末を並べたときの識別と運転状況を優先し、
+		// 幅が足りないときはバージョン区画をまとめて省く。
+		if stringWidth(withVersion) <= max(0, model.layout.statsWidth-5) {
+			title = withVersion
+		}
 	}
 	return title
 }
