@@ -33,7 +33,9 @@ If `~/.local/bin` is not on your PATH, the installer prints the single line to a
 
 The interface is English by default. Add `--lang ja` to the commands above for the Japanese build, or use the environment variable: `curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | env HSO_LANG=ja sh -s -- --system`. The flag takes precedence over the environment variable.
 
-Run `hso` after installing and the setup wizard opens on the first run. Enter your server directory, pick the start script from the list, and the server comes up right away. Do not run hso itself with `sudo`.
+Run `hso setup` in your Minecraft server directory after installing and the setup wizard opens. Enter your server directory, pick the start script from the list, and the server comes up right away. From then on, `hso start` brings up a registered server. Do not run hso itself with `sudo`.
+
+Run `hso` or `hso help` for the list of commands (see [Command reference](dev-docs/commands.md), written in Japanese).
 
 ## Features
 
@@ -51,7 +53,7 @@ Download the archive matching your environment from [Releases](https://github.co
 ```bash
 tar xzf hso_v0.1.1_linux_amd64_en.tar.gz
 cd hso_v0.1.1_linux_amd64_en
-./hso
+./hso setup
 ```
 
 Pick `arm64` for arm64 machines, and the `_ja` archive if you want the Japanese interface.
@@ -117,6 +119,7 @@ The pidfile also goes away on reboot.
 
 Written in Japanese.
 
+- [Command reference](dev-docs/commands.md)
 - [Build instructions](dev-docs/build.md)
 - [Specification and technical notes](dev-docs/spec.md)
 

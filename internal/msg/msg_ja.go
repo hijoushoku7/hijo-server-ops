@@ -708,12 +708,37 @@ func UpdateComplete(latest, path string) string {
 	return fmt.Sprintf("hso を %s に更新しました: %s", latest, path)
 }
 
-func UnknownCommand(command, available string) error {
+func UnknownCommand(command string) error {
 	return fmt.Errorf(
-		"未知のサブコマンドです: %s\n利用できるサブコマンド: %s",
-		command, available,
+		"未知のコマンドです: %s\nコマンドの一覧は hso help で表示できます",
+		command,
 	)
 }
+
+// CommandHelp は hso / hso help で出すコマンド一覧。オプションは主要なものだけを
+// 載せ、それぞれの細かい説明は dev-docs/commands.md に置く。
+const CommandHelp = `hso — Minecraft サーバー用のラッパー型 TUI コンソール
+
+使い方:
+  hso <コマンド> [引数]
+
+コマンド:
+  setup                   セットアップを始める。Minecraft サーバーのディレクトリで実行する
+  start [name]            登録済みのサーバーを起動する。名前を省くと一覧から選ぶ
+  list (ls)               登録済みのサーバーの名前・状態・設定ファイルのパスを表示する
+  delete [name]           サーバー一覧から登録を外す。hso.toml とワールドは消さない
+  java change [name]      サーバーが使う Java を変更する
+  java list               自動検出した Java と、それを使っているサーバーを表示する
+  version                 バージョン・表示言語・アーキテクチャを表示する
+  update                  最新リリースへ自己更新する
+  uninstall               hso 自身を削除する。--purge で設定と pidfile も消す
+  help                    このヘルプを表示する
+
+オプション:
+  -config <path>          指定した hso.toml でサーバーを起動する
+
+各コマンドの詳細:
+  https://github.com/hijoushoku7/hijo-server-ops/blob/main/dev-docs/commands.md`
 
 // Java コマンド。
 const (
