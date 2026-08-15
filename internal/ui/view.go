@@ -272,19 +272,21 @@ func (model *Model) keybar() string {
 		}
 	case model.exit != nil && !model.exit.closed:
 		keys = [][2]string{
-			{"←→/Tab", msg.BarExitButton},
+			{"hl/←→/Tab", msg.BarExitButton},
 			{"Enter", msg.BarConfirm},
 			{"Esc", msg.BarReadLogs},
 			{"^C", msg.BarExit},
 		}
 	case model.exit != nil:
 		keys = [][2]string{
-			{"↑↓/Pg", msg.BarScroll},
+			{"kj/↑↓/Pg", msg.BarScroll},
 			{"Home/End", msg.BarEnds},
 			{"R", msg.BarRestart},
 			{"Q/Enter", msg.BarExit},
 		}
 	case model.timeModal != nil:
+		// 時刻入力だけは hjkl を併記しない。en の説明が長く、足すと最小幅で
+		// 末尾が切れる。Enter / Esc を ↵ / ^[ に縮めてまで載せる案内ではない。
 		keys = [][2]string{
 			{"←→", msg.BarTimeField},
 			{"↑↓", msg.BarTimeAdjust},
@@ -294,14 +296,14 @@ func (model *Model) keybar() string {
 		}
 	case model.settingsOpen:
 		keys = [][2]string{
-			{"↑↓", msg.BarItem},
-			{"←→", msg.BarValue},
+			{"kj/↑↓", msg.BarItem},
+			{"hl/←→", msg.BarValue},
 			{"Enter/Esc", msg.BarClose},
 			{"^C", msg.BarExit},
 		}
 	case model.mode == modeSelect:
 		keys = [][2]string{
-			{"←↑↓→", msg.BarSelectPanel},
+			{"hjkl/←↑↓→", msg.BarSelectPanel},
 			{"Enter", msg.BarFocus},
 			{"G", msg.BarSettings},
 			{"^C", msg.BarExit},
@@ -317,22 +319,22 @@ func (model *Model) keybar() string {
 		model.playerStage == playerStageCommands:
 		keys = [][2]string{
 			{"Esc", msg.BarBack},
-			{"↑↓", msg.BarCommand},
+			{"kj/↑↓", msg.BarCommand},
 			{"Enter", msg.BarPutInConsole},
 			{"^C", msg.BarExit},
 		}
 	case model.panel == panelPlayers:
 		keys = [][2]string{
 			{"Esc", msg.BarBackToSelect},
-			{"↑↓", msg.BarPlayer},
+			{"kj/↑↓", msg.BarPlayer},
 			{"Enter", msg.BarCommandList},
 			{"^C", msg.BarExit},
 		}
 	default:
 		keys = [][2]string{
 			{"Esc", msg.BarBackToSelect},
-			{"↑↓", msg.BarScroll},
-			{"PgUp/PgDn", msg.BarPage},
+			{"kj/↑↓", msg.BarScroll},
+			{"Pg", msg.BarPage},
 			{"End", msg.BarLatest},
 			{"^C", msg.BarExit},
 		}
