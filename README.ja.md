@@ -33,7 +33,9 @@ curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/in
 
 表示は既定で英語です。上記の `--lang ja` を外すと英語版が入り、環境変数を使う場合は `curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | env HSO_LANG=ja sh -s -- --system` のように指定できます。フラグの指定は環境変数より優先されます。
 
-インストール後に `hso` を実行すると、初回は設定ウィザードが開きます。サーバーのディレクトリを入力し、起動スクリプトを一覧から選ぶだけで、そのままサーバーが立ち上がります。hso 本体は `sudo` で実行しないでください。
+インストール後に Minecraft サーバーのディレクトリで `hso setup` を実行すると、設定ウィザードが開きます。サーバーのディレクトリを入力し、起動スクリプトを一覧から選ぶだけで、そのままサーバーが立ち上がります。2 回目からは `hso start` で登録済みのサーバーを選んで起動します。hso 本体は `sudo` で実行しないでください。
+
+コマンドの一覧は `hso` または `hso help` で表示できます（→ [コマンド一覧](dev-docs/commands.md)）。
 
 ## 機能
 
@@ -51,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/in
 ```bash
 tar xzf hso_v0.1.1_linux_amd64_ja.tar.gz
 cd hso_v0.1.1_linux_amd64_ja
-./hso
+./hso setup
 ```
 
 arm64 なら `arm64`、英語表示がよければ `_en` のアーカイブを選んでください。
@@ -115,6 +117,7 @@ pidfile は再起動でも消えます。
 
 ## ドキュメント
 
+- [コマンド一覧](dev-docs/commands.md)
 - [ビルド手順](dev-docs/build.md)
 - [仕様・技術調査](dev-docs/spec.md)
 

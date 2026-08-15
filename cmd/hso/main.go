@@ -20,8 +20,6 @@ import (
 
 var version = "dev"
 
-const availableSubcommands = "setup, start, list (ls), delete, java, version, update, uninstall"
-
 func main() {
 	if command, ok := process.SupervisorCommand(os.Args); ok {
 		os.Exit(process.RunSupervisor(command))
@@ -38,7 +36,18 @@ func main() {
 }
 
 func dispatchCommand(args []string, output io.Writer) (bool, error) {
-	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+	// 引数なしの hso は何も起動せずヘルプを出す。設定を読んで起動する経路は
+	// start か -config に集約し、打ち間違いでセットアップが始まらないようにする。
+	if len(args) == 0 {
+		return true, writeHelp(output)
+	}
+	// ヘルプだけは `-` 付きの書き方も受ける。flag の既定の使い方表示より、
+	// コマンド一覧を出すほうが探しているものに近い。
+	switch args[0] {
+	case "help", "-h", "-help", "--help":
+		return true, writeHelp(output)
+	}
+	if strings.HasPrefix(args[0], "-") {
 		return false, nil
 	}
 
@@ -79,17 +88,23 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 		}
 		return true, runList(output)
 	default:
-		return true, msg.UnknownCommand(args[0], availableSubcommands)
+		return true, msg.UnknownCommand(args[0])
 	}
+}
+
+func writeHelp(output io.Writer) error {
+	_, err := io.WriteString(output, msg.CommandHelp+"\n")
+	return err
 }
 
 func run() error {
 	configPath := flag.String("config", "hso.toml", msg.ConfigFlagUsage)
 	flag.Parse()
 
-	// 設定ファイルがない初回はセットアップへ回し、作成できたらそのまま
-	// サーバーを起動する。端末がないときはウィザードを出せないので、
-	// 従来どおり config.Load のエラーを返す。
+	// ここへ来るのは -config を付けた呼び方だけで、引数なしの hso はヘルプへ
+	// 分かれている。指定した設定ファイルがなければセットアップへ回し、作成
+	// できたらそのままサーバーを起動する。端末がないときはウィザードを出せ
+	// ないので、従来どおり config.Load のエラーを返す。
 	if missingConfig(*configPath) && interactive() {
 		created, err := setup.Run(*configPath)
 		if err != nil {

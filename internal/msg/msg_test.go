@@ -179,6 +179,7 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 		"ServerStopped":         ServerStopped,
 		"ConfigNotFound":        ConfigNotFound,
 		"EmptyServerList":       EmptyServerList,
+		"CommandHelp":           CommandHelp,
 
 		"SaveSettingsFailed":  SaveSettingsFailed(sample),
 		"ActionFailed":        ActionFailed(sample),
@@ -211,7 +212,7 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 		"PrivilegeTool":       PrivilegeToolMissing("/usr/local/bin/hso").Error(),
 		"ReplaceExecutable":   ReplaceExecutableFailed("/usr/local/bin/hso", sample).Error(),
 		"UpdateComplete":      UpdateComplete("v2.0.0", "/usr/local/bin/hso"),
-		"UnknownCommand":      UnknownCommand("unknown", "version").Error(),
+		"UnknownCommand":      UnknownCommand("unknown").Error(),
 		"InvalidServerName":   InvalidServerName("bad name").Error(),
 		"DuplicateServerName": DuplicateServerName("server").Error(),
 		"AlreadyRunning":      AlreadyRunning().Error(),

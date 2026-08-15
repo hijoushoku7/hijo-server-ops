@@ -18,9 +18,8 @@ import (
 
 func TestDispatchCommandKeepsTUIArguments(t *testing.T) {
 	for _, args := range [][]string{
-		nil,
 		{"-config", "/srv/minecraft/hso.toml"},
-		{"-help"},
+		{"-config=/srv/minecraft/hso.toml"},
 	} {
 		handled, err := dispatchCommand(args, &bytes.Buffer{})
 		if err != nil {
@@ -28,6 +27,31 @@ func TestDispatchCommandKeepsTUIArguments(t *testing.T) {
 		}
 		if handled {
 			t.Errorf("args=%q がサブコマンドとして処理された", args)
+		}
+	}
+}
+
+// 引数なしの hso とヘルプの呼び方は、どれもコマンド一覧を出して終わる。
+// ここが TUI 経路へ落ちると、打ち間違いでセットアップが始まる。
+func TestDispatchCommandWritesHelp(t *testing.T) {
+	for _, args := range [][]string{
+		nil,
+		{"help"},
+		{"-h"},
+		{"-help"},
+		{"--help"},
+		{"help", "setup"},
+	} {
+		var output bytes.Buffer
+		handled, err := dispatchCommand(args, &output)
+		if err != nil {
+			t.Fatalf("args=%q: %v", args, err)
+		}
+		if !handled {
+			t.Errorf("args=%q がヘルプとして処理されなかった", args)
+		}
+		if output.String() != msg.CommandHelp+"\n" {
+			t.Errorf("args=%q: output = %q", args, output.String())
 		}
 	}
 }
@@ -85,6 +109,19 @@ func TestRunExistingConfigBranches(t *testing.T) {
 	}
 }
 
+// ヘルプは打てるコマンドを全部載せる。ja / en のどちらかで書き落とすと、
+// そのバイナリだけコマンドの存在が読めなくなる。
+func TestCommandHelpListsEveryCommand(t *testing.T) {
+	for _, command := range []string{
+		"setup", "start", "list", "ls", "delete",
+		"java change", "java list", "version", "update", "uninstall", "help",
+	} {
+		if !strings.Contains(msg.CommandHelp, command) {
+			t.Errorf("ヘルプに %q がない", command)
+		}
+	}
+}
+
 func TestDispatchCommandRunsVersion(t *testing.T) {
 	previousVersion := version
 	previousURL := latestReleaseURL
@@ -117,7 +154,7 @@ func TestDispatchCommandRejectsUnknownCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("未知のサブコマンドがエラーにならなかった")
 	}
-	for _, want := range []string{"unknown", "version"} {
+	for _, want := range []string{"unknown", "hso help"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q に %q がない", err, want)
 		}
