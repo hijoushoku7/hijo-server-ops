@@ -32,6 +32,56 @@ func TestDispatchCommandKeepsTUIArguments(t *testing.T) {
 	}
 }
 
+func TestRunExistingConfigBranches(t *testing.T) {
+	loadErr := errors.New("設定読み込み失敗")
+	tests := []struct {
+		name         string
+		setupCommand bool
+		terminal     bool
+		registered   bool
+		promptName   string
+		loadErr      error
+		wantPrompt   int
+		wantLaunch   int
+		wantErr      bool
+		wantAbort    bool
+	}{
+		{name: "未登録を登録して起動", terminal: true, promptName: "survival", wantPrompt: 1, wantLaunch: 1},
+		{name: "未登録の追加を断っても通常起動", terminal: true, wantPrompt: 1, wantLaunch: 1},
+		{name: "setupで追加を断ると起動しない", setupCommand: true, terminal: true, wantPrompt: 1, wantAbort: true},
+		{name: "setupで登録済みはエラー", setupCommand: true, terminal: true, registered: true, wantErr: true},
+		{name: "非端末の通常起動はプロンプトなし", wantLaunch: 1},
+		{name: "非端末のsetupはエラー", setupCommand: true, wantErr: true},
+		{name: "設定読み込み失敗では登録しない", terminal: true, loadErr: loadErr, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prompted, launched := 0, 0
+			var output bytes.Buffer
+			err := runExistingConfig("hso.toml", tt.setupCommand, tt.terminal, &output,
+				func(string) (config.Config, error) { return config.Config{}, tt.loadErr },
+				func(string) (string, bool, error) { return "survival", tt.registered, nil },
+				func(string, config.Config) (string, error) {
+					prompted++
+					return tt.promptName, nil
+				},
+				func(string, config.Config) error {
+					launched++
+					return nil
+				})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v", err)
+			}
+			if prompted != tt.wantPrompt || launched != tt.wantLaunch {
+				t.Fatalf("prompted = %d, launched = %d", prompted, launched)
+			}
+			if strings.Contains(output.String(), msg.Aborted) != tt.wantAbort {
+				t.Fatalf("output = %q", output.String())
+			}
+		})
+	}
+}
+
 func TestDispatchCommandRunsVersion(t *testing.T) {
 	previousVersion := version
 	previousURL := latestReleaseURL

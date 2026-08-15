@@ -27,8 +27,12 @@ var (
 )
 
 func (m *model) View() tea.View {
+	title := msg.SetupTitle
+	if m.register {
+		title = msg.SetupRegisterTitle
+	}
 	lines := []string{
-		titleStyle.Render(msg.SetupTitle),
+		titleStyle.Render(title),
 		dimStyle.Render(msg.SetupTarget(m.configPath)),
 		"",
 	}
@@ -42,6 +46,12 @@ func (m *model) View() tea.View {
 
 func (m *model) body() []string {
 	switch m.step {
+	case stepRegisterNotice:
+		lines := []string{msg.SetupRegisterNotice, ""}
+		for _, line := range strings.Split(strings.TrimRight(m.preview(), "\n"), "\n") {
+			lines = append(lines, "  "+line)
+		}
+		return lines
 	case stepWorkDir:
 		return []string{
 			msg.SetupStepWorkDir,
@@ -49,8 +59,12 @@ func (m *model) body() []string {
 			"  " + string(m.input) + "█",
 		}
 	case stepName:
+		step := msg.SetupStepName
+		if m.register {
+			step = msg.SetupRegisterStepName
+		}
 		return []string{
-			msg.SetupStepName,
+			step,
 			"",
 			"  " + string(m.input) + "█",
 		}
@@ -132,12 +146,25 @@ func windowStart(cursor, count, viewport int) int {
 func (m *model) keybar() string {
 	var keys [][2]string
 	switch m.step {
+	case stepRegisterNotice:
+		return renderKeys([][2]string{
+			{"Enter", msg.KeyAddConfig},
+			{"Esc", msg.KeyDoNotAddConfig},
+			{"Ctrl+C", msg.KeyAbort},
+		})
 	case stepWorkDir:
 		return renderKeys([][2]string{
 			{"Enter", msg.KeyNext},
 			{"Esc / Ctrl+C", msg.KeyAbort},
 		})
 	case stepName:
+		if m.register {
+			keys = append(keys,
+				[2]string{"Enter", msg.KeyRegister},
+				[2]string{"Esc", msg.KeyBack},
+			)
+			break
+		}
 		keys = append(keys,
 			[2]string{"Enter", msg.KeyNext},
 			[2]string{"Esc", msg.KeyBack},

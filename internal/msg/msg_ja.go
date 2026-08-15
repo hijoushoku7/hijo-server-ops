@@ -188,6 +188,9 @@ const (
 // セットアップウィザードの画面。
 const (
 	SetupTitle            = "hijo-server-ops セットアップ"
+	SetupRegisterTitle    = "既存の hso.toml をサーバー一覧に追加"
+	SetupRegisterNotice   = "hso.toml が既にあります。この設定をサーバー一覧に追加しますか？"
+	SetupRegisterStepName = "一覧に表示するサーバー名を入力してください"
 	SetupStepWorkDir      = "1/4 Minecraft サーバーのディレクトリ"
 	SetupStepName         = "2/4 サーバー名"
 	SetupStepCommand      = "3/4 起動スクリプトを選ぶ"
@@ -214,13 +217,16 @@ func SetupServerName(name string) string {
 
 // キーバーの説明。
 const (
-	KeyNext        = "次へ"
-	KeyAbort       = "中止"
-	KeySelect      = "選ぶ"
-	KeyConfirm     = "決定"
-	KeyBack        = "戻る"
-	KeyCreate      = "作成"
-	KeyToggleChmod = "実行権限の付与を切替"
+	KeyNext           = "次へ"
+	KeyAbort          = "中止"
+	KeySelect         = "選ぶ"
+	KeyConfirm        = "決定"
+	KeyBack           = "戻る"
+	KeyCreate         = "作成"
+	KeyToggleChmod    = "実行権限の付与を切替"
+	KeyRegister       = "登録"
+	KeyAddConfig      = "追加する"
+	KeyDoNotAddConfig = "追加しない"
 )
 
 // セットアップの入力検証。

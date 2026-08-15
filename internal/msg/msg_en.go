@@ -189,6 +189,9 @@ const (
 // Setup wizard screens.
 const (
 	SetupTitle            = "hijo-server-ops setup"
+	SetupRegisterTitle    = "Add an existing hso.toml to the server list"
+	SetupRegisterNotice   = "hso.toml already exists. Add this configuration to the hso server list?"
+	SetupRegisterStepName = "Enter the server name shown in the list"
 	SetupStepWorkDir      = "1/4 Minecraft server directory"
 	SetupStepName         = "2/4 Server name"
 	SetupStepCommand      = "3/4 Choose the start script"
@@ -215,13 +218,16 @@ func SetupServerName(name string) string {
 
 // Key bar descriptions.
 const (
-	KeyNext        = "next"
-	KeyAbort       = "abort"
-	KeySelect      = "select"
-	KeyConfirm     = "confirm"
-	KeyBack        = "back"
-	KeyCreate      = "create"
-	KeyToggleChmod = "toggle execute permission"
+	KeyNext           = "next"
+	KeyAbort          = "abort"
+	KeySelect         = "select"
+	KeyConfirm        = "confirm"
+	KeyBack           = "back"
+	KeyCreate         = "create"
+	KeyToggleChmod    = "toggle execute permission"
+	KeyRegister       = "register"
+	KeyAddConfig      = "add"
+	KeyDoNotAddConfig = "don't add"
 )
 
 // Setup input validation.
