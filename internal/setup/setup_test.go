@@ -169,6 +169,8 @@ var enter = tea.KeyPressMsg{Code: tea.KeyEnter}
 
 var escape = tea.KeyPressMsg{Code: tea.KeyEscape}
 
+var ctrlC = tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+
 func TestRegisterModelFlow(t *testing.T) {
 	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: "/srv/minecraft"}}
 	model := newRegisterModel("/srv/minecraft/hso.toml", cfg, registry.Registry{})
@@ -202,6 +204,22 @@ func TestRegisterModelCanDeclineAndGoBack(t *testing.T) {
 	press(t, model, enter, escape)
 	if model.step != stepRegisterNotice {
 		t.Fatalf("step = %d", model.step)
+	}
+}
+
+func TestRegisterModelCtrlCCancels(t *testing.T) {
+	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: "/srv/minecraft"}}
+	for _, step := range []string{"案内画面", "名前入力画面"} {
+		t.Run(step, func(t *testing.T) {
+			model := newRegisterModel("/srv/minecraft/hso.toml", cfg, registry.Registry{})
+			if step == "名前入力画面" {
+				press(t, model, enter)
+			}
+			press(t, model, ctrlC)
+			if !model.canceled || model.created {
+				t.Fatalf("canceled = %v, created = %v", model.canceled, model.created)
+			}
+		})
 	}
 }
 
@@ -465,9 +483,9 @@ func TestRegisterRejectsRegisteredConfigBeforeWizard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	name, err := Register(configPath, config.Config{})
+	name, canceled, err := Register(configPath, config.Config{})
 	if err == nil || !strings.Contains(err.Error(), "hso delete survival") {
-		t.Fatalf("name = %q, err = %v", name, err)
+		t.Fatalf("name = %q, canceled = %v, err = %v", name, canceled, err)
 	}
 }
 
@@ -476,13 +494,13 @@ func TestRegisterSavesNameAndConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "hso.toml")
 	cfg := config.Config{Server: config.Server{Command: "./run.sh", WorkDir: filepath.Dir(configPath)}}
 
-	name, err := register(configPath, cfg, func(model *model) error {
+	name, canceled, err := register(configPath, cfg, func(model *model) error {
 		model.name = "survival"
 		model.created = true
 		return nil
 	})
-	if err != nil || name != "survival" {
-		t.Fatalf("name = %q, err = %v", name, err)
+	if err != nil || canceled || name != "survival" {
+		t.Fatalf("name = %q, canceled = %v, err = %v", name, canceled, err)
 	}
 	registryPath, err := registry.Path()
 	if err != nil {

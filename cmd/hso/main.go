@@ -144,7 +144,7 @@ func runExistingConfig(
 	output io.Writer,
 	load func(string) (config.Config, error),
 	lookup func(string) (string, bool, error),
-	prompt func(string, config.Config) (string, error),
+	prompt func(string, config.Config) (string, bool, error),
 	launch func(string, config.Config) error,
 ) error {
 	if setupCommand && !terminal {
@@ -165,11 +165,13 @@ func runExistingConfig(
 		return launch(configPath, cfg)
 	}
 	if terminal {
-		name, err := prompt(configPath, cfg)
+		name, canceled, err := prompt(configPath, cfg)
 		if err != nil {
 			return err
 		}
-		if name == "" && setupCommand {
+		// Ctrl+C の中止はどちらの経路でも起動しない。Esc の「追加しない」で
+		// 起動を止めるのは setup のときだけで、素の hso は起動しに来ている。
+		if canceled || (name == "" && setupCommand) {
 			_, err := fmt.Fprintln(output, msg.Aborted)
 			return err
 		}

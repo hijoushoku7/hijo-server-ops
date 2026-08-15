@@ -44,6 +44,7 @@ type model struct {
 	grantChmod bool   // 実行権限を付けてよいという同意
 	message    string
 	created    bool
+	canceled   bool
 	err        error
 	register   bool
 }
@@ -82,6 +83,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if key.String() == "ctrl+c" {
+		m.canceled = true
 		return m, tea.Quit
 	}
 

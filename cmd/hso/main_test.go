@@ -40,6 +40,7 @@ func TestRunExistingConfigBranches(t *testing.T) {
 		terminal     bool
 		registered   bool
 		promptName   string
+		canceled     bool
 		loadErr      error
 		wantPrompt   int
 		wantLaunch   int
@@ -49,6 +50,8 @@ func TestRunExistingConfigBranches(t *testing.T) {
 		{name: "未登録を登録して起動", terminal: true, promptName: "survival", wantPrompt: 1, wantLaunch: 1},
 		{name: "未登録の追加を断っても通常起動", terminal: true, wantPrompt: 1, wantLaunch: 1},
 		{name: "setupで追加を断ると起動しない", setupCommand: true, terminal: true, wantPrompt: 1, wantAbort: true},
+		{name: "Ctrl+Cで通常起動を中止", terminal: true, canceled: true, wantPrompt: 1, wantAbort: true},
+		{name: "Ctrl+Cでsetupを中止", setupCommand: true, terminal: true, canceled: true, wantPrompt: 1, wantAbort: true},
 		{name: "setupで登録済みはエラー", setupCommand: true, terminal: true, registered: true, wantErr: true},
 		{name: "非端末の通常起動はプロンプトなし", wantLaunch: 1},
 		{name: "非端末のsetupはエラー", setupCommand: true, wantErr: true},
@@ -61,9 +64,9 @@ func TestRunExistingConfigBranches(t *testing.T) {
 			err := runExistingConfig("hso.toml", tt.setupCommand, tt.terminal, &output,
 				func(string) (config.Config, error) { return config.Config{}, tt.loadErr },
 				func(string) (string, bool, error) { return "survival", tt.registered, nil },
-				func(string, config.Config) (string, error) {
+				func(string, config.Config) (string, bool, error) {
 					prompted++
-					return tt.promptName, nil
+					return tt.promptName, tt.canceled, nil
 				},
 				func(string, config.Config) error {
 					launched++
