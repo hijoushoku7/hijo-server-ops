@@ -18,17 +18,23 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if model.exit != nil {
 		return model.handleExitKey(message)
 	}
+	// g/G は既存どおり設定専用にする。vim の gg/G を追加すると既存キーを
+	// 奪うため、先頭・末尾への移動には使わない。
+	if model.timeModal == nil && !model.settingsOpen &&
+		(message.String() == "g" || message.String() == "G") &&
+		!model.editingConsole() {
+		model.settingsOpen = true
+		model.settingCursor = 0
+		return model, nil
+	}
+	if !model.editingConsole() {
+		key = hjklArrowKey(key)
+	}
 	if model.timeModal != nil {
 		return model.handleTimeModalKey(key)
 	}
 	if model.settingsOpen {
 		return model.handleSettingsKey(key)
-	}
-	if (message.String() == "g" || message.String() == "G") &&
-		!model.editingConsole() {
-		model.settingsOpen = true
-		model.settingCursor = 0
-		return model, nil
 	}
 	if model.mode == modeSelect {
 		return model.handleSelectKey(key)
@@ -43,7 +49,7 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := message.Key()
+	key := hjklArrowKey(message.Key())
 	// 立ち直った後は Enter で閉じるだけ。裏で復旧していても、落ちた事実を
 	// 読んで消す操作を挟ませる。表示側（exitModal・keybar）も restarted を
 	// 最初に見るので、判定の順番を合わせる。
@@ -99,6 +105,28 @@ func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		}
 	}
 	return model, nil
+}
+
+// hjklArrowKey は修飾なしの vim 風移動キーだけを矢印へ読み替える。
+// Text は文字入力として二重に扱われないよう、変換時に捨てる。
+func hjklArrowKey(key tea.Key) tea.Key {
+	if key.Mod != 0 {
+		return key
+	}
+	switch key.Code {
+	case 'h':
+		key.Code = tea.KeyLeft
+	case 'j':
+		key.Code = tea.KeyDown
+	case 'k':
+		key.Code = tea.KeyUp
+	case 'l':
+		key.Code = tea.KeyRight
+	default:
+		return key
+	}
+	key.Text = ""
+	return key
 }
 
 func (model *Model) editingConsole() bool {

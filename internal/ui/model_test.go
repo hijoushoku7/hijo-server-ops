@@ -737,6 +737,16 @@ func TestKeybarFitsMinimumWidth(t *testing.T) {
 				t.Fatal("settings did not open")
 			}
 		},
+		"timeModal": func(_ *testing.T, model *Model) {
+			model.settingsOpen = true
+			model.timeModal = &timeModalState{}
+		},
+		"exitModal": func(_ *testing.T, model *Model) {
+			model.exit = &exitState{}
+		},
+		"exitLogs": func(_ *testing.T, model *Model) {
+			model.exit = &exitState{closed: true}
+		},
 	}
 
 	for name, focus := range cases {
