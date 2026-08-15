@@ -351,23 +351,33 @@ func removeUninstallTargets(plan uninstallPlan) []removalResult {
 	return results
 }
 
+// uninstallCompletionPaths は install.sh が置いた補完ファイルのうち、実際に
+// あるものだけを返す。無いパスまで削除予定として並べると、確認画面が置いて
+// いないシェルの分まで長くなる。
 func uninstallCompletionPaths(system bool) ([]string, error) {
-	if system {
-		return []string{
-			"/usr/share/bash-completion/completions/hso",
-			"/usr/local/share/zsh/site-functions/_hso",
-			"/usr/share/fish/vendor_completions.d/hso.fish",
-		}, nil
+	candidates := []string{
+		"/usr/share/bash-completion/completions/hso",
+		"/usr/local/share/zsh/site-functions/_hso",
+		"/usr/share/fish/vendor_completions.d/hso.fish",
 	}
-	home, err := uninstallHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("cannot determine completion paths: %w", err)
+	if !system {
+		home, err := uninstallHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("cannot determine completion paths: %w", err)
+		}
+		candidates = []string{
+			filepath.Join(home, ".local/share/bash-completion/completions/hso"),
+			filepath.Join(home, ".local/share/zsh/site-functions/_hso"),
+			filepath.Join(home, ".config/fish/completions/hso.fish"),
+		}
 	}
-	return []string{
-		filepath.Join(home, ".local/share/bash-completion/completions/hso"),
-		filepath.Join(home, ".local/share/zsh/site-functions/_hso"),
-		filepath.Join(home, ".config/fish/completions/hso.fish"),
-	}, nil
+	var paths []string
+	for _, path := range candidates {
+		if _, err := os.Lstat(path); err == nil {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
 }
 
 func removeCompletion(path string) removalResult {
