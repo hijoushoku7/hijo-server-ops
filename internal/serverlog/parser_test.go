@@ -244,6 +244,19 @@ func TestWhisper(t *testing.T) {
 			wantBody:   "hello  world",
 			wantOK:     true,
 		},
+		{
+			name:       "selector target",
+			command:    "tell @a[team=red] hi",
+			wantTarget: "@a[team=red]",
+			wantBody:   "hi",
+			wantOK:     true,
+		},
+		// 空白を含むセレクタは最初の空白で宛先が切れる。誤った宛先と
+		// 本文を Chat に出さないよう成立させない。
+		{
+			name:    "selector with spaces",
+			command: `tell @a[nbt={CustomName:'{"text":"A B"}'}] hi`,
+		},
 		{name: "without body", command: "tell bob"},
 		{name: "without target", command: "tell"},
 		{name: "other command", command: "say hello"},

@@ -242,6 +242,13 @@ func Whisper(command string) (target, body string, ok bool) {
 	if target == "" || body == "" {
 		return "", "", false
 	}
+	// @a[...] のセレクタは引数の中に空白を持てるので、最初の空白で切ると
+	// 宛先が途中で切れる。角括弧が閉じていない時点で切れたと分かるので、
+	// 誤った宛先と本文を Chat に出すくらいなら出さない。コマンドは入力
+	// どおり送られ、Log にも今までどおり残る。
+	if strings.Count(target, "[") != strings.Count(target, "]") {
+		return "", "", false
+	}
 	return target, body, true
 }
 
