@@ -3,7 +3,8 @@
 > 管理 issue: hijoushoku7/hijo-server-ops#53（#51 を吸収）
 
 `hso` をサーバーディレクトリに置くバイナリから、どこからでも呼べるコマンドへ広げる。
-全体の仕様と位置づけは [spec.md](spec.md)、ビルド手順は [build.md](build.md)。
+全体の仕様と位置づけは [spec.md](spec.md)、ビルド手順は [build.md](build.md)、
+シェル補完は [completion.md](completion.md)。
 
 ## 目的
 
