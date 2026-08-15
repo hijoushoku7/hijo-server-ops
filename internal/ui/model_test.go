@@ -571,6 +571,45 @@ func TestModelMovesBetweenPanelsInSelectMode(t *testing.T) {
 	}
 }
 
+// IME の候補窓は端末のカーソル位置に出るので、入力欄に居る間はキャレットが
+// 入力の末尾に立っていないといけない。
+func TestModelPutsTheCursorAtTheConsoleCaret(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	for _, character := range "say hi" {
+		_, _ = model.Update(tea.KeyPressMsg{
+			Code: character,
+			Text: string(character),
+		})
+	}
+
+	cursor := model.View().Cursor
+	if cursor == nil {
+		t.Fatal("cursor is hidden while editing the console")
+	}
+	if cursor.X != 3+len("say hi") {
+		t.Fatalf("cursor.X = %d, want %d", cursor.X, 3+len("say hi"))
+	}
+	lines := strings.Split(stripANSI(model.View().Content), "\n")
+	if cursor.Y >= len(lines) {
+		t.Fatalf("cursor.Y = %d, lines = %d", cursor.Y, len(lines))
+	}
+	line := []rune(lines[cursor.Y])
+	if !strings.Contains(string(line), "> say hi") {
+		t.Fatalf("line = %q", string(line))
+	}
+	// キャレットの桁は空けておく。端末のカーソルが文字を覆い隠さないように。
+	if cursor.X >= len(line) || line[cursor.X] != ' ' {
+		t.Fatalf("line = %q, cursor.X = %d", string(line), cursor.X)
+	}
+
+	// 入力欄を離れたらキャレットも消す。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.View().Cursor != nil {
+		t.Fatal("cursor outlived the console focus")
+	}
+}
+
 func TestModelScrollsFocusedBufferAndKeepsPositionOnNewLines(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -1220,6 +1259,11 @@ func stripANSI(value string) string {
 	return ansi.Strip(value)
 }
 
+func consoleText(model *Model) string {
+	line, _ := model.consoleLine()
+	return line
+}
+
 func containsBraille(value string) bool {
 	for _, character := range value {
 		if character >= 0x2800 && character <= 0x28ff {
@@ -1302,11 +1346,11 @@ func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
 		t.Fatalf("restartPhase = %d, command = %T", model.restartPhase, command)
 	}
 	// 点は 3 桁に揃え、コンソールのボタン幅を揺らさない。
-	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restarting.  ]") {
+	if console := stripANSI(consoleText(model)); !strings.Contains(console, "[restarting.  ]") {
 		t.Fatalf("console = %q", console)
 	}
 	_, _ = model.Update(restartTickMsg{})
-	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restarting.. ]") {
+	if console := stripANSI(consoleText(model)); !strings.Contains(console, "[restarting.. ]") {
 		t.Fatalf("console = %q", console)
 	}
 
@@ -1314,7 +1358,7 @@ func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
 	if model.restartPhase != 0 {
 		t.Fatal("animation outlived the restart")
 	}
-	if console := stripANSI(model.consoleLine()); !strings.Contains(console, "[restart]") {
+	if console := stripANSI(consoleText(model)); !strings.Contains(console, "[restart]") {
 		t.Fatalf("console = %q", console)
 	}
 	// 止まった後の tick では再武装しない。
