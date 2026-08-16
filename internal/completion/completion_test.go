@@ -20,8 +20,9 @@ func TestCandidatesByPosition(t *testing.T) {
 		words []string
 		want  []string
 	}{
-		{name: "コマンド", words: []string{"hso", ""}, want: []string{"setup", "start", "list", "ls", "delete", "java", "completion", "version", "update", "uninstall", "help", "-config"}},
+		{name: "コマンド", words: []string{"hso", ""}, want: []string{"setup", "start", "cd", "list", "ls", "delete", "java", "completion", "version", "update", "uninstall", "help", "-config"}},
 		{name: "start", words: []string{"hso", "start", ""}, want: serverValues},
+		{name: "cd", words: []string{"hso", "cd", ""}, want: serverValues},
 		{name: "delete", words: []string{"hso", "delete", ""}, want: []string{"survival", "creative", "-y", "--yes"}},
 		{name: "java", words: []string{"hso", "java", ""}, want: []string{"change", "list"}},
 		{name: "java change", words: []string{"hso", "java", "change", ""}, want: serverValues},

@@ -50,8 +50,9 @@ Tab で出す。** サブコマンドとフラグの補完はそのついでに�
 
 | 打っているもの | 候補 |
 |---|---|
-| `hso <TAB>` | `setup` `start` `list` `ls` `delete` `java` `completion` `version` `update` `uninstall` `help` `-config` |
+| `hso <TAB>` | `setup` `start` `cd` `list` `ls` `delete` `java` `completion` `version` `update` `uninstall` `help` `-config` |
 | `hso start <TAB>` | 登録済みサーバー名 |
+| `hso cd <TAB>` | 登録済みサーバー名 |
 | `hso delete <TAB>` | 登録済みサーバー名 ＋ `-y` `--yes` |
 | `hso java <TAB>` | `change` `list` |
 | `hso java change <TAB>` | 登録済みサーバー名 |
@@ -60,7 +61,7 @@ Tab で出す。** サブコマンドとフラグの補完はそのついでに�
 | `hso -config <TAB>` | **シェルのファイル補完**（`__complete` は候補を返さず、その旨を伝える） |
 | 上記以外（`setup` `list` `version` `update` `help` の後ろなど） | 無し |
 
-サーバー名を取る位置は 3 つ（`start` / `delete` / `java change`）で、どれも同じ候補集合を返す。
+サーバー名を取る位置は 4 つ（`start` / `cd` / `delete` / `java change`）で、どれも同じ候補集合を返す。
 
 ## 問い合わせのプロトコル
 

@@ -73,6 +73,8 @@ func dispatchCommand(args []string, output io.Writer) (bool, error) {
 			name = args[1]
 		}
 		return true, runStart(name)
+	case "cd":
+		return true, runCd(args[1:])
 	case "delete":
 		return true, runDelete(args[1:], os.Stdin, output, interactive())
 	case "java":

@@ -544,6 +544,7 @@ const (
 	ConfigNotFound      = "設定が見つからない"
 	EmptyServerList     = "登録済みのサーバーはありません。hso setup で登録してください。"
 	StartTitle          = "起動するサーバーを選ぶ"
+	CdTitle             = "ディレクトリを開くサーバーを選ぶ"
 	DeleteTitle         = "削除するサーバーを選ぶ"
 	DeleteConfirmPrompt = "一覧からこの登録だけを外します。hso.toml とサーバーディレクトリの中身は削除しません。\n削除しますか？ [y/N]: "
 )
@@ -576,6 +577,18 @@ func StartRequiresTerminal() error {
 	return errors.New("サーバー名を省略するには端末から実行してください")
 }
 
+func CdArgumentsNotAllowed() error {
+	return errors.New("cd サブコマンドに指定できる名前は1つだけです")
+}
+
+func CdRequiresTerminal() error {
+	return errors.New("cd は端末から実行してください")
+}
+
+func CdOpeningShell(name, dir string) string {
+	return fmt.Sprintf("%s のディレクトリでシェルを開きます: %s\n戻るには exit を入力してください", name, dir)
+}
+
 func DeleteArgumentsNotAllowed() error {
 	return errors.New("delete サブコマンドに指定できる名前は1つまでで、フラグは -y または --yes だけです")
 }
@@ -606,6 +619,14 @@ func ServerDeleted(name string) string {
 
 func ServerNotRegistered(name string) error {
 	return fmt.Errorf("サーバーが一覧にありません: %s", name)
+}
+
+func ServerDirectoryNotFound(name, dir string) error {
+	return fmt.Errorf("サーバー %s のディレクトリが見つかりません: %s", name, dir)
+}
+
+func OpenShellFailed(err error, shell string) error {
+	return fmt.Errorf("シェルを起動できませんでした（%s）: %v", shell, err)
 }
 
 func ServerAlreadyRunning(name string, pid int) error {
@@ -746,6 +767,7 @@ func UnknownCommand(command string) error {
 const (
 	CompletionSetupDescription      = "セットアップを始める"
 	CompletionStartDescription      = "登録済みのサーバーを起動する"
+	CompletionCdDescription         = "サーバーのディレクトリでシェルを開く"
 	CompletionListDescription       = "登録済みのサーバーを表示する"
 	CompletionDeleteDescription     = "サーバー一覧から登録を外す"
 	CompletionJavaDescription       = "Java の設定と確認"
@@ -779,6 +801,7 @@ const CommandHelp = `hso — Minecraft サーバー用のラッパー型 TUI コ
 コマンド:
   setup                   セットアップを始める。Minecraft サーバーのディレクトリで実行する
   start [name]            登録済みのサーバーを起動する。名前を省くと一覧から選ぶ
+  cd [name]               サーバーのディレクトリでシェルを開く。戻るには exit
   list (ls)               登録済みのサーバーの名前・状態・設定ファイルのパスを表示する
   delete [name]           サーバー一覧から登録を外す。hso.toml とワールドは消さない
   java change [name]      サーバーが使う Java を変更する

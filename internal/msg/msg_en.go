@@ -546,6 +546,7 @@ const (
 	ConfigNotFound      = "config not found"
 	EmptyServerList     = "No servers are registered. Run hso setup to register one."
 	StartTitle          = "Choose a server to start"
+	CdTitle             = "Choose the server directory to open"
 	DeleteTitle         = "Choose a server to delete"
 	DeleteConfirmPrompt = "Only this registration will be removed. hso.toml and the server directory contents will not be deleted.\nDelete it? [y/N]: "
 )
@@ -578,6 +579,18 @@ func StartRequiresTerminal() error {
 	return errors.New("run start from a terminal when omitting the server name")
 }
 
+func CdArgumentsNotAllowed() error {
+	return errors.New("cd accepts at most one server name")
+}
+
+func CdRequiresTerminal() error {
+	return errors.New("run cd from a terminal")
+}
+
+func CdOpeningShell(name, dir string) string {
+	return fmt.Sprintf("Opening a shell in the %s directory: %s\nType exit to return.", name, dir)
+}
+
 func DeleteArgumentsNotAllowed() error {
 	return errors.New("the delete subcommand accepts at most one server name and only the -y or --yes flag")
 }
@@ -608,6 +621,14 @@ func ServerDeleted(name string) string {
 
 func ServerNotRegistered(name string) error {
 	return fmt.Errorf("server is not registered: %s", name)
+}
+
+func ServerDirectoryNotFound(name, dir string) error {
+	return fmt.Errorf("the directory for server %s was not found: %s", name, dir)
+}
+
+func OpenShellFailed(err error, shell string) error {
+	return fmt.Errorf("could not start the shell (%s): %v", shell, err)
 }
 
 func ServerAlreadyRunning(name string, pid int) error {
@@ -748,6 +769,7 @@ func UnknownCommand(command string) error {
 const (
 	CompletionSetupDescription      = "Start the setup"
 	CompletionStartDescription      = "Start a registered server"
+	CompletionCdDescription         = "Open a shell in the server directory"
 	CompletionListDescription       = "Show registered servers"
 	CompletionDeleteDescription     = "Drop a server from the list"
 	CompletionJavaDescription       = "Configure and inspect Java"
@@ -781,6 +803,7 @@ Usage:
 Commands:
   setup                   Start the setup. Run it in the Minecraft server directory
   start [name]            Start a registered server. Without a name, pick one from the list
+  cd [name]               Open a shell in the server directory. Type exit to return
   list (ls)               Show the name, state and config path of every registered server
   delete [name]           Drop a server from the list. hso.toml and the worlds are kept
   java change [name]      Change the Java a server uses

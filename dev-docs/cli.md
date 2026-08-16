@@ -82,6 +82,7 @@ ja / en で 2 本という配布形態はそのまま。言語で実行ファイ
 | `hso -config path` | 指定した設定で起動。設定が無く端末なら対話セットアップ → 起動 |
 | `hso setup` | ウィザードで `hso.toml` を作り、名前を付けて一覧へ登録する |
 | `hso start [name]` | 名前で起動。省略時は一覧から選ばせる |
+| `hso cd [name]` | 登録済みサーバーのディレクトリで新しいシェルを開く |
 | `hso list` (alias): 'hso ls' | 登録済みサーバーの名前 / 状態 / 設定パス |
 | `hso java` | Java 関連コマンドの使い方を表示 |
 | `hso java change [name]` | 登録済みサーバーが使う Java を変更 |

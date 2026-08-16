@@ -19,7 +19,7 @@ func Candidates(words []string, servers []registry.Server) []Candidate {
 	}
 	if len(words) == 3 {
 		switch words[1] {
-		case "start":
+		case "start", "cd":
 			return serverCandidates(servers)
 		case "delete":
 			return append(serverCandidates(servers),
@@ -52,6 +52,7 @@ func commandCandidates() []Candidate {
 	return []Candidate{
 		{Value: "setup", Description: msg.CompletionSetupDescription},
 		{Value: "start", Description: msg.CompletionStartDescription},
+		{Value: "cd", Description: msg.CompletionCdDescription},
 		{Value: "list", Description: msg.CompletionListDescription},
 		{Value: "ls", Description: msg.CompletionListDescription},
 		{Value: "delete", Description: msg.CompletionDeleteDescription},
