@@ -461,19 +461,23 @@ func TestCalculateCPU(t *testing.T) {
 	}
 }
 
-func TestSettingsRoundTripTimeOffset(t *testing.T) {
+func TestSettingsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "hso.toml")
 	cfg := config.Config{
 		Server: config.Server{Command: "./run.sh", WorkDir: dir},
-		UI:     config.UI{Time: config.Time{OffsetMinutes: -90}},
+		UI: config.UI{
+			Theme: config.Theme{Background: "night"},
+			Time:  config.Time{OffsetMinutes: -90},
+		},
 	}
 
 	settings := settingsFrom(cfg)
-	if settings.TimeOffsetMinutes != -90 {
+	if settings.TimeOffsetMinutes != -90 || settings.BackgroundPreset != "night" {
 		t.Fatalf("settings = %#v", settings)
 	}
 	settings.TimeOffsetMinutes = 120
+	settings.BackgroundPreset = "deep"
 	if err := saveSettings(path, cfg, settings); err != nil {
 		t.Fatal(err)
 	}
@@ -481,8 +485,8 @@ func TestSettingsRoundTripTimeOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.UI.Time.OffsetMinutes != 120 {
-		t.Fatalf("loaded = %#v", loaded.UI.Time)
+	if loaded.UI.Time.OffsetMinutes != 120 || loaded.UI.Theme.Background != "deep" {
+		t.Fatalf("loaded = %#v", loaded.UI)
 	}
 }
 

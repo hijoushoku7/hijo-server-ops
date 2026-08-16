@@ -42,12 +42,13 @@ type Time struct {
 
 // Theme は設定モーダルで選んだ配色プリセットの名前。空なら既定を使う。
 type Theme struct {
-	Frame     string `toml:"frame"`
-	Graph     string `toml:"graph"`
-	Meter     string `toml:"meter"`
-	Title     string `toml:"title"`
-	Selection string `toml:"selection"`
-	Log       string `toml:"log"`
+	Background string `toml:"background"`
+	Frame      string `toml:"frame"`
+	Graph      string `toml:"graph"`
+	Meter      string `toml:"meter"`
+	Title      string `toml:"title"`
+	Selection  string `toml:"selection"`
+	Log        string `toml:"log"`
 }
 
 func Load(path string) (Config, error) {
@@ -168,6 +169,7 @@ func render(cfg Config) string {
 	if cfg.UI.Theme != (Theme{}) {
 		out.WriteString("\n[ui.theme]\n")
 		for _, preset := range [][2]string{
+			{"background", cfg.UI.Theme.Background},
 			{"frame", cfg.UI.Theme.Frame},
 			{"graph", cfg.UI.Theme.Graph},
 			{"meter", cfg.UI.Theme.Meter},

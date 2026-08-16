@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
@@ -166,6 +167,21 @@ func TestApplyThemeFallsBackToDefaultsForUnknownPresets(t *testing.T) {
 	if logTimestampStyle.GetForeground() !=
 		color(logPresets[defaults.LogPreset].timestamp).GetForeground() {
 		t.Fatalf("log timestamp = %#v", logTimestampStyle)
+	}
+	if backgroundColor != nil {
+		t.Fatalf("background = %#v", backgroundColor)
+	}
+}
+
+func TestBackgroundPresetColorsWholeView(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	settings := DefaultSettings()
+	settings.BackgroundPreset = "night"
+	model := New(make(chan Action, 1), nil, 0, settings, ServerInfo{})
+
+	want := lipgloss.Color(backgroundPresets["night"])
+	if model.View().BackgroundColor != want {
+		t.Fatalf("background = %#v, want %#v", model.View().BackgroundColor, want)
 	}
 }
 

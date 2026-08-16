@@ -104,6 +104,8 @@ func (model *Model) View() tea.View {
 	view := tea.NewView(content)
 	view.AltScreen = true
 	view.WindowTitle = model.windowTitle()
+	// View の背景指定ならレイアウトを変えず、余白とキーバーまで画面全体を塗れる。
+	view.BackgroundColor = backgroundColor
 	// IME の候補窓は端末のカーソル位置に出る。キャレットを入力欄へ置かないと
 	// 直前の描画位置に取り残され、仮入力が画面の途中に現れる。
 	if caretX >= 0 {
