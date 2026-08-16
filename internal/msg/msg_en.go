@@ -29,6 +29,7 @@ const (
 
 // Settings modal item names.
 const (
+	LabelTheme      = "theme"
 	LabelFrame      = "border"
 	LabelBackground = "background"
 	LabelGraphLine  = "graph line"
@@ -52,6 +53,7 @@ const (
 // Color preset names.
 const (
 	OptDefault  = "default"
+	OptCustom   = "custom"
 	OptMono     = "mono"
 	OptNeon     = "neon"
 	OptOcean    = "ocean"

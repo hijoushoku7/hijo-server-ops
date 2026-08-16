@@ -59,7 +59,29 @@ type settingItem struct {
 var settingItems = []settingItem{
 	{
 		section: msg.SectionPreferences,
-		label:   msg.LabelFrame,
+		label:   msg.LabelTheme,
+		options: []settingOption{
+			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptMono, value: "mono"},
+			{label: msg.OptSafe, value: "safe"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
+		},
+		get: func(settings Settings) string {
+			if name := themeName(settings); name != "" {
+				return name
+			}
+			return msg.OptCustom
+		},
+		set: func(settings *Settings, value string) {
+			if bundle, ok := themeBundles[value]; ok {
+				bundle.apply(settings)
+			}
+		},
+	},
+	{
+		label: msg.LabelFrame,
 		options: []settingOption{
 			{label: msg.OptDefault, value: "dracula"},
 			{label: msg.OptMono, value: "mono"},

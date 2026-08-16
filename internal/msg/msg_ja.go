@@ -27,6 +27,7 @@ const (
 
 // 設定モーダルの項目名。
 const (
+	LabelTheme      = "テーマ"
 	LabelFrame      = "枠"
 	LabelBackground = "背景"
 	LabelGraphLine  = "グラフの線"
@@ -50,6 +51,7 @@ const (
 // 配色プリセットの表示名。
 const (
 	OptDefault  = "既定"
+	OptCustom   = "カスタム"
 	OptMono     = "モノクロ"
 	OptNeon     = "ネオン"
 	OptOcean    = "海"

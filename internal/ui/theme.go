@@ -89,6 +89,72 @@ type logPalette struct {
 	players   []string
 }
 
+type themeBundle struct {
+	background string
+	frame      string
+	graph      string
+	meter      string
+	title      string
+	selection  string
+	log        string
+}
+
+var themeBundles = map[string]themeBundle{
+	"dracula": {
+		background: "terminal", frame: "dracula", graph: "dracula",
+		meter: "signal", title: "cyan", selection: "amber", log: "dracula",
+	},
+	"mono": {
+		background: "terminal", frame: "mono", graph: "mono",
+		meter: "mono", title: "white", selection: "mono", log: "mono",
+	},
+	"safe": {
+		background: "terminal", frame: "mono", graph: "safe",
+		meter: "safe", title: "white", selection: "mono", log: "safe",
+	},
+	"sunset": {
+		background: "dark", frame: "sunset", graph: "sunset",
+		meter: "sunset", title: "sunset", selection: "sunset", log: "sunset",
+	},
+	"sakura": {
+		background: "deep", frame: "sakura", graph: "sakura",
+		meter: "sakura", title: "sakura", selection: "sakura", log: "sakura",
+	},
+	"nord": {
+		background: "night", frame: "nord", graph: "nord",
+		meter: "nord", title: "nord", selection: "nord", log: "nord",
+	},
+}
+
+func (bundle themeBundle) apply(settings *Settings) {
+	settings.BackgroundPreset = bundle.background
+	settings.FramePreset = bundle.frame
+	settings.GraphPreset = bundle.graph
+	settings.MeterPreset = bundle.meter
+	settings.TitlePreset = bundle.title
+	settings.SelectionPreset = bundle.selection
+	settings.LogPreset = bundle.log
+}
+
+func (bundle themeBundle) matches(settings Settings) bool {
+	return settings.BackgroundPreset == bundle.background &&
+		settings.FramePreset == bundle.frame &&
+		settings.GraphPreset == bundle.graph &&
+		settings.MeterPreset == bundle.meter &&
+		settings.TitlePreset == bundle.title &&
+		settings.SelectionPreset == bundle.selection &&
+		settings.LogPreset == bundle.log
+}
+
+func themeName(settings Settings) string {
+	for name, bundle := range themeBundles {
+		if bundle.matches(settings) {
+			return name
+		}
+	}
+	return ""
+}
+
 var framePresets = map[string]framePalette{
 	"dracula": {plain: "#777777", selected: "#8BE9FD", focused: "#F1FA8C", dim: "#777777"},
 	"mono":    {plain: "#5A5A5A", selected: "#AAAAAA", focused: "#F8F8F2", dim: "#8A8A8A"},
