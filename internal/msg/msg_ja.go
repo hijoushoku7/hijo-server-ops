@@ -477,6 +477,10 @@ func CheckRegisteredConfigFailed(err error, path string) error {
 	return fmt.Errorf("登録された設定ファイルを確認する (%s): %w", path, err)
 }
 
+func CheckServerDirectoryFailed(err error, dir string) error {
+	return fmt.Errorf("サーバーのディレクトリを確認する (%s): %w", dir, err)
+}
+
 func WriteServerListFailed(err error) error {
 	return fmt.Errorf("サーバー一覧を表示する: %w", err)
 }

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +81,11 @@ func cdFromRegistry(
 func serverDirectory(server registry.Server) (string, error) {
 	dir := filepath.Dir(server.Config)
 	info, err := os.Stat(dir)
+	// 権限が足りないだけのときに「見つからない」と言うと、登録パスを疑って
+	// 直せない。list の inspectServer と同じく、無いことだけを特別扱いする。
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", msg.CheckServerDirectoryFailed(err, dir)
+	}
 	if err != nil || !info.IsDir() {
 		return "", msg.ServerDirectoryNotFound(server.Name, dir)
 	}
@@ -92,14 +99,10 @@ func shellPath() string {
 	return "/bin/sh"
 }
 
-func openShell(server registry.Server, dir string) error {
-	shell := shellPath()
-	if err := os.Chdir(dir); err != nil {
-		return msg.OpenShellFailed(err, shell)
-	}
-
-	environment := os.Environ()
-	serverVariable := "HSO_SERVER=" + server.Name
+// shellEnvironment は開くシェルへ渡す環境を作る。入れ子で開いたときに前の
+// サーバー名が残らないよう、既にある HSO_SERVER は残さず置き換える。
+func shellEnvironment(environment []string, name string) []string {
+	serverVariable := "HSO_SERVER=" + name
 	replaced := false
 	for index, variable := range environment {
 		if strings.HasPrefix(variable, "HSO_SERVER=") {
@@ -110,9 +113,16 @@ func openShell(server registry.Server, dir string) error {
 	if !replaced {
 		environment = append(environment, serverVariable)
 	}
+	return environment
+}
 
+func openShell(server registry.Server, dir string) error {
+	shell := shellPath()
+	if err := os.Chdir(dir); err != nil {
+		return msg.OpenShellFailed(err, shell)
+	}
 	fmt.Println(msg.CdOpeningShell(server.Name, dir))
-	if err := syscall.Exec(shell, []string{shell}, environment); err != nil {
+	if err := syscall.Exec(shell, []string{shell}, shellEnvironment(os.Environ(), server.Name)); err != nil {
 		return msg.OpenShellFailed(err, shell)
 	}
 	return nil

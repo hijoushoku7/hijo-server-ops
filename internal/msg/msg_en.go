@@ -479,6 +479,10 @@ func CheckRegisteredConfigFailed(err error, path string) error {
 	return fmt.Errorf("check registered config file (%s): %w", path, err)
 }
 
+func CheckServerDirectoryFailed(err error, dir string) error {
+	return fmt.Errorf("check the server directory (%s): %w", dir, err)
+}
+
 func WriteServerListFailed(err error) error {
 	return fmt.Errorf("display server list: %w", err)
 }

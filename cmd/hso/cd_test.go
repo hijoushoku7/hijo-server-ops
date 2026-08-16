@@ -130,6 +130,49 @@ func TestServerDirectoryRejectsNonDirectory(t *testing.T) {
 	}
 }
 
+func TestServerDirectoryReportsStatFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root は権限に関係なく stat できる")
+	}
+	root := t.TempDir()
+	locked := filepath.Join(root, "locked")
+	if err := os.Mkdir(locked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(locked, "srv"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+
+	server := registry.Server{Name: "survival", Config: filepath.Join(locked, "srv", "hso.toml")}
+	_, err := serverDirectory(server)
+	// 権限で読めないだけのときに「見つからない」と言わないこと。
+	if err == nil || strings.Contains(err.Error(), msg.ServerDirectoryNotFound(server.Name, locked).Error()) {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(err.Error(), filepath.Join(locked, "srv")) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestShellEnvironment(t *testing.T) {
+	t.Run("追加", func(t *testing.T) {
+		got := shellEnvironment([]string{"PATH=/usr/bin"}, "survival")
+		if len(got) != 2 || got[1] != "HSO_SERVER=survival" {
+			t.Fatalf("environment = %v", got)
+		}
+	})
+	t.Run("置き換え", func(t *testing.T) {
+		got := shellEnvironment([]string{"HSO_SERVER=creative", "PATH=/usr/bin"}, "survival")
+		if len(got) != 2 || got[0] != "HSO_SERVER=survival" {
+			t.Fatalf("environment = %v", got)
+		}
+	})
+}
+
 func TestShellPath(t *testing.T) {
 	t.Run("設定あり", func(t *testing.T) {
 		t.Setenv("SHELL", "/bin/bash")
