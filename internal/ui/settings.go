@@ -12,6 +12,7 @@ import (
 // フィールドを 1 つ足して settingItems に 1 エントリ足すだけでよい。
 // モーダル側は項目の中身を知らない。
 type Settings struct {
+	BackgroundPreset  string
 	FramePreset       string
 	GraphPreset       string
 	MeterPreset       string
@@ -24,12 +25,13 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
-		FramePreset:     "dracula",
-		GraphPreset:     "dracula",
-		MeterPreset:     "signal",
-		TitlePreset:     "cyan",
-		SelectionPreset: "amber",
-		LogPreset:       "dracula",
+		BackgroundPreset: "terminal",
+		FramePreset:      "dracula",
+		GraphPreset:      "dracula",
+		MeterPreset:      "signal",
+		TitlePreset:      "cyan",
+		SelectionPreset:  "amber",
+		LogPreset:        "dracula",
 	}
 }
 
@@ -57,13 +59,38 @@ type settingItem struct {
 var settingItems = []settingItem{
 	{
 		section: msg.SectionPreferences,
-		label:   msg.LabelFrame,
+		label:   msg.LabelTheme,
+		options: []settingOption{
+			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptMono, value: "mono"},
+			{label: msg.OptSafe, value: "safe"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
+		},
+		get: func(settings Settings) string {
+			if name := themeName(settings); name != "" {
+				return name
+			}
+			return msg.OptCustom
+		},
+		set: func(settings *Settings, value string) {
+			if bundle, ok := themeBundles[value]; ok {
+				bundle.apply(settings)
+			}
+		},
+	},
+	{
+		label: msg.LabelFrame,
 		options: []settingOption{
 			{label: msg.OptDefault, value: "dracula"},
 			{label: msg.OptMono, value: "mono"},
 			{label: msg.OptNeon, value: "neon"},
 			{label: msg.OptOcean, value: "ocean"},
 			{label: msg.OptForest, value: "forest"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
 		},
 		get: func(settings Settings) string { return settings.FramePreset },
 		set: func(settings *Settings, value string) {
@@ -78,6 +105,9 @@ var settingItems = []settingItem{
 			{label: msg.OptWarm, value: "warm"},
 			{label: msg.OptCool, value: "cool"},
 			{label: msg.OptSafe, value: "safe"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
 		},
 		get: func(settings Settings) string { return settings.GraphPreset },
 		set: func(settings *Settings, value string) {
@@ -91,6 +121,9 @@ var settingItems = []settingItem{
 			{label: msg.OptMono, value: "mono"},
 			{label: msg.OptSafe, value: "safe"},
 			{label: msg.OptFlat, value: "flat"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
 		},
 		get: func(settings Settings) string { return settings.MeterPreset },
 		set: func(settings *Settings, value string) {
@@ -105,6 +138,9 @@ var settingItems = []settingItem{
 			{label: msg.OptAmber, value: "amber"},
 			{label: msg.OptViolet, value: "violet"},
 			{label: msg.OptQuiet, value: "quiet"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
 		},
 		get: func(settings Settings) string { return settings.TitlePreset },
 		set: func(settings *Settings, value string) {
@@ -118,6 +154,9 @@ var settingItems = []settingItem{
 			{label: msg.OptCyan, value: "cyan"},
 			{label: msg.OptViolet, value: "violet"},
 			{label: msg.OptMono, value: "mono"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
 		},
 		get: func(settings Settings) string { return settings.SelectionPreset },
 		set: func(settings *Settings, value string) {
@@ -132,10 +171,27 @@ var settingItems = []settingItem{
 			{label: msg.OptWarm, value: "warm"},
 			{label: msg.OptCool, value: "cool"},
 			{label: msg.OptSafe, value: "safe"},
+			{label: msg.OptSunset, value: "sunset"},
+			{label: msg.OptSakura, value: "sakura"},
+			{label: msg.OptNord, value: "nord"},
 		},
 		get: func(settings Settings) string { return settings.LogPreset },
 		set: func(settings *Settings, value string) {
 			settings.LogPreset = value
+		},
+	},
+	{
+		label: msg.LabelBackground,
+		options: []settingOption{
+			{label: msg.OptTerminal, value: "terminal"},
+			{label: msg.OptDark, value: "dark"},
+			{label: msg.OptNight, value: "night"},
+			{label: msg.OptDeep, value: "deep"},
+			{label: msg.OptCharcoal, value: "charcoal"},
+		},
+		get: func(settings Settings) string { return settings.BackgroundPreset },
+		set: func(settings *Settings, value string) {
+			settings.BackgroundPreset = value
 		},
 	},
 	{

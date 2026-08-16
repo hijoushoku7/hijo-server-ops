@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
-func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
+func TestSettingsModalOpensWithGAndChangesTheme(t *testing.T) {
 	// スタイルはパッケージ変数なので、後続のテストへ持ち越さない。
 	t.Cleanup(func() { applyTheme(DefaultSettings()) })
 	var saved []Settings
@@ -35,11 +36,10 @@ func TestSettingsModalOpensWithGAndChangesFrameColor(t *testing.T) {
 		t.Fatal("view does not contain the settings modal")
 	}
 
-	// 先頭の項目（枠のプリセット）を 1 つ進める。
-	before := model.settings.FramePreset
+	// 先頭のテーマ項目を 1 つ進める。
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	if model.settings.FramePreset == before {
-		t.Fatalf("frame preset unchanged: %q", model.settings.FramePreset)
+	if !themeBundles["mono"].matches(model.settings) {
+		t.Fatalf("theme was not expanded: %#v", model.settings)
 	}
 	// 選んだプリセットは即座に描画へ反映する。
 	if plainFrame.style.GetForeground() !=
@@ -135,7 +135,7 @@ func TestSettingsModalShowsSectionHeadings(t *testing.T) {
 }
 
 func TestSettingItemsWrapAroundAndKeepUnknownValues(t *testing.T) {
-	item := settingItems[0]
+	item := settingItems[1]
 	settings := Settings{FramePreset: item.options[0].value}
 
 	item.shift(&settings, -1)
@@ -147,6 +147,58 @@ func TestSettingItemsWrapAroundAndKeepUnknownValues(t *testing.T) {
 	settings.FramePreset = "unknown"
 	if label := item.valueLabel(settings); label != "unknown" {
 		t.Fatalf("label = %q", label)
+	}
+}
+
+func TestDraculaThemeMatchesDefaultSettings(t *testing.T) {
+	settings := Settings{}
+	themeBundles["dracula"].apply(&settings)
+	if settings != DefaultSettings() {
+		t.Fatalf("dracula = %#v, default = %#v", settings, DefaultSettings())
+	}
+}
+
+func TestThemeExpandsAllColorPresets(t *testing.T) {
+	settings := DefaultSettings()
+	themeBundles["sakura"].apply(&settings)
+	want := themeBundles["sakura"]
+	if !want.matches(settings) {
+		t.Fatalf("settings = %#v, want %#v", settings, want)
+	}
+}
+
+func TestThemeBecomesCustomAfterChangingOnePreset(t *testing.T) {
+	settings := DefaultSettings()
+	themeBundles["nord"].apply(&settings)
+	settings.FramePreset = "mono"
+	if got := settingItems[0].valueLabel(settings); got != msg.OptCustom {
+		t.Fatalf("theme label = %q, want %q", got, msg.OptCustom)
+	}
+}
+
+func TestThemeBundlesReferToExistingPresets(t *testing.T) {
+	for name, bundle := range themeBundles {
+		if _, ok := backgroundPresets[bundle.background]; !ok {
+			t.Errorf("%s background preset %q does not exist", name, bundle.background)
+		}
+		if _, ok := framePresets[bundle.frame]; !ok {
+			t.Errorf("%s frame preset %q does not exist", name, bundle.frame)
+		}
+		if _, ok := graphPresets[bundle.graph]; !ok {
+			t.Errorf("%s graph preset %q does not exist", name, bundle.graph)
+		}
+		if _, ok := meterPresets[bundle.meter]; !ok {
+			t.Errorf("%s meter preset %q does not exist", name, bundle.meter)
+		}
+		if _, ok := titlePresets[bundle.title]; !ok {
+			t.Errorf("%s title preset %q does not exist", name, bundle.title)
+		}
+		if _, ok := selectionPresets[bundle.selection]; !ok {
+			t.Errorf("%s selection preset %q does not exist", name, bundle.selection)
+		}
+		if _, ok := logPresets[bundle.log]; !ok {
+			t.Errorf("%s log preset %q does not exist", name, bundle.log)
+		}
 	}
 }
 
@@ -166,6 +218,21 @@ func TestApplyThemeFallsBackToDefaultsForUnknownPresets(t *testing.T) {
 	if logTimestampStyle.GetForeground() !=
 		color(logPresets[defaults.LogPreset].timestamp).GetForeground() {
 		t.Fatalf("log timestamp = %#v", logTimestampStyle)
+	}
+	if backgroundColor != nil {
+		t.Fatalf("background = %#v", backgroundColor)
+	}
+}
+
+func TestBackgroundPresetColorsWholeView(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	settings := DefaultSettings()
+	settings.BackgroundPreset = "night"
+	model := New(make(chan Action, 1), nil, 0, settings, ServerInfo{})
+
+	want := lipgloss.Color(backgroundPresets["night"])
+	if model.View().BackgroundColor != want {
+		t.Fatalf("background = %#v, want %#v", model.View().BackgroundColor, want)
 	}
 }
 

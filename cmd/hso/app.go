@@ -99,6 +99,9 @@ func sanitizeDisplayName(name string) string {
 
 func settingsFrom(cfg config.Config) ui.Settings {
 	settings := ui.DefaultSettings()
+	if value := cfg.UI.Theme.Background; value != "" {
+		settings.BackgroundPreset = value
+	}
 	if value := cfg.UI.Theme.Frame; value != "" {
 		settings.FramePreset = value
 	}
@@ -124,12 +127,13 @@ func settingsFrom(cfg config.Config) ui.Settings {
 
 func saveSettings(configPath string, cfg config.Config, settings ui.Settings) error {
 	cfg.UI.Theme = config.Theme{
-		Frame:     settings.FramePreset,
-		Graph:     settings.GraphPreset,
-		Meter:     settings.MeterPreset,
-		Title:     settings.TitlePreset,
-		Selection: settings.SelectionPreset,
-		Log:       settings.LogPreset,
+		Background: settings.BackgroundPreset,
+		Frame:      settings.FramePreset,
+		Graph:      settings.GraphPreset,
+		Meter:      settings.MeterPreset,
+		Title:      settings.TitlePreset,
+		Selection:  settings.SelectionPreset,
+		Log:        settings.LogPreset,
 	}
 	cfg.Server.AutoRestart = settings.AutoRestart
 	cfg.UI.Time.OffsetMinutes = settings.TimeOffsetMinutes

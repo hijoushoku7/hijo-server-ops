@@ -1,6 +1,8 @@
 package ui
 
 import (
+	stdcolor "image/color"
+
 	"charm.land/lipgloss/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
@@ -8,7 +10,8 @@ import (
 
 // 初期値を既定プリセットと揃え、New を通さないテストでも同じ配色にする。
 var (
-	titleStyle = lipgloss.NewStyle().
+	backgroundColor stdcolor.Color
+	titleStyle      = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8BE9FD")).
 			Bold(true)
 	heapStyle = lipgloss.NewStyle().
@@ -86,12 +89,81 @@ type logPalette struct {
 	players   []string
 }
 
+type themeBundle struct {
+	background string
+	frame      string
+	graph      string
+	meter      string
+	title      string
+	selection  string
+	log        string
+}
+
+var themeBundles = map[string]themeBundle{
+	"dracula": {
+		background: "terminal", frame: "dracula", graph: "dracula",
+		meter: "signal", title: "cyan", selection: "amber", log: "dracula",
+	},
+	"mono": {
+		background: "terminal", frame: "mono", graph: "mono",
+		meter: "mono", title: "white", selection: "mono", log: "mono",
+	},
+	"safe": {
+		background: "terminal", frame: "mono", graph: "safe",
+		meter: "safe", title: "white", selection: "mono", log: "safe",
+	},
+	"sunset": {
+		background: "dark", frame: "sunset", graph: "sunset",
+		meter: "sunset", title: "sunset", selection: "sunset", log: "sunset",
+	},
+	"sakura": {
+		background: "deep", frame: "sakura", graph: "sakura",
+		meter: "sakura", title: "sakura", selection: "sakura", log: "sakura",
+	},
+	"nord": {
+		background: "night", frame: "nord", graph: "nord",
+		meter: "nord", title: "nord", selection: "nord", log: "nord",
+	},
+}
+
+func (bundle themeBundle) apply(settings *Settings) {
+	settings.BackgroundPreset = bundle.background
+	settings.FramePreset = bundle.frame
+	settings.GraphPreset = bundle.graph
+	settings.MeterPreset = bundle.meter
+	settings.TitlePreset = bundle.title
+	settings.SelectionPreset = bundle.selection
+	settings.LogPreset = bundle.log
+}
+
+func (bundle themeBundle) matches(settings Settings) bool {
+	return settings.BackgroundPreset == bundle.background &&
+		settings.FramePreset == bundle.frame &&
+		settings.GraphPreset == bundle.graph &&
+		settings.MeterPreset == bundle.meter &&
+		settings.TitlePreset == bundle.title &&
+		settings.SelectionPreset == bundle.selection &&
+		settings.LogPreset == bundle.log
+}
+
+func themeName(settings Settings) string {
+	for name, bundle := range themeBundles {
+		if bundle.matches(settings) {
+			return name
+		}
+	}
+	return ""
+}
+
 var framePresets = map[string]framePalette{
 	"dracula": {plain: "#777777", selected: "#8BE9FD", focused: "#F1FA8C", dim: "#777777"},
 	"mono":    {plain: "#5A5A5A", selected: "#AAAAAA", focused: "#F8F8F2", dim: "#8A8A8A"},
 	"neon":    {plain: "#6272A4", selected: "#FF79C6", focused: "#8BE9FD", dim: "#6272A4"},
 	"ocean":   {plain: "#44506B", selected: "#6FB3D2", focused: "#A0E9FF", dim: "#5A6E8C"},
 	"forest":  {plain: "#4E6151", selected: "#8FBC8F", focused: "#D7E8A0", dim: "#6B7F6B"},
+	"sunset":  {plain: "#7A5360", selected: "#FF8A65", focused: "#FFB4A2", dim: "#87616B"},
+	"sakura":  {plain: "#70556E", selected: "#F38BA8", focused: "#CBA6F7", dim: "#80677E"},
+	"nord":    {plain: "#4C566A", selected: "#81A1C1", focused: "#88C0D0", dim: "#616E88"},
 }
 
 var graphPresets = map[string]graphPalette{
@@ -100,7 +172,10 @@ var graphPresets = map[string]graphPalette{
 	"warm":    {heap: "#FFB86C", rss: "#FF79C6", overlap: "#F1FA8C"},
 	"cool":    {heap: "#8BE9FD", rss: "#BD93F9", overlap: "#F8F8F2"},
 	// Okabe-Ito の青と橙。色覚型によらず区別できる組み合わせ。
-	"safe": {heap: "#56B4E9", rss: "#E69F00", overlap: "#F0F0F0"},
+	"safe":   {heap: "#56B4E9", rss: "#E69F00", overlap: "#F0F0F0"},
+	"sunset": {heap: "#FF8A65", rss: "#C77DFF", overlap: "#FFD166"},
+	"sakura": {heap: "#F38BA8", rss: "#89B4FA", overlap: "#CBA6F7"},
+	"nord":   {heap: "#A3BE8C", rss: "#81A1C1", overlap: "#D08770"},
 }
 
 var meterPresets = map[string]meterPalette{
@@ -108,7 +183,10 @@ var meterPresets = map[string]meterPalette{
 	"mono":   {full: "#8A8A8A", high: "#C8C8C8", over: "#F8F8F2", empty: "#333333"},
 	"safe":   {full: "#56B4E9", high: "#F0E442", over: "#D55E00", empty: "#333333"},
 	// 段階で色を変えず、長さだけで読ませる。
-	"flat": {full: "#8BE9FD", high: "#8BE9FD", over: "#8BE9FD", empty: "#333333"},
+	"flat":   {full: "#8BE9FD", high: "#8BE9FD", over: "#8BE9FD", empty: "#333333"},
+	"sunset": {full: "#FFB86C", high: "#FF8A65", over: "#FF5555", empty: "#49343A"},
+	"sakura": {full: "#A6E3A1", high: "#FAB387", over: "#F38BA8", empty: "#423442"},
+	"nord":   {full: "#A3BE8C", high: "#EBCB8B", over: "#BF616A", empty: "#3B4252"},
 }
 
 var titlePresets = map[string]string{
@@ -117,6 +195,9 @@ var titlePresets = map[string]string{
 	"amber":  "#F1FA8C",
 	"violet": "#BD93F9",
 	"quiet":  "#999999",
+	"sunset": "#FF8A65",
+	"sakura": "#F38BA8",
+	"nord":   "#88C0D0",
 }
 
 var selectionPresets = map[string]selectionPalette{
@@ -135,6 +216,18 @@ var selectionPresets = map[string]selectionPalette{
 	"mono": {
 		foreground: "#282A36", background: "#BBBBBB",
 		keyForeground: "#282A36", keyBackground: "#888888",
+	},
+	"sunset": {
+		foreground: "#2B1B20", background: "#FF8A65",
+		keyForeground: "#2B1B20", keyBackground: "#FFB4A2",
+	},
+	"sakura": {
+		foreground: "#241824", background: "#F38BA8",
+		keyForeground: "#241824", keyBackground: "#CBA6F7",
+	},
+	"nord": {
+		foreground: "#2E3440", background: "#88C0D0",
+		keyForeground: "#2E3440", keyBackground: "#81A1C1",
 	},
 }
 
@@ -169,11 +262,47 @@ var logPresets = map[string]logPalette{
 		command: "#CC79A7", lag: "#E69F00", other: "#999999",
 		players: []string{"#56B4E9", "#E69F00", "#CC79A7", "#009E73", "#F0E442"},
 	},
+	"sunset": {
+		timestamp: "#A77B7F", received: "#76565E",
+		join: "#FFD166", leave: "#FF5555", chat: "#FFF0E6",
+		command: "#F06292", lag: "#FF8A65", other: "#D8A0A8",
+		players: []string{"#FF8A65", "#F06292", "#FFD166", "#FFB4A2", "#C77DFF"},
+	},
+	"sakura": {
+		timestamp: "#94738F", received: "#685163",
+		join: "#A6E3A1", leave: "#F38BA8", chat: "#FCEAF3",
+		command: "#CBA6F7", lag: "#FAB387", other: "#B99AAF",
+		players: []string{"#F38BA8", "#CBA6F7", "#89B4FA", "#A6E3A1", "#F9E2AF"},
+	},
+	"nord": {
+		timestamp: "#6B7894", received: "#4C566A",
+		join: "#A3BE8C", leave: "#BF616A", chat: "#ECEFF4",
+		command: "#B48EAD", lag: "#EBCB8B", other: "#9AA7BD",
+		players: []string{"#88C0D0", "#81A1C1", "#A3BE8C", "#EBCB8B", "#B48EAD"},
+	},
+}
+
+// 明るい背景は暗背景向けの既定前景を読みにくくするため設けず、暗色を充実させる。
+var backgroundPresets = map[string]string{
+	"terminal": "",
+	"dark":     "#1E1E24",
+	"night":    "#111827",
+	"deep":     "#09090B",
+	"charcoal": "#20242B",
 }
 
 // 配色をグループ単位に限定し、反転表示や警告色の意味を壊さない。
 func applyTheme(settings Settings) {
 	defaults := DefaultSettings()
+	background := preset(
+		backgroundPresets,
+		settings.BackgroundPreset,
+		defaults.BackgroundPreset,
+	)
+	backgroundColor = nil
+	if background != "" {
+		backgroundColor = lipgloss.Color(background)
+	}
 
 	frame := preset(framePresets, settings.FramePreset, defaults.FramePreset)
 	plainFrame.style = color(frame.plain)
