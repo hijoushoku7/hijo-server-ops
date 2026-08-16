@@ -276,6 +276,12 @@ func (m *model) editInput(key tea.Key) {
 }
 
 func moveCursor(key tea.Key, cursor, count int) int {
+	if len(key.Text) == 1 && key.Text[0] >= '1' && key.Text[0] <= '9' {
+		index := int(key.Text[0] - '1')
+		if index < count {
+			cursor = index
+		}
+	}
 	switch key.Code {
 	case tea.KeyUp:
 		cursor--

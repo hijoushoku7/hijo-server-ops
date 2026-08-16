@@ -283,6 +283,30 @@ func TestModelCreatesConfig(t *testing.T) {
 	}
 }
 
+func TestModelSelectsCommandWithNumber(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "run.sh"), 0o755)
+	writeFile(t, filepath.Join(dir, "start.sh"), 0o755)
+
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
+	press(t, model, enter, enter)
+	if model.step != stepCommand || len(model.candidates) != 2 {
+		t.Fatalf("step = %d, candidates = %#v", model.step, model.candidates)
+	}
+	press(t, model, typeText("3"))
+	if model.cursor != 2 || model.step != stepCommand {
+		t.Fatalf("cursor = %d, step = %d", model.cursor, model.step)
+	}
+	press(t, model, typeText("9"))
+	if model.cursor != 2 {
+		t.Fatalf("範囲外の番号で cursor = %d", model.cursor)
+	}
+	view := model.View().Content
+	if !strings.Contains(view, "3 "+msg.SetupManualEntry) || !strings.Contains(view, "↑↓ / 1-9") {
+		t.Fatalf("view = %q", view)
+	}
+}
+
 func TestModelManualEntry(t *testing.T) {
 	dir := t.TempDir()
 	server := filepath.Join(dir, "server")

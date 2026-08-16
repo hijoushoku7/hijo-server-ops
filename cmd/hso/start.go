@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -71,6 +72,12 @@ func (m *startModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if key.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
+		if len(key.Text) == 1 && key.Text[0] >= '1' && key.Text[0] <= '9' {
+			index := int(key.Text[0] - '1')
+			if index < len(m.rows) {
+				m.cursor = index
+			}
+		}
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
@@ -91,7 +98,11 @@ func (m *startModel) View() tea.View {
 	end := min(start+startListViewport, len(m.rows))
 	for index := start; index < end; index++ {
 		row := m.rows[index]
-		label := row.server.Name + strings.Repeat(" ", nameWidth-ansi.StringWidth(row.server.Name)+2) +
+		number := "  "
+		if index < 9 {
+			number = fmt.Sprintf("%d ", index+1)
+		}
+		label := number + row.server.Name + strings.Repeat(" ", nameWidth-ansi.StringWidth(row.server.Name)+2) +
 			row.status.label()
 		if index == m.cursor {
 			lines = append(lines, "  "+startSelectedStyle.Render(" "+label+" "))
@@ -102,7 +113,7 @@ func (m *startModel) View() tea.View {
 	if end < len(m.rows) {
 		lines = append(lines, startDimStyle.Render("   …"))
 	}
-	keys := startKeyStyle.Render(" ↑↓ ") + " " + msg.KeySelect + "  " +
+	keys := startKeyStyle.Render(" ↑↓ / 1-9 ") + " " + msg.KeySelect + "  " +
 		startKeyStyle.Render(" Enter ") + " " + msg.KeyConfirm + "  " +
 		startKeyStyle.Render(" Esc / Ctrl+C ") + " " + msg.KeyAbort
 	lines = append(lines, "", keys)
