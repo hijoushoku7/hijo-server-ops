@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -119,11 +120,16 @@ func (m *model) candidateLines() []string {
 	end := min(start+listViewport, len(labels))
 	lines := make([]string, 0, end-start)
 	for index := start; index < end; index++ {
+		number := "  "
+		if index < 9 {
+			number = fmt.Sprintf("%d ", index+1)
+		}
+		label := number + labels[index]
 		if index == m.cursor {
-			lines = append(lines, "  "+selectedStyle.Render(" "+labels[index]+" "))
+			lines = append(lines, "  "+selectedStyle.Render(" "+label+" "))
 			continue
 		}
-		lines = append(lines, "   "+labels[index])
+		lines = append(lines, "   "+label)
 	}
 	if end < len(labels) {
 		lines = append(lines, dimStyle.Render("   …"))
@@ -173,7 +179,7 @@ func (m *model) keybar() string {
 		)
 	case stepCommand:
 		keys = append(keys,
-			[2]string{"↑↓", msg.KeySelect},
+			[2]string{"↑↓ / 1-9", msg.KeySelect},
 			[2]string{"Enter", msg.KeyConfirm},
 			[2]string{"Esc", msg.KeyBack},
 		)

@@ -191,6 +191,32 @@ func TestStartModelSelectsWithArrowAndEnter(t *testing.T) {
 	}
 }
 
+func TestStartModelSelectsWithNumberAndEnter(t *testing.T) {
+	model := &startModel{rows: []startRow{
+		{server: registry.Server{Name: "survival"}},
+		{server: registry.Server{Name: "creative"}},
+		{server: registry.Server{Name: "adventure"}},
+	}}
+	_, _ = model.Update(tea.KeyPressMsg{Text: "3"})
+	if model.cursor != 2 || model.chosen {
+		t.Fatalf("cursor = %d, chosen = %t", model.cursor, model.chosen)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Text: "5"})
+	if model.cursor != 2 {
+		t.Fatalf("範囲外の番号で cursor = %d", model.cursor)
+	}
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !model.chosen || model.selected.Name != "adventure" || command == nil {
+		t.Fatalf("chosen = %t, selected = %#v, command = %v", model.chosen, model.selected, command)
+	}
+	view := model.View().Content
+	for _, want := range []string{"1 survival", "2 creative", "3 adventure", "↑↓ / 1-9"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view = %q に %q がない", view, want)
+		}
+	}
+}
+
 func TestDispatchStartRejectsExtraArguments(t *testing.T) {
 	handled, err := dispatchCommand([]string{"start", "one", "two"}, &strings.Builder{})
 	if !handled || err == nil {
