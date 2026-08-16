@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -53,7 +54,7 @@ func printServerList(
 			return err
 		}
 		label := status.label()
-		rows = append(rows, row{server.Name, label, server.Config})
+		rows = append(rows, row{server.Name, label, filepath.Dir(server.Config)})
 		nameWidth = max(nameWidth, ansi.StringWidth(server.Name))
 		statusWidth = max(statusWidth, ansi.StringWidth(label))
 	}

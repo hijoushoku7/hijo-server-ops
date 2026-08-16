@@ -53,11 +53,14 @@ func TestPrintServerListShowsAllStatuses(t *testing.T) {
 		msg.ConfigNotFound,
 		msg.ServerStopped,
 		msg.ServerRunning(4321),
-		stoppedConfig,
+		directory,
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("output = %q に %q がない", output.String(), want)
 		}
+	}
+	if strings.Contains(output.String(), stoppedConfig) {
+		t.Errorf("output = %q に設定ファイルのフルパスがある", output.String())
 	}
 }
 
@@ -86,7 +89,7 @@ func TestPrintServerListAlignsColumnsWithFullWidthValues(t *testing.T) {
 	pathColumn := -1
 	for index, line := range lines {
 		status := []string{msg.ListStatusHeader, msg.ServerStopped, msg.ConfigNotFound}[index]
-		path := []string{msg.ListPathHeader, stoppedConfig, filepath.Join(directory, "missing.toml")}[index]
+		path := []string{msg.ListPathHeader, directory, directory}[index]
 		statusIndex := strings.Index(line, status)
 		pathIndex := strings.Index(line, path)
 		if statusIndex < 0 || pathIndex < 0 {
