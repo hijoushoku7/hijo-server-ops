@@ -71,17 +71,20 @@ func (box frame) render(value string) string {
 }
 
 func (model *Model) frameFor(target panel) frame {
-	if model.mode == modeSelect && !model.selected {
-		return plainFrame
-	}
-	if model.panel != target {
-		if model.mode == modeSelect && model.hovering && model.hover == target {
+	if model.mode == modeSelect {
+		// ホバーは選択枠を消した後も出す。マウスだけで操作を再開する
+		// とっかかりが無くなるため。
+		if model.hovering && model.hover == target &&
+			(!model.selected || model.panel != target) {
 			return hoverFrame
 		}
+		if !model.selected || model.panel != target {
+			return plainFrame
+		}
+		return selectedFrame
+	}
+	if model.panel != target {
 		return plainFrame
 	}
-	if model.mode == modeFocus {
-		return focusedFrame
-	}
-	return selectedFrame
+	return focusedFrame
 }

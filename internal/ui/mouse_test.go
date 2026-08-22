@@ -123,3 +123,19 @@ func TestModelMouseWheelUsesFullScreenViewportOnExit(t *testing.T) {
 		t.Fatalf("offset = %d, want 3", offset)
 	}
 }
+
+// 選択枠を消した後もホバーは出す。マウスで操作を再開するとっかかりが
+// 無くなるため。
+func TestModelHoverFrameShowsWithoutSelection(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 24)
+	model.mode = modeSelect
+	model.selected = false
+	_, _ = model.Update(tea.MouseMotionMsg{X: model.layout.leftWidth, Y: statsHeight})
+	if got := model.frameFor(panelLog); got.render("─") != hoverFrame.render("─") {
+		t.Fatal("hover frame is not shown while nothing is selected")
+	}
+	if got := model.frameFor(panelChat); got.render("─") != plainFrame.render("─") {
+		t.Fatal("non-hovered panel is not plain")
+	}
+}
