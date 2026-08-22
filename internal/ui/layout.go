@@ -118,3 +118,30 @@ func (current layout) rightContentWidth() int {
 	}
 	return max(0, current.rightWidth-2)
 }
+
+// panelAt は画面座標にある操作対象のパネルを返す。表示専用パネルと枠線は
+// 選択対象にしないため false を返す。
+func (current layout) panelAt(x, y int) (panel, bool) {
+	if !current.ready || x < 0 || y < 0 || x >= current.width || y >= current.height {
+		return panelPlayers, false
+	}
+	if y < statsHeight {
+		if x < current.statsWidth+current.metersWidth {
+			return panelPlayers, false
+		}
+		return panelPlayers, true
+	}
+	if y < statsHeight+current.bodyHeight {
+		if x < current.leftWidth {
+			if y < statsHeight+current.graphHeight {
+				return panelPlayers, false
+			}
+			return panelChat, true
+		}
+		return panelLog, true
+	}
+	if y < statsHeight+current.bodyHeight+footerHeight {
+		return panelConsole, true
+	}
+	return panelPlayers, false
+}

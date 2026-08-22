@@ -656,7 +656,7 @@ func TestModelScrollsFocusedBufferAndKeepsPositionOnNewLines(t *testing.T) {
 	}
 }
 
-func TestModelReturnsToLatestWhenFocusIsReleased(t *testing.T) {
+func TestModelEscMovesBufferThroughThreeStages(t *testing.T) {
 	model := newTestModel()
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	viewport := model.layout.logLines()
@@ -678,11 +678,26 @@ func TestModelReturnsToLatestWhenFocusIsReleased(t *testing.T) {
 	}
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if model.mode != modeSelect {
+	if model.mode != modeFocus {
 		t.Fatalf("mode = %d", model.mode)
 	}
 	if model.logs.Offset(logViewport) != 0 {
 		t.Fatalf("offset = %d, want 0", model.logs.Offset(logViewport))
+	}
+	// 最新表示中の Esc はフォーカスを外す。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.mode != modeSelect || !model.selected {
+		t.Fatalf("mode = %d, selected = %t", model.mode, model.selected)
+	}
+	// 選択モードでの Esc は枠を消す。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.selected {
+		t.Fatal("selected frame remains after the third Escape")
+	}
+	// 移動キーで再び選択できる。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if !model.selected {
+		t.Fatal("arrow key did not restore selection")
 	}
 	if !strings.Contains(model.View().Content, "line "+fmt.Sprint(viewport*3-1)) {
 		t.Fatalf("view does not show the latest line")
@@ -1072,6 +1087,24 @@ func TestModelPutsPlayerCommandIntoTheConsole(t *testing.T) {
 	action := <-actions
 	if action.Kind != ActionSendCommand || action.Command != "kick bob" {
 		t.Fatalf("action = %#v", action)
+	}
+}
+
+func TestModelPutsAcceleratedPlayerCommandIntoTheConsole(t *testing.T) {
+	model := newTestModel()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	_, _ = model.Update(LogMsg{Entry: serverlog.Entry{
+		Kind: serverlog.KindPlayerJoin, Player: "alice",
+	}})
+	focusPlayers(t, model)
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	pressRune(model, 'q')
+
+	if got, want := string(model.input), "gamemode adventure alice"; got != want {
+		t.Fatalf("input = %q, want %q", got, want)
+	}
+	if model.panel != panelConsole || model.playerStage != playerStagePlayers {
+		t.Fatalf("panel = %d, stage = %d", model.panel, model.playerStage)
 	}
 }
 

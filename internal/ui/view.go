@@ -102,6 +102,10 @@ func (model *Model) View() tea.View {
 	}
 
 	view := tea.NewView(content)
+	view.MouseMode = tea.MouseModeCellMotion
+	if model.mode == modeSelect {
+		view.MouseMode = tea.MouseModeAllMotion
+	}
 	view.AltScreen = true
 	view.WindowTitle = model.windowTitle()
 	// View の背景指定ならレイアウトを変えず、余白とキーバーまで画面全体を塗れる。
@@ -372,7 +376,7 @@ func (model *Model) keybar() string {
 		model.playerStage == playerStageCommands:
 		keys = [][2]string{
 			{"Esc", msg.BarBack},
-			{"kj/↑↓", msg.BarCommand},
+			{"1-9qwe/kj/↑↓", msg.BarCommand},
 			{"Enter", msg.BarPutInConsole},
 			{"^C", msg.BarExit},
 		}

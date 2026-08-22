@@ -33,6 +33,15 @@ var (
 			Foreground(lipgloss.Color("#8BE9FD")).
 			Bold(true),
 	}
+	hoverFrame = frame{
+		topLeft:     "┌",
+		topRight:    "┐",
+		bottomLeft:  "└",
+		bottomRight: "┘",
+		horizontal:  "─",
+		vertical:    "│",
+		style:       lipgloss.NewStyle().Foreground(lipgloss.Color("#8BE9FD")),
+	}
 	focusedFrame = frame{
 		topLeft:     "┏",
 		topRight:    "┓",
@@ -62,7 +71,13 @@ func (box frame) render(value string) string {
 }
 
 func (model *Model) frameFor(target panel) frame {
+	if model.mode == modeSelect && !model.selected {
+		return plainFrame
+	}
 	if model.panel != target {
+		if model.mode == modeSelect && model.hovering && model.hover == target {
+			return hoverFrame
+		}
 		return plainFrame
 	}
 	if model.mode == modeFocus {

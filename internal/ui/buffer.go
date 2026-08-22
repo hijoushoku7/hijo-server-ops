@@ -75,6 +75,11 @@ type lineBuffer struct {
 	offsetMinutes int
 }
 
+// Following は最新行へ追従しているかを返す。
+func (buffer *lineBuffer) Following() bool {
+	return buffer.anchor.record == 0
+}
+
 func (buffer *lineBuffer) Add(record logRecord) {
 	if len(buffer.lines) == 0 {
 		return

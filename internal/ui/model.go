@@ -102,14 +102,18 @@ type Model struct {
 	info   ServerInfo
 	// runErr は現世代で最初に起きた終了原因。後続の終了通知でも上書きせず、
 	// ServerStartedMsg で復旧したときだけ消す。
-	runErr            error
-	actions           chan<- Action
-	save              func(Settings) error
-	input             []rune
-	completionOpen    bool
-	completionCursor  int
-	mode              mode
-	panel             panel
+	runErr           error
+	actions          chan<- Action
+	save             func(Settings) error
+	input            []rune
+	completionOpen   bool
+	completionCursor int
+	mode             mode
+	panel            panel
+	// selected は選択モードで選択枠を出すかを表す。フォーカス中は常に枠を出す。
+	selected          bool
+	hover             panel
+	hovering          bool
 	consoleFocus      consoleFocus
 	busy              bool
 	generation        uint64
@@ -211,6 +215,12 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case tea.KeyPressMsg:
 		return model.handleKey(message)
+	case tea.MouseMotionMsg:
+		return model.handleMouseMotion(message)
+	case tea.MouseClickMsg:
+		return model.handleMouseClick(message)
+	case tea.MouseWheelMsg:
+		return model.handleMouseWheel(message)
 	case tea.WindowSizeMsg:
 		model.resize(message.Width, message.Height)
 	case LogMsg:
