@@ -145,6 +145,7 @@ func (model *Model) handlePlayersKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyEscape:
 		model.playerCursor = 0
 		model.mode = modeSelect
+		model.selected = true
 	case tea.KeyEnter, tea.KeyKpEnter:
 		if model.playerCursor < len(model.playerList) {
 			model.playerTarget = model.playerList[model.playerCursor]
@@ -162,17 +163,46 @@ func (model *Model) handlePlayerCommandKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyEscape:
 		model.playerStage = playerStagePlayers
 	case tea.KeyEnter, tea.KeyKpEnter:
-		command := playerCommands[model.commandCursor]
-		// 実行前に Console へ置くことで、破壊的なコマンドにも確認を挟む。
-		model.input = []rune(fmt.Sprintf(command.template, model.playerTarget))
-		model.playerStage = playerStagePlayers
-		model.panel = panelConsole
-		model.consoleFocus = consoleInput
+		model.applyPlayerCommand(model.commandCursor)
 	default:
-		model.commandCursor = moveCursor(key, model.commandCursor,
-			len(playerCommands), model.layout.playerLines())
+		if index, ok := playerCommandIndex(key.Code); ok {
+			model.applyPlayerCommand(index)
+		} else {
+			model.commandCursor = moveCursor(key, model.commandCursor,
+				len(playerCommands), model.layout.playerLines())
+		}
 	}
 	return model, nil
+}
+
+func (model *Model) applyPlayerCommand(index int) {
+	if index < 0 || index >= len(playerCommands) {
+		return
+	}
+	command := playerCommands[index]
+	// 実行前に Console へ置くことで、破壊的なコマンドにも確認を挟む。
+	model.input = []rune(fmt.Sprintf(command.template, model.playerTarget))
+	model.playerStage = playerStagePlayers
+	model.panel = panelConsole
+	model.consoleFocus = consoleInput
+}
+
+const playerCommandAccelerators = "123456789qwertyuio"
+
+func playerCommandIndex(code rune) (int, bool) {
+	for index := range playerCommands {
+		if code == rune(playerCommandAccelerators[index]) {
+			return index, true
+		}
+	}
+	return 0, false
+}
+
+func commandAccelerator(index int) string {
+	if index < 0 || index >= len(playerCommandAccelerators) {
+		return ""
+	}
+	return "( " + string(playerCommandAccelerators[index]) + " )"
 }
 
 func moveCursor(key tea.Key, cursor, count, viewport int) int {
@@ -204,16 +234,29 @@ func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
 	move := neighbors[model.panel]
 	switch key.Code {
 	case tea.KeyUp:
+		model.selected = true
 		model.panel = move.up
 	case tea.KeyDown:
+		model.selected = true
 		model.panel = move.down
 	case tea.KeyLeft:
+		model.selected = true
 		model.panel = move.left
 	case tea.KeyRight:
+		model.selected = true
 		model.panel = move.right
 	case tea.KeyEnter, tea.KeyKpEnter:
+		if !model.selected {
+			return model, nil
+		}
 		model.mode = modeFocus
 		model.consoleFocus = consoleInput
+	case tea.KeyEscape:
+		if buffer, _ := model.bufferFor(model.panel); buffer != nil && !buffer.Following() {
+			buffer.ScrollToEnd()
+		} else if model.panel == panelChat || model.panel == panelLog {
+			model.selected = false
+		}
 	}
 	return model, nil
 }
@@ -225,6 +268,7 @@ func (model *Model) handleConsoleKey(key tea.Key) (tea.Model, tea.Cmd) {
 	switch key.Code {
 	case tea.KeyEscape:
 		model.mode = modeSelect
+		model.selected = true
 	case tea.KeyTab:
 		if model.consoleFocus == consoleInput {
 			candidates := model.completions()
@@ -268,9 +312,12 @@ func (model *Model) handleBufferKey(key tea.Key) (tea.Model, tea.Cmd) {
 
 	switch key.Code {
 	case tea.KeyEscape:
-		// フォーカスを外した後の新着を見落とさないよう最新へ戻す。
-		buffer.ScrollToEnd()
-		model.mode = modeSelect
+		if !buffer.Following() {
+			buffer.ScrollToEnd()
+		} else {
+			model.mode = modeSelect
+			model.selected = true
+		}
 	case tea.KeyUp:
 		buffer.Scroll(1, viewport)
 	case tea.KeyDown:
@@ -294,7 +341,11 @@ func (model *Model) focusedBuffer() (*lineBuffer, bufferViewport) {
 			height: max(0, model.layout.height-3),
 		}
 	}
-	switch model.panel {
+	return model.bufferFor(model.panel)
+}
+
+func (model *Model) bufferFor(target panel) (*lineBuffer, bufferViewport) {
+	switch target {
 	case panelChat:
 		return &model.chat, bufferViewport{
 			width:  model.layout.leftContentWidth(),

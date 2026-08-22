@@ -266,14 +266,18 @@ func (model *Model) renderPlayersPanel() string {
 
 func (model *Model) commandModal() (string, int, int) {
 	width := stringWidth(model.playerTarget) + 5
-	for _, command := range playerCommands {
-		width = max(width, stringWidth(command.label)+4)
+	for index, command := range playerCommands {
+		width = max(width, stringWidth(command.label)+stringWidth(commandAccelerator(index))+4)
 	}
 	height := len(playerCommands) + 2
 
 	lines := make([]string, 0, len(playerCommands))
 	for index, command := range playerCommands {
-		line := fitLine(" "+command.label, width-2)
+		key := commandAccelerator(index)
+		line := command.label + strings.Repeat(
+			" ", max(1, width-2-stringWidth(command.label)-stringWidth(key)),
+		) + key
+		line = fitLine(line, width-2)
 		if index == model.commandCursor {
 			line = selectedStyle.Render(line)
 		}

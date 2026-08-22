@@ -307,6 +307,7 @@ func applyTheme(settings Settings) {
 	frame := preset(framePresets, settings.FramePreset, defaults.FramePreset)
 	plainFrame.style = color(frame.plain)
 	selectedFrame.style = color(frame.selected).Bold(true)
+	hoverFrame.style = color(frame.selected)
 	focusedFrame.style = color(frame.focused).Bold(true)
 	modalFrame.style = focusedFrame.style
 	dimStyle = color(frame.dim)
