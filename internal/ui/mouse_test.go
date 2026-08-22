@@ -139,3 +139,20 @@ func TestModelHoverFrameShowsWithoutSelection(t *testing.T) {
 		t.Fatal("non-hovered panel is not plain")
 	}
 }
+
+// 開いたままのモーダルはサーバー停止で閉じない。終了画面ではキー処理と
+// 同じく、モーダルより先に終了モーダルのログを見る。
+func TestModelMouseWheelOnExitIgnoresOpenModal(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 24)
+	model.settingsOpen = true
+	model.exit = &exitState{closed: true}
+	_, viewport := model.focusedBuffer()
+	for index := 0; index < viewport.height*3; index++ {
+		model.logs.Add(logRecord{text: fmt.Sprintf("line %d", index)})
+	}
+	_, _ = model.Update(tea.MouseWheelMsg{X: 1, Y: 1, Button: tea.MouseWheelUp})
+	if offset := model.logs.Offset(viewport); offset != 3 {
+		t.Fatalf("offset = %d, want 3", offset)
+	}
+}

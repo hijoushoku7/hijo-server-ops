@@ -42,9 +42,6 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 }
 
 func (model *Model) handleMouseWheel(message tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
-	if model.mouseDiscarded() {
-		return model, nil
-	}
 	delta := 0
 	switch message.Button {
 	case tea.MouseWheelUp:
@@ -55,10 +52,14 @@ func (model *Model) handleMouseWheel(message tea.MouseWheelMsg) (tea.Model, tea.
 		return model, nil
 	}
 	// 終了モーダル中はログが全面に出ており、ダッシュボードとは幅も高さも
-	// 違う。focusedBuffer から全面用の viewport を取る。
+	// 違う。focusedBuffer から全面用の viewport を取る。開いたままの
+	// モーダルは終了時に閉じないので、キー処理と同じく exit を先に見る。
 	if model.exit != nil {
 		buffer, viewport := model.focusedBuffer()
 		buffer.Scroll(delta*3, viewport)
+		return model, nil
+	}
+	if model.mouseDiscarded() {
 		return model, nil
 	}
 	target, ok := model.layout.panelAt(message.X, message.Y)
