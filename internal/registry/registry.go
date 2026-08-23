@@ -125,17 +125,21 @@ func Save(path string, registry Registry) error {
 }
 
 // Update はサーバー一覧を排他して読み、変更してから保存する。
+//
+// mutate はロックを握ったまま呼ぶ。中でユーザーの入力を待たない、Update を
+// 呼び直さない（同一プロセスでも自己デッドロックする）こと。
 func Update(path string, mutate func(*Registry) error) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return msg.CreateRegistryDirectoryFailed(err)
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE, 0o600)
+	lockPath := path + ".lock"
+	lock, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
-		return msg.OpenRegistryLockFailed(err, path)
+		return msg.OpenRegistryLockFailed(err, lockPath)
 	}
 	defer lock.Close()
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return msg.LockRegistryFailed(err, path)
+		return msg.LockRegistryFailed(err, lockPath)
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -375,6 +376,16 @@ func TestUpdateSerializesConcurrentChanges(t *testing.T) {
 		}
 	}()
 	<-held
+	// ロックが実際に握られていることを、順序に依存しない形で確かめる。
+	// 排他が外れれば、待たせている最中でも別の fd で取れてしまう。
+	probe, err := os.OpenFile(path+".lock", os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Flock(int(probe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); !errors.Is(err, syscall.EWOULDBLOCK) {
+		t.Fatalf("Update の実行中にロックを取れた: err = %v", err)
+	}
+	probe.Close()
 	go func() {
 		defer group.Done()
 		close(starting)
