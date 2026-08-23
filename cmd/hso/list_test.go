@@ -175,3 +175,48 @@ func TestTrackUnregisteredServerDoesNotCreatePIDFile(t *testing.T) {
 		t.Fatal("一覧にない設定へ pidfile が作られた")
 	}
 }
+
+func TestTrackRegisteredServerRecordsLastPlayed(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	configPath := filepath.Join(t.TempDir(), "hso.toml")
+	registryPath, err := registry.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Save(registryPath, registry.Registry{Servers: []registry.Server{
+		{Name: "survival", Config: configPath},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := trackRegisteredServer(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(file.Close)
+	servers, err := registry.Load(registryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if servers.LastPlayed != "survival" {
+		t.Fatalf("LastPlayed = %q, want %q", servers.LastPlayed, "survival")
+	}
+
+	// pidfile を取れなかった呼び出しは TUI を開かないので記録も書き換えない。
+	servers.LastPlayed = "creative"
+	if err := registry.Save(registryPath, servers); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := trackRegisteredServer(configPath); err == nil {
+		t.Fatal("二重起動が弾かれなかった")
+	}
+	servers, err = registry.Load(registryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if servers.LastPlayed != "creative" {
+		t.Fatalf("pidfile 失敗後の LastPlayed = %q, want %q", servers.LastPlayed, "creative")
+	}
+}

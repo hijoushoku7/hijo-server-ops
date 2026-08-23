@@ -232,3 +232,21 @@ func writeStartConfig(t *testing.T, name string) string {
 	}
 	return path
 }
+
+func TestLastPlayedIndex(t *testing.T) {
+	servers := registry.Registry{Servers: []registry.Server{
+		{Name: "survival", Config: "/srv/survival/hso.toml"},
+		{Name: "creative", Config: "/srv/creative/hso.toml"},
+	}}
+	if got := lastPlayedIndex(servers); got != 0 {
+		t.Fatalf("覚えていないとき index = %d, want 0", got)
+	}
+	servers.LastPlayed = "CREATIVE"
+	if got := lastPlayedIndex(servers); got != 1 {
+		t.Fatalf("index = %d, want 1", got)
+	}
+	servers.LastPlayed = "removed"
+	if got := lastPlayedIndex(servers); got != 0 {
+		t.Fatalf("一覧から消えたとき index = %d, want 0", got)
+	}
+}
