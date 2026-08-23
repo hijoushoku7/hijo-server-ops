@@ -12,8 +12,14 @@ func trackRegisteredServer(configPath string) (*pidfile.File, error) {
 	if err != nil || !found {
 		return nil, err
 	}
+	file, err := pidfile.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	// 記録は pidfile を取れてから。二重起動で弾かれた呼び出しは TUI を開かない
+	// ので、最後に起動したサーバーとして数えない。
 	recordLastPlayed(name)
-	return pidfile.Create(name)
+	return file, nil
 }
 
 // recordLastPlayed は起動したサーバーを覚えて、次の hso start でカーソルを
