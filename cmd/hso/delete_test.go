@@ -182,6 +182,9 @@ func updateRegistry(servers *registry.Registry, save func(registry.Registry) err
 	}
 }
 
+// 削除と last_played の記録を実際に並行させる。順序はスケジューラ任せなので、
+// 排他そのものの検証は registry.TestUpdateSerializesConcurrentChanges が受け持ち、
+// ここは 2 つのコマンド経路が同じロックを通っていることを繰り返して確かめる。
 func TestDeleteAndRecordLastPlayedDoNotRestoreDeletedServer(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)

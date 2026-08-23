@@ -351,33 +351,41 @@ func TestSaveRoundTripsLastPlayed(t *testing.T) {
 
 func TestUpdateSerializesConcurrentChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := Save(path, Registry{Servers: []Server{{Name: "survival", Config: "/srv/survival/hso.toml"}}}); err != nil {
+	survival := Server{Name: "survival", Config: "/srv/survival/hso.toml"}
+	if err := Save(path, Registry{Servers: []Server{survival}}); err != nil {
 		t.Fatal(err)
 	}
-	entered := make(chan struct{})
+	// 先に走る Update がロックを握ったまま登録を消し、後から来た Update に
+	// last_played を書かせる。後者がロックの前に Load していたら、消した
+	// 登録が復活する。
+	held := make(chan struct{})
+	starting := make(chan struct{})
 	release := make(chan struct{})
 	var group sync.WaitGroup
 	group.Add(2)
 	go func() {
 		defer group.Done()
 		if err := Update(path, func(servers *Registry) error {
-			close(entered)
+			close(held)
 			<-release
-			servers.LastPlayed = "survival"
+			servers.Remove(survival.Name)
 			return nil
 		}); err != nil {
 			t.Errorf("Update = %v", err)
 		}
 	}()
-	<-entered
+	<-held
 	go func() {
 		defer group.Done()
+		close(starting)
 		if err := Update(path, func(servers *Registry) error {
-			return servers.Add(Server{Name: "creative", Config: "/srv/creative/hso.toml"})
+			servers.LastPlayed = survival.Name
+			return nil
 		}); err != nil {
 			t.Errorf("Update = %v", err)
 		}
 	}()
+	<-starting
 	close(release)
 	group.Wait()
 
@@ -385,7 +393,10 @@ func TestUpdateSerializesConcurrentChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if servers.LastPlayed != "survival" || len(servers.Servers) != 2 {
-		t.Fatalf("servers = %#v", servers)
+	if _, found := servers.Find(survival.Name); found {
+		t.Fatalf("消した登録が復活した: %#v", servers)
+	}
+	if servers.LastPlayed != survival.Name {
+		t.Fatalf("last_played = %q", servers.LastPlayed)
 	}
 }
