@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/BurntSushi/toml"
 
@@ -118,9 +119,47 @@ func Load(path string) (Registry, error) {
 	return registry, nil
 }
 
-// Save はサーバー一覧を一時ファイルへ書いてから置き換える。
+// Save はサーバー一覧を一時ファイルへ書いてから置き換える。読み直しとの間に
+// 排他が要る書き込みは Save ではなく Update を通す。
 func Save(path string, registry Registry) error {
 	return save(path, registry, os.WriteFile, os.Rename)
+}
+
+// ErrUnchanged は mutate が何も変えなかったことを Update に伝える。返すと
+// 保存を飛ばすので、書くことがないときに config.toml を書き直さずに済む。
+var ErrUnchanged = errors.New("registry unchanged")
+
+// Update はサーバー一覧を排他して読み、変更してから保存する。mutate が
+// ErrUnchanged を返したときは保存しない。
+//
+// mutate はロックを握ったまま呼ぶ。中でユーザーの入力を待たない、Update を
+// 呼び直さない（同一プロセスでも自己デッドロックする）こと。
+func Update(path string, mutate func(*Registry) error) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return msg.CreateRegistryDirectoryFailed(err)
+	}
+	lockPath := path + ".lock"
+	lock, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return msg.OpenRegistryLockFailed(err, lockPath)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return msg.LockRegistryFailed(err, lockPath)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
+	servers, err := Load(path)
+	if err != nil {
+		return err
+	}
+	if err := mutate(&servers); err != nil {
+		if errors.Is(err, ErrUnchanged) {
+			return nil
+		}
+		return err
+	}
+	return Save(path, servers)
 }
 
 func save(

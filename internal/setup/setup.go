@@ -99,14 +99,9 @@ func register(configPath string, cfg config.Config, runWizard func(*model) error
 }
 
 func registerServer(path, name, configPath string) error {
-	servers, err := registry.Load(path)
-	if err != nil {
-		return err
-	}
-	if err := servers.Add(registry.Server{Name: name, Config: configPath}); err != nil {
-		return err
-	}
-	return registry.Save(path, servers)
+	return registry.Update(path, func(servers *registry.Registry) error {
+		return servers.Add(registry.Server{Name: name, Config: configPath})
+	})
 }
 
 // candidate は起動スクリプトの候補。実行権限がないファイルも候補に出す。

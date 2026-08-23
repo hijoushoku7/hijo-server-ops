@@ -17,8 +17,8 @@ type deleteOptions struct {
 	yes  bool
 }
 
-type registrySaver func(registry.Registry) error
 type registryLoader func() (registry.Registry, error)
+type registryUpdater func(func(*registry.Registry) error) error
 
 func runDelete(args []string, input io.Reader, output io.Writer, terminal bool) error {
 	options, err := parseDeleteOptions(args)
@@ -33,7 +33,7 @@ func runDelete(args []string, input io.Reader, output io.Writer, terminal bool) 
 		return chooseServer(servers, pidfile.Running, msg.DeleteTitle)
 	}
 	return deleteFromRegistry(options, func() (registry.Registry, error) { return registry.Load(path) }, terminal, input, output, choose, pidfile.Running,
-		func(servers registry.Registry) error { return registry.Save(path, servers) })
+		func(mutate func(*registry.Registry) error) error { return registry.Update(path, mutate) })
 }
 
 func parseDeleteOptions(args []string) (deleteOptions, error) {
@@ -60,7 +60,7 @@ func deleteFromRegistry(
 	output io.Writer,
 	choose serverChooser,
 	running func(string) (int, bool, error),
-	save registrySaver,
+	update registryUpdater,
 ) error {
 	servers, err := load()
 	if err != nil {
@@ -109,29 +109,26 @@ func deleteFromRegistry(
 	}
 	// 確認は人間が考えている間ずっと開いている。その間に別の端末が一覧を
 	// 変えている（setup で足す・別の delete で消す・start で起動する）ことが
-	// あるので、読み直してから消す。ロックは入れない。単一ユーザー向けの
-	// ツールで、他の書き込み経路も同じ方式のため、複雑さに見合わない。
-	// 読み直しから保存までのわずかな窓は残る。
+	// あるので、確認後にロックを取って読み直してから消す。
 	confirmedServer := server
-	servers, err = load()
-	if err != nil {
-		return err
-	}
-	server, found := servers.Find(confirmedServer.Name)
-	if !found {
-		return msg.ServerNotRegistered(confirmedServer.Name)
-	}
-	// 同じ名前でも中身が変わっていれば、ユーザーが確認していない登録を消す
-	// ことになる。確認をやり直させるより、何もせず終わって実行し直して
-	// もらうほうが単純で安全。
-	if server != confirmedServer {
-		return msg.DeleteTargetChanged(confirmedServer.Name)
-	}
-	if err := ensureStopped(server.Name, running); err != nil {
-		return err
-	}
-	servers.Remove(server.Name)
-	if err := save(servers); err != nil {
+	if err := update(func(servers *registry.Registry) error {
+		var found bool
+		server, found = servers.Find(confirmedServer.Name)
+		if !found {
+			return msg.ServerNotRegistered(confirmedServer.Name)
+		}
+		// 同じ名前でも中身が変わっていれば、ユーザーが確認していない登録を消す
+		// ことになる。確認をやり直させるより、何もせず終わって実行し直して
+		// もらうほうが単純で安全。
+		if server != confirmedServer {
+			return msg.DeleteTargetChanged(confirmedServer.Name)
+		}
+		if err := ensureStopped(server.Name, running); err != nil {
+			return err
+		}
+		servers.Remove(server.Name)
+		return nil
+	}); err != nil {
 		return err
 	}
 	_, err = fmt.Fprintln(output, msg.ServerDeleted(server.Name))

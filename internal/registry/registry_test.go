@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -345,5 +347,89 @@ func TestSaveRoundTripsLastPlayed(t *testing.T) {
 	}
 	if len(got.Servers) != 2 {
 		t.Fatalf("Servers = %#v", got.Servers)
+	}
+}
+
+func TestUpdateSerializesConcurrentChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	survival := Server{Name: "survival", Config: "/srv/survival/hso.toml"}
+	if err := Save(path, Registry{Servers: []Server{survival}}); err != nil {
+		t.Fatal(err)
+	}
+	// 先に走る Update がロックを握ったまま登録を消し、後から来た Update に
+	// last_played を書かせる。後者がロックの前に Load していたら、消した
+	// 登録が復活する。
+	held := make(chan struct{})
+	starting := make(chan struct{})
+	release := make(chan struct{})
+	var group sync.WaitGroup
+	group.Add(2)
+	go func() {
+		defer group.Done()
+		if err := Update(path, func(servers *Registry) error {
+			close(held)
+			<-release
+			servers.Remove(survival.Name)
+			return nil
+		}); err != nil {
+			t.Errorf("Update = %v", err)
+		}
+	}()
+	<-held
+	// ロックが実際に握られていることを、順序に依存しない形で確かめる。
+	// 排他が外れれば、待たせている最中でも別の fd で取れてしまう。
+	probe, err := os.OpenFile(path+".lock", os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeErr := syscall.Flock(int(probe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	probe.Close()
+	if !errors.Is(probeErr, syscall.EWOULDBLOCK) {
+		t.Fatalf("Update の実行中にロックを取れた: err = %v", probeErr)
+	}
+	go func() {
+		defer group.Done()
+		close(starting)
+		if err := Update(path, func(servers *Registry) error {
+			servers.LastPlayed = survival.Name
+			return nil
+		}); err != nil {
+			t.Errorf("Update = %v", err)
+		}
+	}()
+	<-starting
+	close(release)
+	group.Wait()
+
+	servers, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := servers.Find(survival.Name); found {
+		t.Fatalf("消した登録が復活した: %#v", servers)
+	}
+	if servers.LastPlayed != survival.Name {
+		t.Fatalf("last_played = %q", servers.LastPlayed)
+	}
+}
+
+// ErrUnchanged で保存を飛ばすのは、hso start のたびに config.toml を書き直して
+// 手書きのコメントを消さないため。書き直していないことは、Save が残さない
+// コメントが残っているかで見る。
+func TestUpdateSkipsSaveWhenUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	contents := "# 手書きのコメント\nlast_played = \"survival\"\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Update(path, func(*Registry) error { return ErrUnchanged }); err != nil {
+		t.Fatalf("Update = %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != contents {
+		t.Fatalf("config.toml = %q", got)
 	}
 }

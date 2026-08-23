@@ -413,6 +413,14 @@ func CreateRegistryDirectoryFailed(err error) error {
 	return fmt.Errorf("create server registry directory: %w", err)
 }
 
+func OpenRegistryLockFailed(err error, path string) error {
+	return fmt.Errorf("open server registry lock file (%s): %w", path, err)
+}
+
+func LockRegistryFailed(err error, path string) error {
+	return fmt.Errorf("lock server registry (%s): %w", path, err)
+}
+
 func WriteRegistryFailed(err error) error {
 	return fmt.Errorf("write server registry: %w", err)
 }

@@ -29,15 +29,13 @@ func recordLastPlayed(name string) {
 	if err != nil {
 		return
 	}
-	servers, err := registry.Load(path)
-	if err != nil {
-		return
-	}
-	if servers.LastPlayed == name {
-		return
-	}
-	servers.LastPlayed = name
-	_ = registry.Save(path, servers)
+	_ = registry.Update(path, func(servers *registry.Registry) error {
+		if servers.LastPlayed == name {
+			return registry.ErrUnchanged
+		}
+		servers.LastPlayed = name
+		return nil
+	})
 }
 
 func registeredName(configPath string) (string, bool, error) {
