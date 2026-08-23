@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/BurntSushi/toml"
 
@@ -121,6 +122,31 @@ func Load(path string) (Registry, error) {
 // Save はサーバー一覧を一時ファイルへ書いてから置き換える。
 func Save(path string, registry Registry) error {
 	return save(path, registry, os.WriteFile, os.Rename)
+}
+
+// Update はサーバー一覧を排他して読み、変更してから保存する。
+func Update(path string, mutate func(*Registry) error) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return msg.CreateRegistryDirectoryFailed(err)
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return msg.OpenRegistryLockFailed(err, path)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return msg.LockRegistryFailed(err, path)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
+	servers, err := Load(path)
+	if err != nil {
+		return err
+	}
+	if err := mutate(&servers); err != nil {
+		return err
+	}
+	return Save(path, servers)
 }
 
 func save(

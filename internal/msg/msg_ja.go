@@ -411,6 +411,14 @@ func CreateRegistryDirectoryFailed(err error) error {
 	return fmt.Errorf("サーバー一覧のディレクトリを作る: %w", err)
 }
 
+func OpenRegistryLockFailed(err error, path string) error {
+	return fmt.Errorf("サーバー一覧のロックファイルを開く (%s): %w", path, err)
+}
+
+func LockRegistryFailed(err error, path string) error {
+	return fmt.Errorf("サーバー一覧をロックする (%s): %w", path, err)
+}
+
 func WriteRegistryFailed(err error) error {
 	return fmt.Errorf("サーバー一覧を書く: %w", err)
 }

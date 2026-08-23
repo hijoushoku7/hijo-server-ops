@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
@@ -55,13 +56,13 @@ func TestDeleteFromRegistry(t *testing.T) {
 					return registry.Server{}, false, nil
 				},
 				func(string) (int, bool, error) { return 4321, test.running, nil },
-				func(got registry.Registry) error {
+				updateRegistry(&servers, func(got registry.Registry) error {
 					saved = true
 					if len(got.Servers) != 0 {
 						t.Fatalf("保存する一覧 = %#v", got.Servers)
 					}
 					return nil
-				})
+				}))
 			if test.wantError == "" && err != nil || test.wantError != "" && (err == nil || !strings.Contains(err.Error(), test.wantError)) {
 				t.Fatalf("err = %v", err)
 			}
@@ -111,7 +112,7 @@ func TestDeleteFromRegistryReturnsSaveError(t *testing.T) {
 	want := errors.New("save failed")
 	servers := registry.Registry{Servers: []registry.Server{{Name: "survival", Config: "/missing/hso.toml"}}}
 	err := deleteFromRegistry(deleteOptions{name: "survival", yes: true}, func() (registry.Registry, error) { return servers, nil }, false, strings.NewReader(""), &bytes.Buffer{}, nil,
-		func(string) (int, bool, error) { return 0, false, nil }, func(registry.Registry) error { return want })
+		func(string) (int, bool, error) { return 0, false, nil }, updateRegistry(&servers, func(registry.Registry) error { return want }))
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v", err)
 	}
@@ -139,14 +140,7 @@ func TestDeleteFromRegistryReloadsAfterConfirmation(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			loads := 0
-			load := func() (registry.Registry, error) {
-				loads++
-				if loads == 1 {
-					return registry.Registry{Servers: []registry.Server{target}}, nil
-				}
-				return test.reloaded, nil
-			}
+			load := func() (registry.Registry, error) { return registry.Registry{Servers: []registry.Server{target}}, nil }
 			runningChecks := 0
 			running := func(string) (int, bool, error) {
 				runningChecks++
@@ -154,12 +148,13 @@ func TestDeleteFromRegistryReloadsAfterConfirmation(t *testing.T) {
 			}
 			var saved registry.Registry
 			savedCalled := false
+			reloaded := test.reloaded
 			err := deleteFromRegistry(deleteOptions{name: target.Name, yes: true}, load, false, strings.NewReader(""), &bytes.Buffer{}, nil, running,
-				func(got registry.Registry) error {
+				updateRegistry(&reloaded, func(got registry.Registry) error {
 					savedCalled = true
 					saved = got
 					return nil
-				})
+				}))
 			if test.wantError == "" && err != nil || test.wantError != "" && (err == nil || !strings.Contains(err.Error(), test.wantError)) {
 				t.Fatalf("err = %v", err)
 			}
@@ -175,5 +170,55 @@ func TestDeleteFromRegistryReloadsAfterConfirmation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func updateRegistry(servers *registry.Registry, save func(registry.Registry) error) registryUpdater {
+	return func(mutate func(*registry.Registry) error) error {
+		if err := mutate(servers); err != nil {
+			return err
+		}
+		return save(*servers)
+	}
+}
+
+func TestDeleteAndRecordLastPlayedDoNotRestoreDeletedServer(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	path, err := registry.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := registry.Server{Name: "survival", Config: "/srv/survival/hso.toml"}
+
+	for range 20 {
+		if err := registry.Save(path, registry.Registry{Servers: []registry.Server{server}}); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		var group sync.WaitGroup
+		group.Add(2)
+		go func() {
+			defer group.Done()
+			<-start
+			if err := runDelete([]string{"--yes", server.Name}, strings.NewReader(""), &bytes.Buffer{}, false); err != nil {
+				t.Errorf("runDelete = %v", err)
+			}
+		}()
+		go func() {
+			defer group.Done()
+			<-start
+			recordLastPlayed(server.Name)
+		}()
+		close(start)
+		group.Wait()
+
+		servers, err := registry.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, found := servers.Find(server.Name); found {
+			t.Fatalf("削除した登録が復活した: %#v", servers)
+		}
 	}
 }

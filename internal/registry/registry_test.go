@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -345,5 +346,46 @@ func TestSaveRoundTripsLastPlayed(t *testing.T) {
 	}
 	if len(got.Servers) != 2 {
 		t.Fatalf("Servers = %#v", got.Servers)
+	}
+}
+
+func TestUpdateSerializesConcurrentChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := Save(path, Registry{Servers: []Server{{Name: "survival", Config: "/srv/survival/hso.toml"}}}); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var group sync.WaitGroup
+	group.Add(2)
+	go func() {
+		defer group.Done()
+		if err := Update(path, func(servers *Registry) error {
+			close(entered)
+			<-release
+			servers.LastPlayed = "survival"
+			return nil
+		}); err != nil {
+			t.Errorf("Update = %v", err)
+		}
+	}()
+	<-entered
+	go func() {
+		defer group.Done()
+		if err := Update(path, func(servers *Registry) error {
+			return servers.Add(Server{Name: "creative", Config: "/srv/creative/hso.toml"})
+		}); err != nil {
+			t.Errorf("Update = %v", err)
+		}
+	}()
+	close(release)
+	group.Wait()
+
+	servers, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if servers.LastPlayed != "survival" || len(servers.Servers) != 2 {
+		t.Fatalf("servers = %#v", servers)
 	}
 }
