@@ -12,7 +12,26 @@ func trackRegisteredServer(configPath string) (*pidfile.File, error) {
 	if err != nil || !found {
 		return nil, err
 	}
+	recordLastPlayed(name)
 	return pidfile.Create(name)
+}
+
+// recordLastPlayed は起動したサーバーを覚えて、次の hso start でカーソルを
+// 合わせられるようにする。一覧に書けなくても起動は止めない。
+func recordLastPlayed(name string) {
+	path, err := registry.Path()
+	if err != nil {
+		return
+	}
+	servers, err := registry.Load(path)
+	if err != nil {
+		return
+	}
+	if servers.LastPlayed == name {
+		return
+	}
+	servers.LastPlayed = name
+	_ = registry.Save(path, servers)
 }
 
 func registeredName(configPath string) (string, bool, error) {

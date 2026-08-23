@@ -13,7 +13,12 @@ import (
 )
 
 type Registry struct {
-	Servers []Server `toml:"servers"`
+	// LastPlayed は最後に起動したサーバーの登録名。次の hso start で
+	// カーソルを合わせるためだけに使う。servers より前に置くのは、
+	// TOML では配列テーブルの後ろに書いた素のキーがその表に属して
+	// しまうため。
+	LastPlayed string   `toml:"last_played"`
+	Servers    []Server `toml:"servers"`
 }
 
 type Server struct {

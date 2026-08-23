@@ -323,3 +323,27 @@ func TestLoadAllowsDuplicateConfigPaths(t *testing.T) {
 		t.Fatalf("servers = %#v", servers.Servers)
 	}
 }
+
+func TestSaveRoundTripsLastPlayed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hso", "config.toml")
+	want := Registry{
+		LastPlayed: "creative",
+		Servers: []Server{
+			{Name: "survival", Config: "/srv/survival/hso.toml"},
+			{Name: "creative", Config: "/srv/creative/hso.toml"},
+		},
+	}
+	if err := Save(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastPlayed != "creative" {
+		t.Fatalf("LastPlayed = %q, want %q", got.LastPlayed, "creative")
+	}
+	if len(got.Servers) != 2 {
+		t.Fatalf("Servers = %#v", got.Servers)
+	}
+}

@@ -209,6 +209,17 @@ func startFromRegistry(
 	}
 }
 
+// lastPlayedIndex は最後に起動したサーバーの位置を返す。覚えていない、または
+// 一覧から消えているときは先頭を指す。
+func lastPlayedIndex(servers registry.Registry) int {
+	for index, server := range servers.Servers {
+		if strings.EqualFold(server.Name, servers.LastPlayed) {
+			return index
+		}
+	}
+	return 0
+}
+
 func chooseServer(
 	servers registry.Registry,
 	running func(string) (int, bool, error),
@@ -222,7 +233,7 @@ func chooseServer(
 		}
 		rows = append(rows, startRow{server: server, status: status})
 	}
-	model := &startModel{rows: rows, title: title}
+	model := &startModel{rows: rows, title: title, cursor: lastPlayedIndex(servers)}
 	if _, err := tea.NewProgram(model).Run(); err != nil {
 		return registry.Server{}, false, err
 	}
