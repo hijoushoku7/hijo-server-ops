@@ -382,10 +382,11 @@ func TestUpdateSerializesConcurrentChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Flock(int(probe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); !errors.Is(err, syscall.EWOULDBLOCK) {
-		t.Fatalf("Update の実行中にロックを取れた: err = %v", err)
-	}
+	probeErr := syscall.Flock(int(probe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	probe.Close()
+	if !errors.Is(probeErr, syscall.EWOULDBLOCK) {
+		t.Fatalf("Update の実行中にロックを取れた: err = %v", probeErr)
+	}
 	go func() {
 		defer group.Done()
 		close(starting)

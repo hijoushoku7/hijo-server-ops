@@ -119,7 +119,8 @@ func Load(path string) (Registry, error) {
 	return registry, nil
 }
 
-// Save はサーバー一覧を一時ファイルへ書いてから置き換える。
+// Save はサーバー一覧を一時ファイルへ書いてから置き換える。読み直しとの間に
+// 排他が要る書き込みは Save ではなく Update を通す。
 func Save(path string, registry Registry) error {
 	return save(path, registry, os.WriteFile, os.Rename)
 }
