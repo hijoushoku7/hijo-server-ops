@@ -31,7 +31,7 @@ func recordLastPlayed(name string) {
 	}
 	_ = registry.Update(path, func(servers *registry.Registry) error {
 		if servers.LastPlayed == name {
-			return nil
+			return registry.ErrUnchanged
 		}
 		servers.LastPlayed = name
 		return nil

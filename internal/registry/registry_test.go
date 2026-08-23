@@ -412,3 +412,24 @@ func TestUpdateSerializesConcurrentChanges(t *testing.T) {
 		t.Fatalf("last_played = %q", servers.LastPlayed)
 	}
 }
+
+// ErrUnchanged で保存を飛ばすのは、hso start のたびに config.toml を書き直して
+// 手書きのコメントを消さないため。書き直していないことは、Save が残さない
+// コメントが残っているかで見る。
+func TestUpdateSkipsSaveWhenUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	contents := "# 手書きのコメント\nlast_played = \"survival\"\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Update(path, func(*Registry) error { return ErrUnchanged }); err != nil {
+		t.Fatalf("Update = %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != contents {
+		t.Fatalf("config.toml = %q", got)
+	}
+}

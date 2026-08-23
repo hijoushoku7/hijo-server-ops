@@ -125,7 +125,12 @@ func Save(path string, registry Registry) error {
 	return save(path, registry, os.WriteFile, os.Rename)
 }
 
-// Update はサーバー一覧を排他して読み、変更してから保存する。
+// ErrUnchanged は mutate が何も変えなかったことを Update に伝える。返すと
+// 保存を飛ばすので、書くことがないときに config.toml を書き直さずに済む。
+var ErrUnchanged = errors.New("registry unchanged")
+
+// Update はサーバー一覧を排他して読み、変更してから保存する。mutate が
+// ErrUnchanged を返したときは保存しない。
 //
 // mutate はロックを握ったまま呼ぶ。中でユーザーの入力を待たない、Update を
 // 呼び直さない（同一プロセスでも自己デッドロックする）こと。
@@ -149,6 +154,9 @@ func Update(path string, mutate func(*Registry) error) error {
 		return err
 	}
 	if err := mutate(&servers); err != nil {
+		if errors.Is(err, ErrUnchanged) {
+			return nil
+		}
 		return err
 	}
 	return Save(path, servers)

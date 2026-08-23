@@ -188,6 +188,7 @@ func updateRegistry(servers *registry.Registry, save func(registry.Registry) err
 func TestDeleteAndRecordLastPlayedDoNotRestoreDeletedServer(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	path, err := registry.Path()
 	if err != nil {
 		t.Fatal(err)
