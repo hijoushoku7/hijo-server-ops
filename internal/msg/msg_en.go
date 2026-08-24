@@ -50,6 +50,8 @@ const (
 	TimeModalTitle    = "Set current time"
 )
 
+const QuitMenuTitle = "Menu"
+
 // Color preset names.
 const (
 	OptDefault  = "default"
@@ -182,6 +184,7 @@ const (
 	BarSelectPanel  = "select"
 	BarFocus        = "focus"
 	BarSettings     = "settings"
+	BarMenu         = "menu"
 	BarBackToSelect = "select"
 	BarConsoleTab   = "input/restart/stop"
 	BarComplete     = "complete"
