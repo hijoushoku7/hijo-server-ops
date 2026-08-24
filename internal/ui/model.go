@@ -265,6 +265,9 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.runErr = nil
 		model.status = "starting"
 		model.busy = false
+		// 終了モーダルから再起動した先はもう停止待ちではない。残すと
+		// サーバーが動いているのにキーを弾き、^C が保存を待たず殺す。
+		model.quitting = false
 		model.endRestart()
 	case ServerAddressMsg:
 		if !model.accepts(message.Generation) {

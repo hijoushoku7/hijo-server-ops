@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -246,5 +247,32 @@ func TestModelCtrlCQuitsWhenTheServerIsGone(t *testing.T) {
 	_, command := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if _, ok := command().(tea.QuitMsg); !ok {
 		t.Fatalf("command = %T", command())
+	}
+}
+
+// TestModelCtrlCThenRestartClearsWaiting は ^C で止めた後にモーダルから
+// 再起動したとき、停止待ちが残らないことを見る。残るとキーを受け付けない
+// まま、^C だけが効く画面になる。
+func TestModelCtrlCThenRestartClearsWaiting(t *testing.T) {
+	actions := make(chan Action, 2)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionSendCommand, Command: "stop"}})
+	_, _ = model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 0})
+	// モーダルの三択で「再起動」を選ぶ。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	<-actions
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+
+	if model.quitting {
+		t.Fatal("再起動後も停止待ちが残っている")
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	if string(model.input) != "g" {
+		t.Fatalf("キーを受け付けていない: input = %q", model.input)
 	}
 }
