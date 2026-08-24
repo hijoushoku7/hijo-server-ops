@@ -15,6 +15,12 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if message.String() == "ctrl+c" {
 		return model, model.requestQuit()
 	}
+	// 停止待ちの間は ^C 以外を受けない。再起動やコマンドを重ねられると、
+	// サーバーが動いているのに quitting が立ったままになり、次の ^C が
+	// 保存を待たずに殺す元の挙動へ戻る。
+	if model.quitting && model.exit == nil {
+		return model, nil
+	}
 	if model.exit != nil {
 		return model.handleExitKey(message)
 	}

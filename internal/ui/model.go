@@ -274,6 +274,8 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ActionResultMsg:
 		model.busy = false
 		if message.Err != nil {
+			// 送れていないので待つ相手がいない。次の ^C を即終了に戻す。
+			model.quitting = false
 			model.endRestart()
 			model.status = msg.ActionFailed(message.Err)
 			// 終了モーダルには status 行がないので、失敗の理由をここへ移す。

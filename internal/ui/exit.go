@@ -312,6 +312,11 @@ func (model *Model) startAutoRestart(state *exitState, err error) tea.Cmd {
 	if !model.settings.AutoRestart {
 		return nil
 	}
+	// ^C で止めた世代は起こし直さない。stop 後の終了コードが非 0 だと
+	// クラッシュ扱いになり、終わらせたはずのサーバーが立ち上がってしまう。
+	if model.quitting {
+		return nil
+	}
 	switch {
 	case state.fatal:
 		state.notice = msg.ExitAutoRestartFatal

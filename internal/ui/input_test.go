@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -186,9 +187,52 @@ func TestModelCtrlCStopsTheServerFirst(t *testing.T) {
 		t.Fatalf("quitting = %t, status = %q", model.quitting, model.status)
 	}
 
+	// 停止待ちの間は ^C 以外を受けない。
+	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionSendCommand, Command: "stop"}})
+	_, command = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	if command != nil || model.settingsOpen {
+		t.Fatalf("settingsOpen = %t, command = %T", model.settingsOpen, command)
+	}
+
 	_, command = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if _, ok := command().(tea.QuitMsg); !ok {
 		t.Fatalf("command = %T", command())
+	}
+}
+
+// TestModelCtrlCSkipsAutoRestart は ^C で止めた世代を自動再起動が起こし直さ
+// ないことを見る。stop 後の終了コードが非 0 でもクラッシュ扱いにしない。
+func TestModelCtrlCSkipsAutoRestart(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+	model.settings.AutoRestart = true
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 1})
+
+	if model.exit.autoRestart {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+// TestModelCtrlCStopsWaitingWhenSendFails は stop を送れなかったときに待ちを
+// やめることを見る。送れていないのに待つと、次の ^C まで終われない。
+func TestModelCtrlCStopsWaitingWhenSendFails(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ActionResultMsg{
+		Action: Action{Kind: ActionSendCommand, Command: "stop"},
+		Err:    errors.New("boom"),
+	})
+
+	if model.quitting {
+		t.Fatal("quitting は解除されていない")
 	}
 }
 
