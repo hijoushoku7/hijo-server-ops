@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -65,10 +64,10 @@ func (model *Model) updateServerAddress(message ServerAddressMsg) {
 // copyServerAddress は c キーで呼ばれる。アドレスが取れていないときは
 // クリップボードを書き換えず、無反応のままにする。
 func (model *Model) copyServerAddress() tea.Cmd {
-	if model.serverIP == "" || model.serverPort == 0 {
+	address, ok := model.serverAddress()
+	if !ok {
 		return nil
 	}
-	address := fmt.Sprintf("%s:%d", model.serverIP, model.serverPort)
 	model.addLog(serverlog.Entry{
 		Kind:    serverlog.KindOther,
 		Message: msg.AddressCopied(address),
