@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 func TestModelMovesBetweenPanelsWithHJKL(t *testing.T) {
@@ -163,4 +165,42 @@ func TestModelUsesHJKLInExitView(t *testing.T) {
 
 func pressRune(model *Model, key rune) {
 	_, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
+}
+
+// TestModelCtrlCStopsTheServerFirst は ^C が即終了ではなく stop の送信に
+// なり、二度目で従来どおり終わることを見る。1 度目で終わると supervisor が
+// サーバーを短い猶予で殺し、ワールドの保存が間に合わない。
+func TestModelCtrlCStopsTheServerFirst(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, command := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if command != nil {
+		t.Fatalf("command = %T", command())
+	}
+	if action := <-actions; action.Kind != ActionSendCommand || action.Command != "stop" {
+		t.Fatalf("action = %#v", action)
+	}
+	if !model.quitting || model.status != msg.StatusStopping {
+		t.Fatalf("quitting = %t, status = %q", model.quitting, model.status)
+	}
+
+	_, command = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
+	}
+}
+
+// TestModelCtrlCQuitsWhenTheServerIsGone は待つ相手がいないときに ^C が
+// その場で終わることを見る。
+func TestModelCtrlCQuitsWhenTheServerIsGone(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	_, _ = model.Update(ProcessExitedMsg{ExitCode: 0})
+
+	_, command := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
+	}
 }

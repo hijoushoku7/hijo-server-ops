@@ -308,6 +308,8 @@ func renderPanelLines(
 func (model *Model) keybar() string {
 	var keys [][2]string
 	switch {
+	case model.quitting && model.exit == nil:
+		keys = [][2]string{{"^C", msg.BarQuitNow}}
 	case model.exit != nil && model.exit.restarted:
 		keys = [][2]string{{"Enter", msg.BarClose}, {"^C", msg.BarExit}}
 	case model.exit != nil && model.exit.autoRestart:

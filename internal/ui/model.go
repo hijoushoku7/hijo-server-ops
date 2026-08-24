@@ -111,11 +111,13 @@ type Model struct {
 	mode             mode
 	panel            panel
 	// selected は選択モードで選択枠を出すかを表す。フォーカス中は常に枠を出す。
-	selected          bool
-	hover             panel
-	hovering          bool
-	consoleFocus      consoleFocus
-	busy              bool
+	selected     bool
+	hover        panel
+	hovering     bool
+	consoleFocus consoleFocus
+	busy         bool
+	// quitting は ^C でサーバーに stop を送り、終わるのを待っている状態。
+	quitting          bool
 	generation        uint64
 	metrics           hsperfdata.Metrics
 	memory            procstats.Memory

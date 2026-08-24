@@ -528,8 +528,12 @@ func TestModelSelectsRestartAndStopWithTab(t *testing.T) {
 	if model.consoleFocus != consoleStop {
 		t.Fatalf("consoleFocus = %d", model.consoleFocus)
 	}
-	if _, ok := command().(tea.QuitMsg); !ok {
+	// 停止ボタンも ^C と同じく、まずサーバーに stop を送って終わるのを待つ。
+	if command != nil {
 		t.Fatalf("command = %T", command())
+	}
+	if action := <-actions; action.Kind != ActionSendCommand || action.Command != "stop" {
+		t.Fatalf("action = %#v", action)
 	}
 }
 

@@ -83,7 +83,11 @@ const (
 )
 
 // ステータス行。
-const StatusIdle = "操作待ち"
+const (
+	StatusIdle = "操作待ち"
+	// StatusStopping は ^C でサーバーの終了を待っている間の表示。
+	StatusStopping = "停止中 保存を待っています"
+)
 
 func SaveSettingsFailed(err error) string {
 	return "設定の保存に失敗: " + err.Error()
@@ -173,6 +177,7 @@ const (
 	BarCandidate    = "候補"
 	BarClose        = "閉じる"
 	BarExit         = "終了"
+	BarQuitNow      = "即終了"
 	BarSelectPanel  = "選ぶ"
 	BarFocus        = "開く"
 	BarSettings     = "設定"
