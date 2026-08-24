@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,6 +163,37 @@ func TestModelUsesHJKLInExitView(t *testing.T) {
 	pressRune(model, 'j')
 	if offset := model.logs.Offset(viewport); offset != 0 {
 		t.Fatalf("j の後の offset = %d, want 0", offset)
+	}
+}
+
+// TestModelCopiesServerAddressWithC は c キーがアドレスをクリップボードへ
+// コピーし、ログにも残すことを見る。アドレスが取れていないときは何もしない
+// （issue #110）。
+func TestModelCopiesServerAddressWithC(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	model.mode = modeSelect
+
+	_, command := model.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if command != nil {
+		t.Fatalf("アドレス無しでも command が返った")
+	}
+	if model.logs.Len() != 0 {
+		t.Fatalf("アドレス無しでもログが増えた: %d 件", model.logs.Len())
+	}
+
+	model.serverIP = "203.0.113.1"
+	model.serverPort = 25565
+
+	_, command = model.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if command == nil {
+		t.Fatal("アドレスがあるのに command が nil")
+	}
+	if model.logs.Len() != 1 {
+		t.Fatalf("ログの件数 = %d, want 1", model.logs.Len())
+	}
+	if text := model.logs.At(0).text; !strings.Contains(text, "203.0.113.1:25565") {
+		t.Fatalf("ログの内容 = %q にアドレスが含まれていない", text)
 	}
 }
 

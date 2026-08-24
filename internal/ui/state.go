@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"fmt"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/gclog"
 	"github.com/hijoushoku7/hijo-server-ops/internal/hsperfdata"
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
@@ -56,6 +60,20 @@ func (model *Model) updateServerAddress(message ServerAddressMsg) {
 		model.serverPort = 0
 		model.logUnavailableAddress("server-port", message.PortErr)
 	}
+}
+
+// copyServerAddress は c キーで呼ばれる。アドレスが取れていないときは
+// クリップボードを書き換えず、無反応のままにする。
+func (model *Model) copyServerAddress() tea.Cmd {
+	if model.serverIP == "" || model.serverPort == 0 {
+		return nil
+	}
+	address := fmt.Sprintf("%s:%d", model.serverIP, model.serverPort)
+	model.addLog(serverlog.Entry{
+		Kind:    serverlog.KindOther,
+		Message: msg.AddressCopied(address),
+	})
+	return tea.SetClipboard(address)
 }
 
 func (model *Model) logUnavailableAddress(source, detail string) {

@@ -173,6 +173,10 @@ func ExitAutoQuit(seconds int) string {
 	return fmt.Sprintf("hso exits in %d seconds (press a key to stay)", seconds)
 }
 
+func AddressCopied(address string) string {
+	return "copied address: " + address
+}
+
 // Key bar (the hint line at the bottom of the screen).
 const (
 	BarItem         = "item"
