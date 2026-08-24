@@ -111,11 +111,13 @@ type Model struct {
 	mode             mode
 	panel            panel
 	// selected は選択モードで選択枠を出すかを表す。フォーカス中は常に枠を出す。
-	selected          bool
-	hover             panel
-	hovering          bool
-	consoleFocus      consoleFocus
-	busy              bool
+	selected     bool
+	hover        panel
+	hovering     bool
+	consoleFocus consoleFocus
+	busy         bool
+	// quitting は ^C でサーバーに stop を送り、終わるのを待っている状態。
+	quitting          bool
 	generation        uint64
 	metrics           hsperfdata.Metrics
 	memory            procstats.Memory
@@ -263,6 +265,9 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.runErr = nil
 		model.status = "starting"
 		model.busy = false
+		// 終了モーダルから再起動した先はもう停止待ちではない。残すと
+		// サーバーが動いているのにキーを弾き、^C が保存を待たず殺す。
+		model.quitting = false
 		model.endRestart()
 	case ServerAddressMsg:
 		if !model.accepts(message.Generation) {
@@ -272,6 +277,8 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ActionResultMsg:
 		model.busy = false
 		if message.Err != nil {
+			// 送れていないので待つ相手がいない。次の ^C を即終了に戻す。
+			model.quitting = false
 			model.endRestart()
 			model.status = msg.ActionFailed(message.Err)
 			// 終了モーダルには status 行がないので、失敗の理由をここへ移す。

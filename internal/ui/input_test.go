@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 func TestModelMovesBetweenPanelsWithHJKL(t *testing.T) {
@@ -163,4 +167,112 @@ func TestModelUsesHJKLInExitView(t *testing.T) {
 
 func pressRune(model *Model, key rune) {
 	_, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
+}
+
+// TestModelCtrlCStopsTheServerFirst は ^C が即終了ではなく stop の送信に
+// なり、二度目で従来どおり終わることを見る。1 度目で終わると supervisor が
+// サーバーを短い猶予で殺し、ワールドの保存が間に合わない。
+func TestModelCtrlCStopsTheServerFirst(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, command := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if command != nil {
+		t.Fatalf("command = %T", command())
+	}
+	if action := <-actions; action.Kind != ActionSendCommand || action.Command != "stop" {
+		t.Fatalf("action = %#v", action)
+	}
+	if !model.quitting || model.status != msg.StatusStopping {
+		t.Fatalf("quitting = %t, status = %q", model.quitting, model.status)
+	}
+
+	// 停止待ちの間は ^C 以外を受けない。
+	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionSendCommand, Command: "stop"}})
+	_, command = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	if command != nil || model.settingsOpen {
+		t.Fatalf("settingsOpen = %t, command = %T", model.settingsOpen, command)
+	}
+
+	_, command = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
+	}
+}
+
+// TestModelCtrlCSkipsAutoRestart は ^C で止めた世代を自動再起動が起こし直さ
+// ないことを見る。stop 後の終了コードが非 0 でもクラッシュ扱いにしない。
+func TestModelCtrlCSkipsAutoRestart(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+	model.settings.AutoRestart = true
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 1})
+
+	if model.exit.autoRestart {
+		t.Fatalf("exit = %#v", model.exit)
+	}
+}
+
+// TestModelCtrlCStopsWaitingWhenSendFails は stop を送れなかったときに待ちを
+// やめることを見る。送れていないのに待つと、次の ^C まで終われない。
+func TestModelCtrlCStopsWaitingWhenSendFails(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ActionResultMsg{
+		Action: Action{Kind: ActionSendCommand, Command: "stop"},
+		Err:    errors.New("boom"),
+	})
+
+	if model.quitting {
+		t.Fatal("quitting は解除されていない")
+	}
+}
+
+// TestModelCtrlCQuitsWhenTheServerIsGone は待つ相手がいないときに ^C が
+// その場で終わることを見る。
+func TestModelCtrlCQuitsWhenTheServerIsGone(t *testing.T) {
+	model := newTestModel()
+	model.resize(80, 24)
+	_, _ = model.Update(ProcessExitedMsg{ExitCode: 0})
+
+	_, command := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
+	}
+}
+
+// TestModelCtrlCThenRestartClearsWaiting は ^C で止めた後にモーダルから
+// 再起動したとき、停止待ちが残らないことを見る。残るとキーを受け付けない
+// まま、^C だけが効く画面になる。
+func TestModelCtrlCThenRestartClearsWaiting(t *testing.T) {
+	actions := make(chan Action, 2)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionSendCommand, Command: "stop"}})
+	_, _ = model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 0})
+	// モーダルの三択で「再起動」を選ぶ。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	<-actions
+	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
+
+	if model.quitting {
+		t.Fatal("再起動後も停止待ちが残っている")
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	if string(model.input) != "g" {
+		t.Fatalf("キーを受け付けていない: input = %q", model.input)
+	}
 }

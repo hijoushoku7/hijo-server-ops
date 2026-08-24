@@ -85,7 +85,11 @@ const (
 )
 
 // Status line.
-const StatusIdle = "idle"
+const (
+	StatusIdle = "idle"
+	// StatusStopping is shown while ^C waits for the server to shut down.
+	StatusStopping = "stopping, waiting for the save"
+)
 
 func SaveSettingsFailed(err error) string {
 	return "failed to save settings: " + err.Error()
@@ -174,6 +178,7 @@ const (
 	BarCandidate    = "candidate"
 	BarClose        = "close"
 	BarExit         = "exit"
+	BarQuitNow      = "quit now"
 	BarSelectPanel  = "select"
 	BarFocus        = "focus"
 	BarSettings     = "settings"

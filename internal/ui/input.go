@@ -13,7 +13,13 @@ import (
 func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := message.Key()
 	if message.String() == "ctrl+c" {
-		return model, tea.Quit
+		return model, model.requestQuit()
+	}
+	// 停止待ちの間は ^C 以外を受けない。再起動やコマンドを重ねられると、
+	// サーバーが動いているのに quitting が立ったままになり、次の ^C が
+	// 保存を待たずに殺す元の挙動へ戻る。
+	if model.quitting && model.exit == nil {
+		return model, nil
 	}
 	if model.exit != nil {
 		return model.handleExitKey(message)
@@ -290,7 +296,7 @@ func (model *Model) handleConsoleKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter, tea.KeyKpEnter:
 		switch model.consoleFocus {
 		case consoleStop:
-			return model, tea.Quit
+			return model, model.requestQuit()
 		case consoleRestart:
 			return model, model.requestRestart()
 		default:
@@ -390,6 +396,22 @@ func (model *Model) requestRestart() tea.Cmd {
 		return nil
 	}
 	return model.beginRestart()
+}
+
+// requestQuit は動いているサーバーに stop を送り、自力で終わるのを待つ。
+// hso が先に落ちると Pdeathsig 経由で supervisor が短い猶予で殺しにかかり、
+// ワールドの保存が終わらない。待っている間にもう一度 ^C を押したときと、
+// 待つ相手がいないときは、従来どおりその場で終わる。
+func (model *Model) requestQuit() tea.Cmd {
+	if model.quitting || model.exit != nil {
+		return tea.Quit
+	}
+	if !model.offer(Action{Kind: ActionSendCommand, Command: "stop"}) {
+		return tea.Quit
+	}
+	model.quitting = true
+	model.status = msg.StatusStopping
+	return nil
 }
 
 func (model *Model) offer(action Action) bool {
