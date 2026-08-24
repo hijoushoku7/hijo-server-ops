@@ -4,6 +4,7 @@ import tea "charm.land/bubbletea/v2"
 
 func (model *Model) mouseDiscarded() bool {
 	return model.settingsOpen || model.timeModal != nil || model.completionOpen ||
+		model.quitMenuOpen ||
 		(model.mode == modeFocus && model.panel == panelPlayers &&
 			model.playerStage == playerStageCommands)
 }

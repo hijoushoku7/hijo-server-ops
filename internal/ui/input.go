@@ -26,7 +26,7 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	// g/G は既存どおり設定専用にする。vim の gg/G を追加すると既存キーを
 	// 奪うため、先頭・末尾への移動には使わない。
-	if model.timeModal == nil && !model.settingsOpen &&
+	if model.timeModal == nil && !model.settingsOpen && !model.quitMenuOpen &&
 		(message.String() == "g" || message.String() == "G") &&
 		!model.editingConsole() {
 		model.settingsOpen = true
@@ -41,6 +41,9 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if model.settingsOpen {
 		return model.handleSettingsKey(key)
+	}
+	if model.quitMenuOpen {
+		return model.handleQuitMenuKey(key)
 	}
 	if model.mode == modeSelect {
 		return model.handleSelectKey(key)
@@ -260,8 +263,38 @@ func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyEscape:
 		if buffer, _ := model.bufferFor(model.panel); buffer != nil && !buffer.Following() {
 			buffer.ScrollToEnd()
-		} else if model.panel == panelChat || model.panel == panelLog {
+		} else if (model.panel == panelChat || model.panel == panelLog) && model.selected {
 			model.selected = false
+		} else {
+			model.openQuitMenu()
+		}
+	}
+	return model, nil
+}
+
+// openQuitMenu は選択モードで Esc がもう何も戻す先を持たないときに開く。
+// 画面遷移はせず、モーダルを重ねるだけ。
+func (model *Model) openQuitMenu() {
+	model.quitMenuOpen = true
+	model.quitMenuCursor = 0
+}
+
+func (model *Model) handleQuitMenuKey(key tea.Key) (tea.Model, tea.Cmd) {
+	switch key.Code {
+	case tea.KeyEscape:
+		model.quitMenuOpen = false
+	case tea.KeyUp:
+		model.quitMenuCursor = max(0, model.quitMenuCursor-1)
+	case tea.KeyDown:
+		model.quitMenuCursor = min(quitMenuItemCount-1, model.quitMenuCursor+1)
+	case tea.KeyEnter, tea.KeyKpEnter:
+		model.quitMenuOpen = false
+		switch model.quitMenuCursor {
+		case quitMenuOptions:
+			model.settingsOpen = true
+			model.settingCursor = 0
+		case quitMenuQuit:
+			return model, model.requestQuit()
 		}
 	}
 	return model, nil

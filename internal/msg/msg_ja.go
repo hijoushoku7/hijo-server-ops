@@ -48,6 +48,8 @@ const (
 	TimeModalTitle    = "現在時刻の設定"
 )
 
+const QuitMenuTitle = "メニュー"
+
 // 配色プリセットの表示名。
 const (
 	OptDefault  = "既定"
@@ -181,6 +183,7 @@ const (
 	BarSelectPanel  = "選ぶ"
 	BarFocus        = "開く"
 	BarSettings     = "設定"
+	BarMenu         = "メニュー"
 	BarBackToSelect = "選択"
 	BarConsoleTab   = "入力/再起動/停止"
 	BarComplete     = "補完"

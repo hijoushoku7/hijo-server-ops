@@ -141,6 +141,8 @@ type Model struct {
 	settingsOpen      bool
 	settingCursor     int
 	timeModal         *timeModalState
+	quitMenuOpen      bool
+	quitMenuCursor    int
 	exit              *exitState
 	restart           restartTracker
 	// 0 は停止中、1..3 は表示する点の数。

@@ -87,6 +87,9 @@ func (model *Model) View() tea.View {
 		case model.settingsOpen:
 			box, x, y := model.settingsModal()
 			content = overlay(content, box, x, y)
+		case model.quitMenuOpen:
+			box, x, y := model.quitMenuModal()
+			content = overlay(content, box, x, y)
 		case model.mode == modeFocus && model.panel == panelPlayers &&
 			model.playerStage == playerStageCommands:
 			box, x, y := model.commandModal()
@@ -96,7 +99,8 @@ func (model *Model) View() tea.View {
 			content = overlay(content, box, x, y)
 		}
 		// モーダルが重なっている間はキーが入力欄へ届かない。
-		if model.exit != nil || model.timeModal != nil || model.settingsOpen {
+		if model.exit != nil || model.timeModal != nil || model.settingsOpen ||
+			model.quitMenuOpen {
 			caretX = -1
 		}
 	}
@@ -349,10 +353,18 @@ func (model *Model) keybar() string {
 			{"Enter/Esc", msg.BarClose},
 			{"^C", msg.BarExit},
 		}
+	case model.quitMenuOpen:
+		keys = [][2]string{
+			{"kj/↑↓", msg.BarItem},
+			{"Enter", msg.BarConfirm},
+			{"Esc", msg.BarClose},
+			{"^C", msg.BarExit},
+		}
 	case model.mode == modeSelect:
 		keys = [][2]string{
 			{"hjkl/←↑↓→", msg.BarSelectPanel},
 			{"Enter", msg.BarFocus},
+			{"Esc", msg.BarMenu},
 			{"G", msg.BarSettings},
 			{"^C", msg.BarExit},
 		}
