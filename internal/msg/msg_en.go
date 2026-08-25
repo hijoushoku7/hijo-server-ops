@@ -93,6 +93,10 @@ const (
 	StatusStopping = "stopping, waiting for the save"
 )
 
+// ServerStoppedNotice is the line hso leaves on the terminal when it exits, after
+// the alt screen is gone.
+const ServerStoppedNotice = "server stopped"
+
 func SaveSettingsFailed(err error) string {
 	return "failed to save settings: " + err.Error()
 }

@@ -284,7 +284,8 @@ func TestModelCtrlCQuitsWhenTheServerIsGone(t *testing.T) {
 
 // TestModelCtrlCThenRestartClearsWaiting は ^C で止めた後にモーダルから
 // 再起動したとき、停止待ちが残らないことを見る。残るとキーを受け付けない
-// まま、^C だけが効く画面になる。
+// まま、^C だけが効く画面になる。正常終了ではモーダルが出ないので、
+// 異常終了で止まった場合を見る。
 func TestModelCtrlCThenRestartClearsWaiting(t *testing.T) {
 	actions := make(chan Action, 2)
 	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
@@ -293,9 +294,9 @@ func TestModelCtrlCThenRestartClearsWaiting(t *testing.T) {
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	<-actions
 	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionSendCommand, Command: "stop"}})
-	_, _ = model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 0})
-	// モーダルの三択で「再起動」を選ぶ。
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 1})
+	// モーダルの三択で「再起動」を選ぶ。^C 由来なのでカーソルは終了から動く。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	<-actions
 	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
@@ -306,5 +307,54 @@ func TestModelCtrlCThenRestartClearsWaiting(t *testing.T) {
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
 	if string(model.input) != "g" {
 		t.Fatalf("キーを受け付けていない: input = %q", model.input)
+	}
+}
+
+// TestModelCtrlCQuitsWithoutExitModal は ^C で止めてサーバーが無事に終わった
+// とき、終了モーダルを出さずそのまま終わることを見る。自分で終了を指示した
+// のにログ確認画面を挟まれ、カウントダウンを待たされる必要がない。
+func TestModelCtrlCQuitsWithoutExitModal(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionSendCommand, Command: "stop"}})
+	_, command := model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 0})
+
+	if model.exit != nil {
+		t.Fatalf("終了モーダルが開いている: exit = %#v", model.exit)
+	}
+	if command == nil {
+		t.Fatal("command = nil")
+	}
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
+	}
+}
+
+// TestModelCtrlCCrashKeepsExitModal は ^C で止めたのに異常終了したとき、
+// モーダルは出したままカーソルを終了に合わせることを見る。原因は読ませたい
+// が、終わらせるつもりだった以上は Enter 一発で終われるようにする。
+func TestModelCtrlCCrashKeepsExitModal(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	<-actions
+	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionSendCommand, Command: "stop"}})
+	_, _ = model.Update(ProcessExitedMsg{Generation: 1, ExitCode: 1})
+
+	if model.exit == nil {
+		t.Fatal("終了モーダルが開いていない")
+	}
+	if model.exit.button != 2 {
+		t.Fatalf("button = %d", model.exit.button)
+	}
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if _, ok := command().(tea.QuitMsg); !ok {
+		t.Fatalf("command = %T", command())
 	}
 }
