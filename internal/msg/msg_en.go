@@ -54,7 +54,7 @@ const QuitMenuTitle = "Menu"
 
 // Color preset names.
 const (
-	OptDefault  = "default"
+	OptDracula  = "dracula"
 	OptCustom   = "custom"
 	OptMono     = "mono"
 	OptNeon     = "neon"

@@ -8,25 +8,23 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/serverlog"
 )
 
-// 初期値を既定プリセットと揃え、New を通さないテストでも同じ配色にする。
+// 既定プリセットを起動時に流し込み、New を通さないテストでも同じ配色にする。
+// 初期値をリテラルで二重に持つと既定を変えたときに片方だけ古くなる。
+func init() { applyTheme(DefaultSettings()) }
+
 var (
-	backgroundColor stdcolor.Color
-	titleStyle      = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#8BE9FD")).
-			Bold(true)
-	heapStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#50FA7B"))
-	rssStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#8BE9FD"))
-	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#777777"))
-	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#282A36")).
-			Background(lipgloss.Color("#F1FA8C")).
-			Bold(true)
-	keyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#282A36")).
-			Background(lipgloss.Color("#BBBBBB"))
+	backgroundColor   stdcolor.Color
+	titleStyle        lipgloss.Style
+	heapStyle         lipgloss.Style
+	rssStyle          lipgloss.Style
+	dimStyle          lipgloss.Style
+	selectedStyle     lipgloss.Style
+	keyStyle          lipgloss.Style
+	logTimestampStyle lipgloss.Style
+	logReceivedStyle  lipgloss.Style
+	logKindStyles     map[serverlog.Kind]lipgloss.Style
+	logPlayerStyles   []lipgloss.Style
+
 	// 終了モーダルの枠。異常終了と正常終了の区別は配色プリセットに
 	// 左右させない。単色プリセットで両者が同じ色になると意味が壊れる。
 	exitCrashStyle = lipgloss.NewStyle().
@@ -35,19 +33,6 @@ var (
 	exitStoppedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#50FA7B")).
 				Bold(true)
-	logTimestampStyle = color("#777777")
-	logReceivedStyle  = color("#5A5A5A").Faint(true)
-	logKindStyles     = map[serverlog.Kind]lipgloss.Style{
-		serverlog.KindPlayerJoin:  color("#50FA7B"),
-		serverlog.KindPlayerLeave: color("#FF5555"),
-		serverlog.KindChat:        color("#F8F8F2"),
-		serverlog.KindCommand:     color("#BD93F9"),
-		serverlog.KindLag:         color("#FFB86C"),
-		serverlog.KindOther:       color("#BBBBBB"),
-	}
-	logPlayerStyles = playerStyles([]string{
-		"#8BE9FD", "#FF79C6", "#F1FA8C", "#50FA7B", "#BD93F9", "#FFB86C",
-	})
 )
 
 type framePalette struct {
@@ -113,7 +98,7 @@ var themeBundles = map[string]themeBundle{
 		meter: "safe", title: "white", selection: "mono", log: "safe",
 	},
 	"sunset": {
-		background: "dark", frame: "sunset", graph: "sunset",
+		background: "terminal", frame: "sunset", graph: "sunset",
 		meter: "sunset", title: "sunset", selection: "sunset", log: "sunset",
 	},
 	"sakura": {

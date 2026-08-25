@@ -36,9 +36,9 @@ func TestSettingsModalOpensWithGAndChangesTheme(t *testing.T) {
 		t.Fatal("view does not contain the settings modal")
 	}
 
-	// 先頭のテーマ項目を 1 つ進める。
+	// 先頭のテーマ項目を 1 つ進める。既定は sunset なので次の sakura になる。
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	if !themeBundles["mono"].matches(model.settings) {
+	if !themeBundles["sakura"].matches(model.settings) {
 		t.Fatalf("theme was not expanded: %#v", model.settings)
 	}
 	// 選んだプリセットは即座に描画へ反映する。
@@ -150,11 +150,16 @@ func TestSettingItemsWrapAroundAndKeepUnknownValues(t *testing.T) {
 	}
 }
 
-func TestDraculaThemeMatchesDefaultSettings(t *testing.T) {
+// 既定は sunset バンドルそのもの。ずれると設定モーダルが「カスタム」始まりに
+// なり、テーマ欄から起動時の見た目へ戻せなくなる。
+func TestSunsetThemeMatchesDefaultSettings(t *testing.T) {
 	settings := Settings{}
-	themeBundles["dracula"].apply(&settings)
+	themeBundles["sunset"].apply(&settings)
 	if settings != DefaultSettings() {
-		t.Fatalf("dracula = %#v, default = %#v", settings, DefaultSettings())
+		t.Fatalf("sunset = %#v, default = %#v", settings, DefaultSettings())
+	}
+	if name := themeName(DefaultSettings()); name != "sunset" {
+		t.Fatalf("themeName = %q, want sunset", name)
 	}
 }
 

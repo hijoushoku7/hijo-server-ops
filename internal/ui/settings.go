@@ -23,15 +23,19 @@ type Settings struct {
 	TimeOffsetMinutes int
 }
 
+// 既定は sunset バンドルそのもの。選択画面（hso start・セットアップ）は配色を
+// 持てないので固定色を焼き込むしかなく、本体の既定をそこへ寄せて両者を揃える。
+// バンドルと一致させておかないと設定モーダルが「カスタム」始まりになり、
+// テーマ欄から起動時の見た目へ戻せなくなる。
 func DefaultSettings() Settings {
 	return Settings{
 		BackgroundPreset: "terminal",
-		FramePreset:      "dracula",
-		GraphPreset:      "dracula",
-		MeterPreset:      "signal",
-		TitlePreset:      "cyan",
-		SelectionPreset:  "amber",
-		LogPreset:        "dracula",
+		FramePreset:      "sunset",
+		GraphPreset:      "sunset",
+		MeterPreset:      "sunset",
+		TitlePreset:      "sunset",
+		SelectionPreset:  "sunset",
+		LogPreset:        "sunset",
 	}
 }
 
@@ -61,7 +65,7 @@ var settingItems = []settingItem{
 		section: msg.SectionPreferences,
 		label:   msg.LabelTheme,
 		options: []settingOption{
-			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptDracula, value: "dracula"},
 			{label: msg.OptMono, value: "mono"},
 			{label: msg.OptSafe, value: "safe"},
 			{label: msg.OptSunset, value: "sunset"},
@@ -83,7 +87,7 @@ var settingItems = []settingItem{
 	{
 		label: msg.LabelFrame,
 		options: []settingOption{
-			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptDracula, value: "dracula"},
 			{label: msg.OptMono, value: "mono"},
 			{label: msg.OptNeon, value: "neon"},
 			{label: msg.OptOcean, value: "ocean"},
@@ -100,7 +104,7 @@ var settingItems = []settingItem{
 	{
 		label: msg.LabelGraphLine,
 		options: []settingOption{
-			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptDracula, value: "dracula"},
 			{label: msg.OptMono, value: "mono"},
 			{label: msg.OptWarm, value: "warm"},
 			{label: msg.OptCool, value: "cool"},
@@ -166,7 +170,7 @@ var settingItems = []settingItem{
 	{
 		label: msg.LabelLog,
 		options: []settingOption{
-			{label: msg.OptDefault, value: "dracula"},
+			{label: msg.OptDracula, value: "dracula"},
 			{label: msg.OptMono, value: "mono"},
 			{label: msg.OptWarm, value: "warm"},
 			{label: msg.OptCool, value: "cool"},

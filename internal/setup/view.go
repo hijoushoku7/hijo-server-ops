@@ -10,21 +10,23 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
+// 色は internal/ui の sunset プリセットと同じ値。選択画面は hso.toml を
+// 読む前に描くので配色を持てず、本体の既定と同じ色を焼き込んで揃える。
 var (
 	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#8BE9FD")).
+			Foreground(lipgloss.Color("#FF8A65")).
 			Bold(true)
 	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#777777"))
+			Foreground(lipgloss.Color("#87616B"))
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#282A36")).
-			Background(lipgloss.Color("#F1FA8C")).
+			Foreground(lipgloss.Color("#2B1B20")).
+			Background(lipgloss.Color("#FF8A65")).
 			Bold(true)
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF5555"))
 	keyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#282A36")).
-			Background(lipgloss.Color("#BBBBBB"))
+			Foreground(lipgloss.Color("#2B1B20")).
+			Background(lipgloss.Color("#FFB4A2"))
 )
 
 func (m *model) View() tea.View {
