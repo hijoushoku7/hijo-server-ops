@@ -228,7 +228,12 @@ var settingItems = []settingItem{
 const (
 	settingOn  = "on"
 	settingOff = "off"
+	// 設定モーダルの左右の余白と、広げすぎないための上限幅。
+	settingsPad      = 2
+	settingsMaxWidth = 60
 )
+
+func pad(width int) string { return strings.Repeat(" ", max(0, width)) }
 
 func (item settingItem) optionIndex(settings Settings) int {
 	current := item.get(settings)
@@ -314,37 +319,68 @@ func (model *Model) settingsModal() (string, int, int) {
 			actionWidth = stringWidth(msg.TimeSettingButton) + 4
 		}
 	}
-	// " ラベル  ‹ 値 › " の飾りと枠の 2 列を足した幅。見出しが長ければそちらに
-	// 合わせる。
-	width := max(labelWidth+valueWidth+actionWidth+10, sectionWidth+4)
+	// 1 項目をラベル行と値行の 2 行に割るので、値は行いっぱいの
+	// "‹ 値 ›" として置ける。幅はラベル・値・見出しのうち一番広いものに
+	// 左右の余白 2 列ずつと枠の 2 列を足す。
+	inner := max(labelWidth+actionWidth+2, max(valueWidth+6, sectionWidth))
+	// 中身に合わせるだけだと細く貧相になる。画面の 3/5 を目安に広げ、
+	// 中身がそれより広ければ中身を優先する。
+	width := max(inner+settingsPad*2+2, min(model.layout.width*3/5, settingsMaxWidth))
 	width = min(width, model.layout.width)
+	contentWidth := width - 2
+	field := max(0, contentWidth-settingsPad*2)
 
-	lines := make([]string, 0, len(settingItems)+2)
+	lines := make([]string, 0, len(settingItems)*2+6)
+	lines = append(lines, "")
+	// 選択中の項目の値行。画面に収まらないときはここを中心に窓を取る。
+	cursorLine := 0
 	for index, item := range settingItems {
 		if item.section != "" {
 			// 先頭の見出し以外は、区切りとして 1 行空ける。
-			if len(lines) > 0 {
+			if len(lines) > 1 {
 				lines = append(lines, "")
 			}
 			lines = append(lines,
-				titleStyle.Render(fitLine(" "+item.section, width-2)))
+				titleStyle.Render(fitLine(pad(settingsPad)+item.section, contentWidth)))
 		}
-		value := item.valueLabel(model.settings)
-		line := " " + fitLine(item.label, labelWidth) + "  ‹ " +
-			strings.Repeat(" ", max(0, valueWidth-stringWidth(value))) +
-			value + " ›"
+
+		// ラベルは値行の "‹ 値 ›" と中心を揃える。
+		label := pad(settingsPad+max(0, (field-stringWidth(item.label))/2)) + item.label
 		if item.open != nil {
 			button := "[" + msg.TimeSettingButton + "]"
-			line += strings.Repeat(" ", max(2, width-2-stringWidth(line)-stringWidth(button))) +
-				button
+			label = fitLine(label, max(0, contentWidth-settingsPad-stringWidth(button))) +
+				button + pad(settingsPad)
 		}
-		line = fitLine(line, width-2)
+		label = fitLine(label, contentWidth)
+		// 選択中はラベル行と値行の 2 行まとめて反転させ、項目 1 つが
+		// 選ばれていることを見せる。
 		if index == model.settingCursor {
-			line = selectedStyle.Render(line)
+			label = selectedStyle.Render(label)
+		}
+		lines = append(lines, label)
+
+		value := item.valueLabel(model.settings)
+		left := max(0, (field-2-stringWidth(value))/2)
+		line := pad(settingsPad) + "‹" + pad(left) + value
+		line = fitLine(line, contentWidth-settingsPad-1) + "›" + pad(settingsPad)
+		// 値行はラベル行と見分けが付くよう灰色に落とす。選択中だけ反転する。
+		if index == model.settingCursor {
+			cursorLine = len(lines)
+			line = selectedStyle.Render(fitLine(line, contentWidth))
+		} else {
+			line = dimStyle.Render(line)
 		}
 		lines = append(lines, line)
 	}
-	height := len(lines) + 2
+	lines = append(lines, "")
+
+	height := min(len(lines)+2, model.layout.height)
+	// 端末が低いと全項目は入らない。選択行を中心に窓を切り、カーソルが
+	// 常に見えるようにする。
+	if contentHeight := height - 2; contentHeight < len(lines) {
+		start := min(max(0, cursorLine-contentHeight/2), len(lines)-contentHeight)
+		lines = lines[start : start+contentHeight]
+	}
 
 	x := max(0, (model.layout.width-width)/2)
 	y := max(0, (model.layout.height-height)/2)
