@@ -236,10 +236,10 @@ func TestModelDisplaysServerAddressAndReportsFailure(t *testing.T) {
 
 	_, _ = model.Update(ServerAddressMsg{
 		Generation: 2,
-		IP:         "203.0.113.10",
-		Port:       25565,
+		IP:         "255.255.255.255",
+		Port:       65535,
 	})
-	if got := model.serverAddressLine(); got != "Server 203.0.113.10:25565" {
+	if got := model.serverAddressLine(); got != "Server 255.255.255.255:65535 (c)" {
 		t.Fatalf("address = %q", got)
 	}
 	if width := stringWidth(model.serverAddressLine()); width > model.layout.statsWidth-2 {
@@ -252,7 +252,7 @@ func TestModelDisplaysServerAddressAndReportsFailure(t *testing.T) {
 		IP:         "198.51.100.1",
 		Port:       25566,
 	})
-	if got := model.serverAddressLine(); got != "Server 203.0.113.10:25565" {
+	if got := model.serverAddressLine(); got != "Server 255.255.255.255:65535 (c)" {
 		t.Fatalf("stale address was accepted: %q", got)
 	}
 
