@@ -53,16 +53,17 @@ func runTUI(configPath string, cfg config.Config) error {
 	if model.Err() != nil {
 		return model.Err()
 	}
-	// 終了モーダルを出さずに終わる道（^C）があるので、止まったことは端末に
-	// 残す。alt screen を畳んだ後なので画面には最後の 1 行として残る。
-	fmt.Fprintln(os.Stdout, msg.ServerStoppedNotice)
 	if stopErr != nil {
 		return stopErr
 	}
-	if ui.IsExpectedExit(programErr) {
-		return nil
+	if !ui.IsExpectedExit(programErr) {
+		return programErr
 	}
-	return programErr
+	// 終了モーダルを出さずに終わる道（^C）があるので、止まったことは端末に
+	// 残す。alt screen を畳んだ後なので画面には最後の 1 行として残る。
+	// 失敗を返すときは hso: のエラーだけを出す。
+	fmt.Fprintln(os.Stdout, msg.ServerStoppedNotice)
+	return nil
 }
 
 // displayNameRunes は画面に出す名前の上限。サーバー一覧の登録名と同じ長さに
