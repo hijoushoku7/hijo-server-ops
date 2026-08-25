@@ -33,6 +33,10 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		model.settingCursor = 0
 		return model, nil
 	}
+	if model.timeModal == nil && !model.settingsOpen && !model.quitMenuOpen &&
+		message.String() == "c" && !model.editingConsole() {
+		return model, model.copyServerAddress()
+	}
 	if !model.editingConsole() {
 		key = hjklArrowKey(key)
 	}

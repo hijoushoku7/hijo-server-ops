@@ -171,6 +171,10 @@ func ExitAutoQuit(seconds int) string {
 	return fmt.Sprintf("%d 秒後に hso を終了します（キー入力で解除）", seconds)
 }
 
+func AddressCopied(address string) string {
+	return "アドレスをコピーしました: " + address
+}
+
 // キーバー（画面下部のキー説明）。日本語は全角なので、最小端末幅 72 桁に
 // 収まるよう短くしている。
 const (

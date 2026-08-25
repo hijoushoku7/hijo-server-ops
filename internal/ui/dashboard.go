@@ -105,10 +105,21 @@ func (model *Model) statsLines() []string {
 }
 
 func (model *Model) serverAddressLine() string {
-	if model.serverIP == "" || model.serverPort == 0 {
+	address, ok := model.serverAddress()
+	if !ok {
 		return "Server n/a"
 	}
-	return fmt.Sprintf("Server %s:%d", model.serverIP, model.serverPort)
+	// c キーでコピーできることをアドレスの隣に出す。c は複数モードで効くので
+	// キーバー 1 本では覆えず、どのキーバーも最小幅 72 で埋まっていて足せない。
+	return "Server " + address + " (c)"
+}
+
+// serverAddress は IP と port が両方取れているときだけ "IP:port" を返す。
+func (model *Model) serverAddress() (string, bool) {
+	if model.serverIP == "" || model.serverPort == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%s:%d", model.serverIP, model.serverPort), true
 }
 
 func (model *Model) rssLine() string {
