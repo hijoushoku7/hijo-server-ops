@@ -271,3 +271,19 @@ func TestSettingsToggleAutoRestart(t *testing.T) {
 		t.Fatalf("saved = %#v", saved)
 	}
 }
+
+// 端末が低いと全項目は入らない。窓を切っても選択中の項目が消えないこと。
+func TestSettingsModalKeepsCursorVisible(t *testing.T) {
+	model := newTestModel()
+	model.layout = calculateLayout(minimumWidth, minimumHeight)
+	model.settingCursor = len(settingItems) - 1
+	box, _, _ := model.settingsModal()
+	content := stripANSI(box)
+	if strings.Count(content, "\n")+1 > minimumHeight {
+		t.Fatalf("modal is taller than the screen:\n%s", content)
+	}
+	last := settingItems[model.settingCursor]
+	if !strings.Contains(content, last.valueLabel(model.settings)) {
+		t.Fatalf("cursor row is off screen:\n%s", content)
+	}
+}

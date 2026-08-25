@@ -22,7 +22,16 @@ func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, te
 }
 
 func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.Cmd) {
-	if model.exit != nil || model.mouseDiscarded() || message.Button != tea.MouseLeft {
+	if model.exit != nil || message.Button != tea.MouseLeft {
+		return model, nil
+	}
+	// メニューは画面の中央に大きく出る。外したクリックは「やめる」の意図と
+	// 見て閉じる。
+	if model.quitMenuOpen {
+		model.quitMenuOpen = false
+		return model, nil
+	}
+	if model.mouseDiscarded() {
 		return model, nil
 	}
 	if index, ok := model.playerAt(message.X, message.Y); ok {
