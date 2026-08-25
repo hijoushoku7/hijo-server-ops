@@ -142,6 +142,7 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 		"OptCharcoal":           OptCharcoal,
 		"StatusIdle":            StatusIdle,
 		"StatusStopping":        StatusStopping,
+		"ServerStoppedNotice":   ServerStoppedNotice,
 		"BarItem":               BarItem,
 		"BarValue":              BarValue,
 		"BarCandidate":          BarCandidate,

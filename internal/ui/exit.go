@@ -153,10 +153,21 @@ func (model *Model) setProcessExit(message ProcessExitedMsg) tea.Cmd {
 		err = model.runErr
 		crashed = true
 	}
+	// ^C で止めて無事に終わったなら、そのまま hso も終わる。自分で終了を
+	// 指示した後にログ全面のモーダルを見せられ、カウントダウンを待たされる
+	// 理由がない。
+	if model.quitting && !crashed {
+		return tea.Quit
+	}
 	state := model.newExitState(crashed, err, message.ExitCode, startedAt, exitedAt)
 	// hso 自身の失敗で開いていたモーダルを、その後始末で届く終了通知が
 	// 普通のクラッシュに見せかけないようにする。
 	state.fatal = model.exit != nil && model.exit.fatal
+	// ^C 由来の異常終了はもう終わらせるつもりの世代なので、三択のカーソルを
+	// 最初から終了に置く。原因は読ませたいのでモーダル自体は出す。
+	if model.quitting {
+		state.button = 2
+	}
 	model.exit = state
 	model.restart.record(startedAt, exitedAt, state.crashed && !state.fatal)
 	if state.crashed {
