@@ -52,7 +52,7 @@ const QuitMenuTitle = "メニュー"
 
 // 配色プリセットの表示名。
 const (
-	OptDefault  = "既定"
+	OptDracula  = "ドラキュラ"
 	OptCustom   = "カスタム"
 	OptMono     = "モノクロ"
 	OptNeon     = "ネオン"
