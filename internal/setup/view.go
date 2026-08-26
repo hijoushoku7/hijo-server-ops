@@ -15,20 +15,13 @@ import (
 var (
 	palette = ui.StartupColors()
 
-	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(palette.Title)).
-			Bold(true)
-	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(palette.Dim))
-	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(palette.Foreground)).
-			Background(lipgloss.Color(palette.Background)).
-			Bold(true)
+	titleStyle    = palette.Title
+	dimStyle      = palette.Dim
+	selectedStyle = palette.Selected
+	keyStyle      = palette.Key
+
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF5555"))
-	keyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(palette.KeyForeground)).
-			Background(lipgloss.Color(palette.KeyBackground))
 )
 
 func (m *model) View() tea.View {

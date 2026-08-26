@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
@@ -21,18 +20,10 @@ const startListViewport = 10
 var (
 	startPalette = ui.StartupColors()
 
-	startTitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(startPalette.Title)).
-			Bold(true)
-	startSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(startPalette.Foreground)).
-				Background(lipgloss.Color(startPalette.Background)).
-				Bold(true)
-	startDimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(startPalette.Dim))
-	startKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(startPalette.KeyForeground)).
-			Background(lipgloss.Color(startPalette.KeyBackground))
+	startTitleStyle    = startPalette.Title
+	startSelectedStyle = startPalette.Selected
+	startDimStyle      = startPalette.Dim
+	startKeyStyle      = startPalette.Key
 )
 
 type startRow struct {

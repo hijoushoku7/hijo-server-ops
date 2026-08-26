@@ -356,28 +356,22 @@ func playerStyles(colors []string) []lipgloss.Style {
 	return styles
 }
 
-// StartupPalette は選択画面（hso start・セットアップ）が使う配色。
+// StartupPalette は選択画面（hso start・セットアップ）が使うスタイル。
 type StartupPalette struct {
-	Title         string
-	Foreground    string
-	Background    string
-	KeyForeground string
-	KeyBackground string
-	Dim           string
+	Title    lipgloss.Style
+	Selected lipgloss.Style
+	Key      lipgloss.Style
+	Dim      lipgloss.Style
 }
 
-// StartupColors は既定設定のプリセットから選択画面の配色を引く。
-// 選択画面は hso.toml を読む前に描くので設定には追従できないが、
-// 16 進値を焼き込むと本体の既定を変えたときに片方だけ古くなる。
+// StartupColors は本体と同じスタイルを選択画面に渡す。選択画面は hso.toml を
+// 読む前に描くので設定には追従できないが、色を焼き直すと本体の既定を
+// 変えたときに片方だけ古くなる。init() が既定を流し込んだ直後の値を返す。
 func StartupColors() StartupPalette {
-	settings := DefaultSettings()
-	selection := selectionPresets[settings.SelectionPreset]
 	return StartupPalette{
-		Title:         titlePresets[settings.TitlePreset],
-		Foreground:    selection.foreground,
-		Background:    selection.background,
-		KeyForeground: selection.keyForeground,
-		KeyBackground: selection.keyBackground,
-		Dim:           framePresets[settings.FramePreset].dim,
+		Title:    titleStyle,
+		Selected: selectedStyle,
+		Key:      keyStyle,
+		Dim:      dimStyle,
 	}
 }
