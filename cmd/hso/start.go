@@ -6,31 +6,24 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/pidfile"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
+	"github.com/hijoushoku7/hijo-server-ops/internal/ui"
 )
 
 const startListViewport = 10
 
-// 色は internal/ui の sunset プリセットと同じ値。選択画面は hso.toml を
-// 読む前に描くので配色を持てず、本体の既定と同じ色を焼き込んで揃える。
+// 選択画面は hso.toml を読む前に描くので配色を持てず、本体の既定と同じ色で揃える。
 var (
-	startTitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF8A65")).
-			Bold(true)
-	startSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#2B1B20")).
-				Background(lipgloss.Color("#FF8A65")).
-				Bold(true)
-	startDimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#87616B"))
-	startKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#2B1B20")).
-			Background(lipgloss.Color("#FFB4A2"))
+	startPalette = ui.StartupColors()
+
+	startTitleStyle    = startPalette.Title
+	startSelectedStyle = startPalette.Selected
+	startDimStyle      = startPalette.Dim
+	startKeyStyle      = startPalette.Key
 )
 
 type startRow struct {
