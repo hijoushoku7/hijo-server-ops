@@ -8,25 +8,27 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
+	"github.com/hijoushoku7/hijo-server-ops/internal/ui"
 )
 
-// 色は internal/ui の sunset プリセットと同じ値。選択画面は hso.toml を
-// 読む前に描くので配色を持てず、本体の既定と同じ色を焼き込んで揃える。
+// 選択画面は hso.toml を読む前に描くので配色を持てず、本体の既定と同じ色で揃える。
 var (
+	palette = ui.StartupColors()
+
 	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF8A65")).
+			Foreground(lipgloss.Color(palette.Title)).
 			Bold(true)
 	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#87616B"))
+			Foreground(lipgloss.Color(palette.Dim))
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#2B1B20")).
-			Background(lipgloss.Color("#FF8A65")).
+			Foreground(lipgloss.Color(palette.Foreground)).
+			Background(lipgloss.Color(palette.Background)).
 			Bold(true)
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF5555"))
 	keyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#2B1B20")).
-			Background(lipgloss.Color("#FFB4A2"))
+			Foreground(lipgloss.Color(palette.KeyForeground)).
+			Background(lipgloss.Color(palette.KeyBackground))
 )
 
 func (m *model) View() tea.View {

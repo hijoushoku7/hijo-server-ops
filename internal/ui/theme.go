@@ -355,3 +355,29 @@ func playerStyles(colors []string) []lipgloss.Style {
 	}
 	return styles
 }
+
+// StartupPalette は選択画面（hso start・セットアップ）が使う配色。
+type StartupPalette struct {
+	Title         string
+	Foreground    string
+	Background    string
+	KeyForeground string
+	KeyBackground string
+	Dim           string
+}
+
+// StartupColors は既定設定のプリセットから選択画面の配色を引く。
+// 選択画面は hso.toml を読む前に描くので設定には追従できないが、
+// 16 進値を焼き込むと本体の既定を変えたときに片方だけ古くなる。
+func StartupColors() StartupPalette {
+	settings := DefaultSettings()
+	selection := selectionPresets[settings.SelectionPreset]
+	return StartupPalette{
+		Title:         titlePresets[settings.TitlePreset],
+		Foreground:    selection.foreground,
+		Background:    selection.background,
+		KeyForeground: selection.keyForeground,
+		KeyBackground: selection.keyBackground,
+		Dim:           framePresets[settings.FramePreset].dim,
+	}
+}

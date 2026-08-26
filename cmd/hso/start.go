@@ -12,25 +12,27 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/pidfile"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
+	"github.com/hijoushoku7/hijo-server-ops/internal/ui"
 )
 
 const startListViewport = 10
 
-// 色は internal/ui の sunset プリセットと同じ値。選択画面は hso.toml を
-// 読む前に描くので配色を持てず、本体の既定と同じ色を焼き込んで揃える。
+// 選択画面は hso.toml を読む前に描くので配色を持てず、本体の既定と同じ色で揃える。
 var (
+	startPalette = ui.StartupColors()
+
 	startTitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF8A65")).
+			Foreground(lipgloss.Color(startPalette.Title)).
 			Bold(true)
 	startSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#2B1B20")).
-				Background(lipgloss.Color("#FF8A65")).
+				Foreground(lipgloss.Color(startPalette.Foreground)).
+				Background(lipgloss.Color(startPalette.Background)).
 				Bold(true)
 	startDimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#87616B"))
+			Foreground(lipgloss.Color(startPalette.Dim))
 	startKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#2B1B20")).
-			Background(lipgloss.Color("#FFB4A2"))
+			Foreground(lipgloss.Color(startPalette.KeyForeground)).
+			Background(lipgloss.Color(startPalette.KeyBackground))
 )
 
 type startRow struct {
