@@ -7,7 +7,8 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-var overlapStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C"))
+// 初期値は theme.go の init() が既定プリセットから流し込む。
+var overlapStyle lipgloss.Style
 
 type memorySample struct {
 	heap      uint64

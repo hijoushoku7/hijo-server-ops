@@ -2,6 +2,7 @@ package ui
 
 import "charm.land/lipgloss/v2"
 
+// style は theme.go の init() が既定プリセットから流し込む。
 type frame struct {
 	topLeft     string
 	topRight    string
@@ -20,7 +21,6 @@ var (
 		bottomRight: "┘",
 		horizontal:  "─",
 		vertical:    "│",
-		style:       lipgloss.NewStyle().Foreground(lipgloss.Color("#777777")),
 	}
 	selectedFrame = frame{
 		topLeft:     "┏",
@@ -29,9 +29,6 @@ var (
 		bottomRight: "┛",
 		horizontal:  "━",
 		vertical:    "┃",
-		style: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#8BE9FD")).
-			Bold(true),
 	}
 	hoverFrame = frame{
 		topLeft:     "┌",
@@ -40,7 +37,6 @@ var (
 		bottomRight: "┘",
 		horizontal:  "─",
 		vertical:    "│",
-		style:       lipgloss.NewStyle().Foreground(lipgloss.Color("#8BE9FD")),
 	}
 	focusedFrame = frame{
 		topLeft:     "┏",
@@ -49,9 +45,6 @@ var (
 		bottomRight: "┛",
 		horizontal:  "━",
 		vertical:    "┃",
-		style: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#F1FA8C")).
-			Bold(true),
 	}
 	// modalFrame はフォーカス中と同じ色の細枠。重ねて出すモーダルが
 	// 呼び出し元のパネルと同じものだと分かり、かつ枠の太さで区別できる。
@@ -62,7 +55,6 @@ var (
 		bottomRight: "┘",
 		horizontal:  "─",
 		vertical:    "│",
-		style:       focusedFrame.style,
 	}
 )
 

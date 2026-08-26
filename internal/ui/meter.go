@@ -11,15 +11,12 @@ import (
 	"github.com/hijoushoku7/hijo-server-ops/internal/procstats"
 )
 
+// 初期値は theme.go の init() が既定プリセットから流し込む。
 var (
-	meterFullStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#50FA7B"))
-	meterHighStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFB86C"))
-	meterOverStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF5555"))
-	meterEmptyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#444444"))
+	meterFullStyle  lipgloss.Style
+	meterHighStyle  lipgloss.Style
+	meterOverStyle  lipgloss.Style
+	meterEmptyStyle lipgloss.Style
 )
 
 const (
