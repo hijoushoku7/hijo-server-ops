@@ -1326,7 +1326,7 @@ func TestStatsRSSLineKeepsDeltaOnNarrowTerminals(t *testing.T) {
 	if stringWidth(narrow) > model.layout.statsWidth-2 {
 		t.Fatalf("narrow line = %q (%d 桁)", narrow, stringWidth(narrow))
 	}
-	if !strings.Contains(narrow, "Δ +3.2G") {
+	if !strings.Contains(narrow, "Δ +3.2G") || strings.Contains(narrow, "off-heap") {
 		t.Fatalf("narrow line = %q", narrow)
 	}
 
@@ -1334,7 +1334,7 @@ func TestStatsRSSLineKeepsDeltaOnNarrowTerminals(t *testing.T) {
 	model.resize(110, 30)
 	wide := stripANSI(model.rssLine())
 	if !strings.Contains(wide, "16.0G total") ||
-		!strings.Contains(wide, "Δ +3.2G") {
+		!strings.Contains(wide, "Δ +3.2G off-heap") {
 		t.Fatalf("wide line = %q", wide)
 	}
 
@@ -1977,7 +1977,7 @@ func TestModelShowsGCCollectionsAsUnavailableUntilFirstEvent(t *testing.T) {
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 
 	stats := strings.Join(model.statsLines(), "\n")
-	if !strings.Contains(stats, "GC   n/a  total") {
+	if !strings.Contains(stats, "GC   n/a  stopped") {
 		t.Fatalf("stats = %q", stats)
 	}
 
@@ -1987,7 +1987,7 @@ func TestModelShowsGCCollectionsAsUnavailableUntilFirstEvent(t *testing.T) {
 	}})
 
 	stats = strings.Join(model.statsLines(), "\n")
-	if !strings.Contains(stats, "GC   1 collections  total") {
+	if !strings.Contains(stats, "GC   1 collections  stopped") {
 		t.Fatalf("stats = %q", stats)
 	}
 }

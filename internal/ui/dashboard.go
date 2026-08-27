@@ -70,7 +70,7 @@ func (model *Model) statsLines() []string {
 		),
 		model.rssLine(),
 		fmt.Sprintf(
-			"GC   %s  total %s  last %s  freq %s",
+			"GC   %s  stopped %s  last %s  freq %s",
 			formatCollections(model.gcStats.Collections),
 			formatPause(
 				model.gcStats.TotalPause,
@@ -127,29 +127,30 @@ func (model *Model) rssLine() string {
 	ratio := highlight(formatRSSPercent(model.memory), rssRatio(model.memory))
 	delta := formatDelta(model.memory.RSS, model.metrics.Heap.Committed)
 
-	short := fmt.Sprintf("RSS  %s (%s)  Δ %s", rss, ratio, delta)
-	limit, source := rssDenominator(model.memory)
-	if source == "" {
-		return short
+	denominator := ""
+	if limit, source := rssDenominator(model.memory); source != "" {
+		label := "total"
+		if source == "cgroup" {
+			label = "limit"
+		}
+		denominator = fmt.Sprintf(" / %s %s", formatBytes(limit), label)
 	}
 
-	label := "total"
-	if source == "cgroup" {
-		label = "limit"
+	suffix := " off-heap usage"
+	if delta == "n/a" {
+		suffix = ""
 	}
-	full := fmt.Sprintf(
-		"RSS  %s / %s %s (%s)  Δ %s",
-		rss,
-		formatBytes(limit),
-		label,
-		ratio,
-		delta,
-	)
-	// 分母よりも診断上重要な RSS と heap committed の差分を残す。
-	if stringWidth(full) > model.layout.statsWidth-2 {
-		return short
+	short := fmt.Sprintf("RSS  %s (%s)  Δ %s", rss, ratio, delta)
+	for _, line := range []string{
+		fmt.Sprintf("RSS  %s%s (%s)  Δ %s%s", rss, denominator, ratio, delta, suffix),
+		fmt.Sprintf("RSS  %s%s (%s)  Δ %s", rss, denominator, ratio, delta),
+		fmt.Sprintf("RSS  %s (%s)  Δ %s%s", rss, ratio, delta, suffix),
+	} {
+		if stringWidth(line) <= model.layout.statsWidth-2 {
+			return line
+		}
 	}
-	return full
+	return short
 }
 
 func (model *Model) renderGraphPanel() string {
