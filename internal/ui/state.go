@@ -49,6 +49,7 @@ func rememberNumber(last *hsperfdata.Number, next hsperfdata.Number) {
 }
 
 func (model *Model) updateServerAddress(message ServerAddressMsg) {
+	//前回stateを消すためnilであっても先に代入する
 	model.serverIP = message.IP
 	model.serverPort = message.Port
 	if message.IPErr != "" {
