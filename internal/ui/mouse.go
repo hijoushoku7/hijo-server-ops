@@ -35,9 +35,13 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 	if model.exit != nil || message.Button != tea.MouseLeft {
 		return model, nil
 	}
-	// メニューは画面の中央に大きく出る。外したクリックは「やめる」の意図と
-	// 見て閉じる。
 	if model.confirmOpen {
+		// ボタンを押したときはキーボードの Enter と同じ経路へ流す。外した
+		// クリックは「やめる」の意図と見て、メニューへ戻す。
+		if button, ok := model.confirmButtonAt(message.X, message.Y); ok {
+			model.confirmCursor = button
+			return model.handleConfirmKey(tea.Key{Code: tea.KeyEnter})
+		}
 		model.confirmOpen = false
 		return model, nil
 	}
@@ -45,7 +49,11 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 		if item, ok := model.quitMenuItemAt(message.X, message.Y); ok {
 			return model.activateQuitMenu(item)
 		}
-		model.quitMenuOpen = false
+		// 項目を外しても、モーダルの中なら何もしない。字形の左右の余白を
+		// 押しただけでメニューごと閉じると、狙いを外すたびに開き直す。
+		if !model.quitMenuBox.contains(message.X, message.Y) {
+			model.quitMenuOpen = false
+		}
 		return model, nil
 	}
 	if model.mouseDiscarded() {

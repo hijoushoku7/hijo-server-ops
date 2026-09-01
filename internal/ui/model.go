@@ -145,11 +145,13 @@ type Model struct {
 	// quitMenuHover はマウスが指している項目。指していないときは -1。
 	quitMenuHover int
 	quitMenuHits  [quitMenuItemCount]hitbox
+	quitMenuBox   hitbox
 	// confirmOpen は RESTART / QUIT の確認モーダル。confirmItem がどちらを
 	// 確認しているか、confirmCursor は 0 が OK、1 が CANCEL。
 	confirmOpen   bool
 	confirmItem   int
 	confirmCursor int
+	confirmHits   [confirmButtonCount]hitbox
 	exit          *exitState
 	restart       restartTracker
 	// 0 は停止中、1..3 は表示する点の数。

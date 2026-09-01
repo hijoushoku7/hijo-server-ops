@@ -243,3 +243,63 @@ func styledWith(view, body string, style lipgloss.Style) bool {
 	}
 	return false
 }
+
+// 確認モーダルのボタンもクリックで押せる。外したクリックだけが「やめる」。
+func TestModelMouseConfirmButtons(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 0, DefaultSettings(), ServerInfo{})
+	model.resize(100, 30)
+	model.openQuitMenu()
+	_, _ = model.activateQuitMenu(quitMenuRestart)
+	_ = model.View()
+
+	// CANCEL を押してもサーバーには触らず、メニューへ戻る。
+	cancel := model.confirmHits[confirmCancel]
+	_, _ = model.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: cancel.x0, Y: cancel.y0,
+	})
+	if model.confirmOpen || !model.quitMenuOpen {
+		t.Fatalf("confirm = %t, menu = %t", model.confirmOpen, model.quitMenuOpen)
+	}
+	select {
+	case action := <-actions:
+		t.Fatalf("CANCEL のクリックで動いた: %#v", action)
+	default:
+	}
+
+	// OK を押したときだけ要求が飛ぶ。
+	_, _ = model.activateQuitMenu(quitMenuRestart)
+	_ = model.View()
+	ok := model.confirmHits[confirmOK]
+	_, _ = model.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: ok.x1, Y: ok.y0,
+	})
+	if action := <-actions; action.Kind != ActionRestart {
+		t.Fatalf("action = %#v", action)
+	}
+}
+
+// 大きい文字から離れた余白のクリックでは項目が動かない。
+func TestModelMouseIgnoresQuitMenuPadding(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 30)
+	model.openQuitMenu()
+	_ = model.View()
+
+	quit := model.quitMenuHits[quitMenuQuit]
+	_, _ = model.Update(tea.MouseMotionMsg{X: quit.x0 - 2, Y: quit.y0})
+	if model.quitMenuHover != -1 {
+		t.Fatalf("hover = %d", model.quitMenuHover)
+	}
+	// 余白のクリックは何も起こさない。閉じるのはモーダルの外を押したとき。
+	_, _ = model.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: quit.x0 - 2, Y: quit.y0,
+	})
+	if !model.quitMenuOpen || model.confirmOpen {
+		t.Fatalf("menu = %t, confirm = %t", model.quitMenuOpen, model.confirmOpen)
+	}
+	_, _ = model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})
+	if model.quitMenuOpen {
+		t.Fatal("モーダルの外を押しても閉じない")
+	}
+}
