@@ -52,6 +52,17 @@ const (
 
 const QuitMenuTitle = "Menu"
 
+// Restart and quit confirmation modals.
+const (
+	RestartConfirmTitle = "Confirm restart"
+	RestartConfirmBody  = "Restart the server?"
+	QuitConfirmTitle    = "Confirm quit"
+	QuitConfirmBody     = "Stop the server and quit hso?"
+)
+
+// ServerRestartedNotice is the line hso puts into Log once a restart is done.
+const ServerRestartedNotice = "Server restarted!"
+
 // Color preset names.
 const (
 	OptDracula  = "dracula"
@@ -191,10 +202,8 @@ const (
 	BarQuitNow      = "quit now"
 	BarSelectPanel  = "select"
 	BarFocus        = "focus"
-	BarSettings     = "settings"
 	BarMenu         = "menu"
 	BarBackToSelect = "select"
-	BarConsoleTab   = "input/restart/stop"
 	BarComplete     = "complete"
 	BarExecute      = "execute"
 	BarBack         = "back"

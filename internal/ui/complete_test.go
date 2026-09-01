@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 )
 
 func TestModelCompletions(t *testing.T) {
@@ -125,19 +123,6 @@ func TestModelConsoleLineShowsHintWithoutOverflow(t *testing.T) {
 	}
 }
 
-func TestModelKeybarShowsCompletionForCompletableInput(t *testing.T) {
-	model := newTestModel()
-	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
-	model.input = []rune("weather")
-	if bar := stripANSI(model.keybar()); !strings.Contains(bar, msg.BarComplete) {
-		t.Fatalf("keybar = %q", bar)
-	}
-	model.input = []rune("say hello")
-	if bar := stripANSI(model.keybar()); !strings.Contains(bar, msg.BarConsoleTab) {
-		t.Fatalf("keybar = %q", bar)
-	}
-}
-
 func TestModelCompletesCaseInsensitiveCandidateWithoutHint(t *testing.T) {
 	model := newTestModel()
 	model.input = []rune("tell al")
@@ -199,21 +184,10 @@ func TestModelClosesCompletionOnEscapeWithoutLeavingInput(t *testing.T) {
 		t.Fatal("Esc で候補が閉じていない")
 	}
 	if !model.editingConsole() {
-		t.Fatalf("mode = %d, panel = %d, focus = %d", model.mode, model.panel, model.consoleFocus)
+		t.Fatalf("mode = %d, panel = %d", model.mode, model.panel)
 	}
 	if got := string(model.input); got != "weather " {
 		t.Fatalf("input = %q, want %q", got, "weather ")
-	}
-}
-
-func TestModelKeepsTabFocusCycleWithoutCompletions(t *testing.T) {
-	model := newTestModel()
-	model.input = []rune("say hello")
-
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-
-	if model.consoleFocus != consoleRestart {
-		t.Fatalf("consoleFocus = %d, want %d", model.consoleFocus, consoleRestart)
 	}
 }
 

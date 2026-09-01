@@ -29,6 +29,8 @@ func TestSettingsModalOpensWithGAndChangesTheme(t *testing.T) {
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	// メニューの既定は OPTIONS。Enter で設定モーダルへ入る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !model.settingsOpen {
 		t.Fatal("settings did not open")
 	}
@@ -75,6 +77,7 @@ func TestSettingsAreSavedEveryTimeTheModalCloses(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	}
@@ -95,6 +98,8 @@ func TestSettingsSaveFailureShowsStatus(t *testing.T) {
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	// メニューの既定は OPTIONS。Enter で設定モーダルへ入る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if !strings.Contains(model.status, "書けません") {
 		t.Fatalf("status = %q", model.status)
@@ -110,6 +115,8 @@ func TestSettingsModalShowsSectionHeadings(t *testing.T) {
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	// メニューの既定は OPTIONS。Enter で設定モーダルへ入る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	content := stripANSI(model.View().Content)
 	preferences := strings.Index(content, msg.SectionPreferences)
@@ -253,6 +260,8 @@ func TestSettingsToggleAutoRestart(t *testing.T) {
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	// メニューの既定は OPTIONS。Enter で設定モーダルへ入る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if model.settings.AutoRestart {
 		t.Fatal("auto restart is enabled by default")

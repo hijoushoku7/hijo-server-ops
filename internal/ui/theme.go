@@ -13,17 +13,19 @@ import (
 func init() { applyTheme(DefaultSettings()) }
 
 var (
-	backgroundColor   stdcolor.Color
-	titleStyle        lipgloss.Style
-	heapStyle         lipgloss.Style
-	rssStyle          lipgloss.Style
-	dimStyle          lipgloss.Style
-	selectedStyle     lipgloss.Style
-	keyStyle          lipgloss.Style
-	logTimestampStyle lipgloss.Style
-	logReceivedStyle  lipgloss.Style
-	logKindStyles     map[serverlog.Kind]lipgloss.Style
-	logPlayerStyles   []lipgloss.Style
+	backgroundColor stdcolor.Color
+	titleStyle      lipgloss.Style
+	heapStyle       lipgloss.Style
+	rssStyle        lipgloss.Style
+	dimStyle        lipgloss.Style
+	selectedStyle   lipgloss.Style
+	// selectionTextStyle は selectedStyle の色を反転させずに文字だけへ当てる。
+	selectionTextStyle lipgloss.Style
+	keyStyle           lipgloss.Style
+	logTimestampStyle  lipgloss.Style
+	logReceivedStyle   lipgloss.Style
+	logKindStyles      map[serverlog.Kind]lipgloss.Style
+	logPlayerStyles    []lipgloss.Style
 
 	// 終了モーダルの枠。異常終了と正常終了の区別は配色プリセットに
 	// 左右させない。単色プリセットで両者が同じ色になると意味が壊れる。
@@ -319,6 +321,9 @@ func applyTheme(settings Settings) {
 	selectedStyle = color(selection.foreground).
 		Background(lipgloss.Color(selection.background)).
 		Bold(true)
+	// 大きい文字のホバーは反転させず、選択色を文字色に当てるだけにする。
+	// 背景を塗ると字形の隙間まで埋まり、線で組んだ文字が読めない。
+	selectionTextStyle = color(selection.background)
 	keyStyle = color(selection.keyForeground).
 		Background(lipgloss.Color(selection.keyBackground))
 
@@ -333,6 +338,9 @@ func applyTheme(settings Settings) {
 		serverlog.KindCommand:     color(logs.command),
 		serverlog.KindLag:         color(logs.lag),
 		serverlog.KindOther:       color(logs.other),
+		// hso 自身の通知はログの流れに埋もれると意味がない。プリセットに
+		// 左右させず、終了モーダルの正常色（緑）をそのまま使う。
+		serverlog.KindNotice: exitStoppedStyle,
 	}
 	logPlayerStyles = playerStyles(logs.players)
 }

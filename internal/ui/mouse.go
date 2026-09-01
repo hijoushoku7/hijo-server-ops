@@ -4,12 +4,22 @@ import tea "charm.land/bubbletea/v2"
 
 func (model *Model) mouseDiscarded() bool {
 	return model.settingsOpen || model.timeModal != nil || model.completionOpen ||
-		model.quitMenuOpen ||
+		model.quitMenuOpen || model.confirmOpen ||
 		(model.mode == modeFocus && model.panel == panelPlayers &&
 			model.playerStage == playerStageCommands)
 }
 
 func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
+	// メニューだけは重なっている間もホバーを追う。確認モーダル中は背後を
+	// 触らせない。
+	if model.exit == nil && model.quitMenuOpen && !model.confirmOpen {
+		if item, ok := model.quitMenuItemAt(message.X, message.Y); ok {
+			model.quitMenuHover = item
+		} else {
+			model.quitMenuHover = -1
+		}
+		return model, nil
+	}
 	if model.exit != nil || model.mouseDiscarded() {
 		return model, nil
 	}
@@ -27,7 +37,14 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 	}
 	// メニューは画面の中央に大きく出る。外したクリックは「やめる」の意図と
 	// 見て閉じる。
+	if model.confirmOpen {
+		model.confirmOpen = false
+		return model, nil
+	}
 	if model.quitMenuOpen {
+		if item, ok := model.quitMenuItemAt(message.X, message.Y); ok {
+			return model.activateQuitMenu(item)
+		}
 		model.quitMenuOpen = false
 		return model, nil
 	}
@@ -45,7 +62,16 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 		return model, nil
 	}
 	if target, ok := model.layout.panelAt(message.X, message.Y); ok {
+		// 1 回目のクリックは仮選択（選択モードで枠だけ）。同じパネルをもう
+		// 一度押すとフォーカスへ入る。キーボードの「矢印で選ぶ → Enter」と
+		// 同じ 2 段にしておき、1 回のクリックで入力やスクロールの当たり先が
+		// 変わらないようにする。
+		if model.mode == modeSelect && model.selected && model.panel == target {
+			model.mode = modeFocus
+			return model, nil
+		}
 		model.panel = target
+		model.mode = modeSelect
 		model.selected = true
 	}
 	return model, nil

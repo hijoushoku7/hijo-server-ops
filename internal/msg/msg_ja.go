@@ -50,6 +50,17 @@ const (
 
 const QuitMenuTitle = "メニュー"
 
+// 再起動・終了の確認モーダル。
+const (
+	RestartConfirmTitle = "再起動の確認"
+	RestartConfirmBody  = "サーバーを再起動します。よろしいですか？"
+	QuitConfirmTitle    = "終了の確認"
+	QuitConfirmBody     = "サーバーを停止して終了します。よろしいですか？"
+)
+
+// ServerRestartedNotice は再起動が終わったときに Log へ差し込む 1 行。
+const ServerRestartedNotice = "サーバーを再起動しました！"
+
 // 配色プリセットの表示名。
 const (
 	OptDracula  = "ドラキュラ"
@@ -190,10 +201,8 @@ const (
 	BarQuitNow      = "即終了"
 	BarSelectPanel  = "選ぶ"
 	BarFocus        = "開く"
-	BarSettings     = "設定"
 	BarMenu         = "メニュー"
 	BarBackToSelect = "選択"
-	BarConsoleTab   = "入力/再起動/停止"
 	BarComplete     = "補完"
 	BarExecute      = "実行"
 	BarBack         = "戻る"

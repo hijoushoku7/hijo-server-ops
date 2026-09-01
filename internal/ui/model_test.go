@@ -509,26 +509,83 @@ func TestModelSendsBoundedCommandInput(t *testing.T) {
 	}
 }
 
-func TestModelSelectsRestartAndStopWithTab(t *testing.T) {
+func TestModelRestartsFromMenuAfterConfirmation(t *testing.T) {
 	actions := make(chan Action, 1)
 	model := New(actions, nil, 0, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
 
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	if model.consoleFocus != consoleRestart {
-		t.Fatalf("consoleFocus = %d", model.consoleFocus)
-	}
+	// g でメニュー、↓ で RESTART。確認を挟まずには要求しない。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	pressRune(model, 'g')
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !model.confirmOpen || model.confirmCursor != confirmOK {
+		t.Fatalf("open = %t, cursor = %d",
+			model.confirmOpen, model.confirmCursor)
+	}
+	if view := stripANSI(model.View().Content); !strings.Contains(view, msg.RestartConfirmTitle) ||
+		!strings.Contains(view, "[ OK ]") {
+		t.Fatalf("view does not show the confirmation:\n%s", view)
+	}
+	select {
+	case action := <-actions:
+		t.Fatalf("restart was requested without confirmation: %#v", action)
+	default:
+	}
+
+	// CANCEL では何も起きず、メニューへ戻る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.confirmOpen || !model.quitMenuOpen ||
+		model.quitMenuCursor != quitMenuRestart {
+		t.Fatalf("confirm = %t, menu = %t, cursor = %d", model.confirmOpen,
+			model.quitMenuOpen, model.quitMenuCursor)
+	}
+	select {
+	case action := <-actions:
+		t.Fatalf("CANCEL で再起動を要求した: %#v", action)
+	default:
+	}
+
+	// OK でだけ要求が飛び、メニューごと閉じる。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.quitMenuOpen {
+		t.Fatal("OK でメニューが残っている")
+	}
 	if action := <-actions; action.Kind != ActionRestart {
 		t.Fatalf("action = %#v", action)
 	}
+}
 
-	_, _ = model.Update(ActionResultMsg{Action: Action{Kind: ActionRestart}})
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if model.consoleFocus != consoleStop {
-		t.Fatalf("consoleFocus = %d", model.consoleFocus)
+func TestModelQuitsFromMenu(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 0, DefaultSettings(), ServerInfo{})
+	model.resize(80, 24)
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	pressRune(model, 'g')
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	// QUIT も確認を挟む。CANCEL ではメニューへ戻るだけ。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !model.confirmOpen || model.confirmItem != quitMenuQuit {
+		t.Fatalf("confirm = %t, item = %d", model.confirmOpen, model.confirmItem)
 	}
-	// 停止ボタンも ^C と同じく、まずサーバーに stop を送って終わるのを待つ。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	select {
+	case action := <-actions:
+		t.Fatalf("CANCEL で停止した: %#v", action)
+	default:
+	}
+	if !model.quitMenuOpen {
+		t.Fatal("CANCEL でメニューへ戻っていない")
+	}
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	// QUIT も ^C と同じく、まずサーバーに stop を送って終わるのを待つ。
 	if command != nil {
 		t.Fatalf("command = %T", command())
 	}
@@ -570,8 +627,8 @@ func TestModelMovesBetweenPanelsInSelectMode(t *testing.T) {
 	}
 
 	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if model.mode != modeFocus || model.consoleFocus != consoleInput {
-		t.Fatalf("mode = %d, consoleFocus = %d", model.mode, model.consoleFocus)
+	if model.mode != modeFocus {
+		t.Fatalf("mode = %d", model.mode)
 	}
 }
 
@@ -791,6 +848,7 @@ func TestKeybarFitsMinimumWidth(t *testing.T) {
 		"settings": func(t *testing.T, model *Model) {
 			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 			_, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			if !model.settingsOpen {
 				t.Fatal("settings did not open")
 			}
@@ -1077,8 +1135,8 @@ func TestModelPutsPlayerCommandIntoTheConsole(t *testing.T) {
 	if string(model.input) != "kick bob " {
 		t.Fatalf("input = %q", string(model.input))
 	}
-	if model.panel != panelConsole || model.consoleFocus != consoleInput {
-		t.Fatalf("panel = %d, focus = %d", model.panel, model.consoleFocus)
+	if model.panel != panelConsole {
+		t.Fatalf("panel = %d", model.panel)
 	}
 	select {
 	case action := <-actions:
@@ -1292,6 +1350,15 @@ func modelLogViewport(model *Model) bufferViewport {
 	}
 }
 
+func logPanelText(model *Model) string {
+	viewport := modelLogViewport(model)
+	var lines []string
+	for _, line := range model.logs.Window(viewport) {
+		lines = append(lines, renderLogLine(line, viewport.width))
+	}
+	return strings.Join(lines, "\n")
+}
+
 func stripANSI(value string) string {
 	return ansi.Strip(value)
 }
@@ -1373,30 +1440,44 @@ func TestModelRestartAnimatesUntilServerStarts(t *testing.T) {
 	actions := make(chan Action, 1)
 	model := New(actions, nil, 1, DefaultSettings(), ServerInfo{})
 	model.resize(80, 24)
-	model.consoleFocus = consoleRestart
 
-	_, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, command := model.Update(restartTickMsg{})
+	if command != nil {
+		t.Fatalf("停止中に tick が再武装した: %T", command())
+	}
+
+	command = model.requestRestart()
 	if action := <-actions; action.Kind != ActionRestart {
 		t.Fatalf("action = %#v", action)
 	}
 	if model.restartPhase == 0 || command == nil {
 		t.Fatalf("restartPhase = %d, command = %T", model.restartPhase, command)
 	}
-	// 点は 3 桁に揃え、コンソールのボタン幅を揺らさない。
-	if console := stripANSI(consoleText(model)); !strings.Contains(console, "[restarting.  ]") {
-		t.Fatalf("console = %q", console)
+	// 点は 3 桁に揃え、終了モーダルの行幅を揺らさない。
+	if dots := model.restartDots(); dots != ".  " {
+		t.Fatalf("dots = %q", dots)
 	}
 	_, _ = model.Update(restartTickMsg{})
-	if console := stripANSI(consoleText(model)); !strings.Contains(console, "[restarting.. ]") {
-		t.Fatalf("console = %q", console)
+	if dots := model.restartDots(); dots != ".. " {
+		t.Fatalf("dots = %q", dots)
 	}
 
 	_, _ = model.Update(ServerStartedMsg{Generation: 2, StartedAt: time.Now()})
 	if model.restartPhase != 0 {
 		t.Fatal("animation outlived the restart")
 	}
-	if console := stripANSI(consoleText(model)); !strings.Contains(console, "[restart]") {
-		t.Fatalf("console = %q", console)
+	// 立ち上がったことは Log に緑の 1 行で残す。
+	log := logPanelText(model)
+	if !strings.Contains(stripANSI(log), msg.ServerRestartedNotice) {
+		t.Fatalf("log = %q", stripANSI(log))
+	}
+	if !strings.Contains(log, exitStoppedStyle.Render(msg.ServerRestartedNotice)) {
+		t.Fatalf("通知が通常のログ色で出ている: %q", log)
+	}
+	// 再起動を待っていないときは差し込まない。
+	_, _ = model.Update(ServerStartedMsg{Generation: 3, StartedAt: time.Now()})
+	if got := strings.Count(stripANSI(logPanelText(model)), msg.ServerRestartedNotice); got != 1 {
+		t.Fatalf("notice count = %d", got)
 	}
 	// 止まった後の tick では再武装しない。
 	if _, command := model.Update(restartTickMsg{}); command != nil {

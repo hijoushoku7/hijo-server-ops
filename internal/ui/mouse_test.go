@@ -2,9 +2,11 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func TestLayoutPanelAt(t *testing.T) {
@@ -70,12 +72,26 @@ func TestModelMouseIgnoresModalAndClickOpensPlayerCommands(t *testing.T) {
 	model.playerList = []string{"alice"}
 	x := model.layout.statsWidth + model.layout.metersWidth + 1
 
-	// 通常のクリックはモードを変えず、選択対象だけを差し替える。
+	// 1 回目のクリックは仮選択で、フォーカスには入らない。
 	_, _ = model.Update(tea.MouseClickMsg{
 		X: model.layout.leftWidth, Y: statsHeight, Button: tea.MouseLeft,
 	})
-	if model.panel != panelLog || model.mode != modeFocus || !model.selected {
+	if model.panel != panelLog || model.mode != modeSelect || !model.selected {
 		t.Fatalf("panel click state = panel %d, mode %d, selected %t", model.panel, model.mode, model.selected)
+	}
+	// 同じパネルをもう一度押すと本選択。
+	_, _ = model.Update(tea.MouseClickMsg{
+		X: model.layout.leftWidth, Y: statsHeight, Button: tea.MouseLeft,
+	})
+	if model.panel != panelLog || model.mode != modeFocus {
+		t.Fatalf("second click state = panel %d, mode %d", model.panel, model.mode)
+	}
+	// 別のパネルを押したら、そこの仮選択からやり直す。
+	_, _ = model.Update(tea.MouseClickMsg{
+		X: 0, Y: statsHeight + model.layout.graphHeight, Button: tea.MouseLeft,
+	})
+	if model.panel != panelChat || model.mode != modeSelect {
+		t.Fatalf("other panel click state = panel %d, mode %d", model.panel, model.mode)
 	}
 
 	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 1, Button: tea.MouseLeft})
@@ -155,4 +171,75 @@ func TestModelMouseWheelOnExitIgnoresOpenModal(t *testing.T) {
 	if offset := model.logs.Offset(viewport); offset != 3 {
 		t.Fatalf("offset = %d, want 3", offset)
 	}
+}
+
+// メニューはマウスでも操作できる。ホバーは細線のまま文字色だけ変え、
+// カーソルの当たっている項目だけ太線にする。
+func TestModelMouseSelectsQuitMenuItem(t *testing.T) {
+	actions := make(chan Action, 1)
+	model := New(actions, nil, 0, DefaultSettings(), ServerInfo{})
+	model.resize(100, 30)
+	model.openQuitMenu()
+	// 当たり判定は描画のたびに作る。
+	_ = model.View()
+
+	restart := model.quitMenuHits[quitMenuRestart]
+	_, _ = model.Update(tea.MouseMotionMsg{X: restart.x0 + 1, Y: restart.y0 + 1})
+	if model.quitMenuHover != quitMenuRestart {
+		t.Fatalf("hover = %d", model.quitMenuHover)
+	}
+	box, _, _ := model.quitMenuModal()
+	// カーソルは OPTIONS のまま。ホバーで字形は変わらない。
+	if !strings.Contains(stripANSI(box), bigWords[quitMenuRestart][0]) ||
+		!strings.Contains(stripANSI(box), heavyStrokes.Replace(bigWords[quitMenuOptions][0])) {
+		t.Fatalf("menu = %q", stripANSI(box))
+	}
+	if !styledWith(box, bigWords[quitMenuRestart][0], selectionTextStyle) {
+		t.Fatal("ホバーの色が変わっていない")
+	}
+
+	// 外したところは何も指さない。
+	_, _ = model.Update(tea.MouseMotionMsg{X: 0, Y: 0})
+	if model.quitMenuHover != -1 {
+		t.Fatalf("hover = %d", model.quitMenuHover)
+	}
+
+	// クリックでその項目を選ぶ。RESTART は確認を挟む。
+	_, _ = model.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: restart.x0 + 1, Y: restart.y0 + 1,
+	})
+	if model.quitMenuCursor != quitMenuRestart || !model.confirmOpen {
+		t.Fatalf("cursor = %d, confirm = %t",
+			model.quitMenuCursor, model.confirmOpen)
+	}
+	select {
+	case action := <-actions:
+		t.Fatalf("クリックで確認なしに再起動した: %#v", action)
+	default:
+	}
+}
+
+// 項目を外したクリックは「やめる」の意図と見て閉じる。
+func TestModelMouseClickOutsideQuitMenuCloses(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 30)
+	model.openQuitMenu()
+	_ = model.View()
+
+	_, _ = model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})
+	if model.quitMenuOpen {
+		t.Fatal("メニューが閉じていない")
+	}
+}
+
+// styledWith は body を含む行がそのスタイルで描かれているかを見る。中央寄せの
+// 空白ごと Render するので、装飾済みの文字列そのものとは一致しない。
+func styledWith(view, body string, style lipgloss.Style) bool {
+	prefix, _, _ := strings.Cut(style.Render("x"), "x")
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(stripANSI(line), body) {
+			return strings.Contains(line, prefix)
+		}
+	}
+	return false
 }
