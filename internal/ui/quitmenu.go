@@ -158,10 +158,16 @@ func (model *Model) quitMenuModal() (string, int, int) {
 	height := len(lines) + 2
 	x := max(0, (model.layout.width-width)/2)
 	y := max(0, (model.layout.height-height)/2)
+	model.quitMenuBox = hitbox{
+		x0: x, x1: x + width - 1, y0: y, y1: y + height - 1,
+	}
 	for item, row := range rows {
-		// 枠の 1 行ぶん下から字形の 3 行。
+		// 枠の 1 行ぶん下から字形の 3 行。横は中央寄せした字形の実幅だけを
+		// 取る。行いっぱいにすると、離れた余白のクリックでも項目が動く。
+		wordWidth := stringWidth(bigWords[item][0])
+		left := x + 1 + quitMenuPad + (inner-wordWidth)/2
 		model.quitMenuHits[item] = hitbox{
-			x0: x, x1: x + width - 1,
+			x0: left, x1: left + wordWidth - 1,
 			y0: y + 1 + row, y1: y + 1 + row + 2,
 		}
 	}
@@ -174,6 +180,16 @@ type hitbox struct {
 
 func (box hitbox) contains(x, y int) bool {
 	return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1
+}
+
+// confirmButtonAt は最後に描いた確認モーダルのどのボタンを指しているかを返す。
+func (model *Model) confirmButtonAt(x, y int) (int, bool) {
+	for button, box := range model.confirmHits {
+		if box.contains(x, y) {
+			return button, true
+		}
+	}
+	return 0, false
 }
 
 // quitMenuItemAt は最後に描いたメニューのどの項目を指しているかを返す。
@@ -189,8 +205,11 @@ func (model *Model) quitMenuItemAt(x, y int) (int, bool) {
 // サーバーを止める操作の確認。誤って選んでもプレイヤーを落とさないよう、
 // RESTART と QUIT からは必ずここを通す。既定は OK に置く。
 const (
-	confirmWidth = 52
-	confirmOK    = 0
+	confirmWidth       = 52
+	confirmOK          = 0
+	confirmCancel      = 1
+	confirmButtonCount = 2
+	confirmButtonGap   = "  "
 )
 
 // confirmText は確認中の項目に出す見出しと本文を返す。
@@ -203,7 +222,8 @@ func confirmText(item int) (string, string) {
 
 func (model *Model) confirmModal() (string, int, int) {
 	// メニューと同じく、選択は反転ではなく文字色で示す。
-	buttons := []string{"[ OK ]", "[ CANCEL ]"}
+	labels := [confirmButtonCount]string{"[ OK ]", "[ CANCEL ]"}
+	buttons := labels
 	for index := range buttons {
 		if index == model.confirmCursor {
 			buttons[index] = titleStyle.Render(buttons[index])
@@ -211,16 +231,31 @@ func (model *Model) confirmModal() (string, int, int) {
 			buttons[index] = dimStyle.Render(buttons[index])
 		}
 	}
-	line := strings.Join(buttons, "  ")
+	line := strings.Join(buttons[:], confirmButtonGap)
 
 	title, body := confirmText(model.confirmItem)
 	width := min(confirmWidth, max(2, model.layout.width-4))
+	pad := func(text string) int {
+		return max(0, (width-2-stringWidth(text))/2)
+	}
 	center := func(text string) string {
-		return strings.Repeat(" ", max(0, (width-2-stringWidth(text))/2)) + text
+		return strings.Repeat(" ", pad(text)) + text
 	}
 	lines := []string{"", center(body), "", center(line), ""}
 	height := len(lines) + 2
 	x := max(0, (model.layout.width-width)/2)
 	y := max(0, (model.layout.height-1-height)/2)
+
+	// ボタンの当たり判定。行の中での桁は素のラベルから積み上げる。
+	left := x + 1 + pad(strings.Join(labels[:], confirmButtonGap))
+	buttonRow := y + 1 + 3
+	for index, label := range labels {
+		labelWidth := stringWidth(label)
+		model.confirmHits[index] = hitbox{
+			x0: left, x1: left + labelWidth - 1,
+			y0: buttonRow, y1: buttonRow,
+		}
+		left += labelWidth + len(confirmButtonGap)
+	}
 	return renderPanel(title, lines, width, height, false, modalFrame), x, y
 }

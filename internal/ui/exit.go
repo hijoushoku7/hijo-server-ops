@@ -189,6 +189,9 @@ func (model *Model) setFatalExit(err error) {
 	model.exit = state
 }
 
+// newExitState は終了モーダルの状態を作る。ここでメニューと確認を閉じる。
+// 開いたまま残すと、終了モーダルの裏で生き延びて、そこから再起動して
+// 立ち直った瞬間に「OK にカーソルが載った確認」が復活する。
 func (model *Model) newExitState(
 	crashed bool,
 	err error,
@@ -196,6 +199,8 @@ func (model *Model) newExitState(
 	startedAt time.Time,
 	exitedAt time.Time,
 ) *exitState {
+	model.quitMenuOpen = false
+	model.confirmOpen = false
 	uptime := hsperfdata.Duration{}
 	if !startedAt.IsZero() && !exitedAt.Before(startedAt) {
 		uptime = hsperfdata.Duration{

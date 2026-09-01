@@ -2072,3 +2072,22 @@ func TestModelShowsGCCollectionsAsUnavailableUntilFirstEvent(t *testing.T) {
 		t.Fatalf("stats = %q", stats)
 	}
 }
+
+// 終了モーダルの裏でメニューと確認を生かしておくと、そこから再起動して
+// 立ち直った瞬間に「OK にカーソルが載った確認」が復活する。
+func TestModelExitClosesMenuAndConfirm(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 30)
+	model.openQuitMenu()
+	_, _ = model.activateQuitMenu(quitMenuRestart)
+
+	_, _ = model.Update(ProcessExitedMsg{Err: errors.New("crashed"), ExitCode: 1})
+	if model.confirmOpen || model.quitMenuOpen {
+		t.Fatalf("confirm = %t, menu = %t", model.confirmOpen, model.quitMenuOpen)
+	}
+	_, _ = model.Update(ServerStartedMsg{Generation: 1, StartedAt: time.Now()})
+	if model.confirmOpen || model.quitMenuOpen {
+		t.Fatalf("復旧後に復活した: confirm = %t, menu = %t",
+			model.confirmOpen, model.quitMenuOpen)
+	}
+}
