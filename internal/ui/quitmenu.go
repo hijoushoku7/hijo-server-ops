@@ -246,6 +246,9 @@ func (model *Model) confirmModal() (string, int, int) {
 	x := max(0, (model.layout.width-width)/2)
 	y := max(0, (model.layout.height-1-height)/2)
 
+	model.confirmBox = hitbox{
+		x0: x, x1: x + width - 1, y0: y, y1: y + height - 1,
+	}
 	// ボタンの当たり判定。行の中での桁は素のラベルから積み上げる。
 	left := x + 1 + pad(strings.Join(labels[:], confirmButtonGap))
 	buttonRow := y + 1 + 3
