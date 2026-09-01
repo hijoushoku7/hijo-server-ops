@@ -152,6 +152,7 @@ type Model struct {
 	confirmItem   int
 	confirmCursor int
 	confirmHits   [confirmButtonCount]hitbox
+	confirmBox    hitbox
 	exit          *exitState
 	restart       restartTracker
 	// 0 は停止中、1..3 は表示する点の数。

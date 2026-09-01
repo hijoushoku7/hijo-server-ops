@@ -267,6 +267,21 @@ func TestModelMouseConfirmButtons(t *testing.T) {
 	default:
 	}
 
+	// モーダルの中でボタンを外したクリックは何も起こさない。
+	_, _ = model.activateQuitMenu(quitMenuRestart)
+	_ = model.View()
+	_, _ = model.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: model.confirmBox.x0 + 1, Y: model.confirmBox.y0 + 1,
+	})
+	if !model.confirmOpen {
+		t.Fatal("モーダルの中を押しただけで閉じた")
+	}
+	// 外を押したときだけ閉じる。
+	_, _ = model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})
+	if model.confirmOpen {
+		t.Fatal("モーダルの外を押しても閉じない")
+	}
+
 	// OK を押したときだけ要求が飛ぶ。
 	_, _ = model.activateQuitMenu(quitMenuRestart)
 	_ = model.View()

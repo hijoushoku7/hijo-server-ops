@@ -35,14 +35,16 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 	if model.exit != nil || message.Button != tea.MouseLeft {
 		return model, nil
 	}
+	// モーダルは 2 つとも同じ扱い。ボタンや項目を押したときはキーボードと
+	// 同じ経路へ流し、外しても中なら何もせず、外を押したときだけ閉じる。
 	if model.confirmOpen {
-		// ボタンを押したときはキーボードの Enter と同じ経路へ流す。外した
-		// クリックは「やめる」の意図と見て、メニューへ戻す。
 		if button, ok := model.confirmButtonAt(message.X, message.Y); ok {
 			model.confirmCursor = button
 			return model.handleConfirmKey(tea.Key{Code: tea.KeyEnter})
 		}
-		model.confirmOpen = false
+		if !model.confirmBox.contains(message.X, message.Y) {
+			model.confirmOpen = false
+		}
 		return model, nil
 	}
 	if model.quitMenuOpen {
