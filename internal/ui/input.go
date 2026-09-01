@@ -24,16 +24,17 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if model.exit != nil {
 		return model.handleExitKey(message)
 	}
-	// g/G は既存どおり設定専用にする。vim の gg/G を追加すると既存キーを
-	// 奪うため、先頭・末尾への移動には使わない。
+	// g/G はメニューを開く。設定はそのメニューの OPTIONS から入る。vim の
+	// gg/G を追加すると既存キーを奪うため、先頭・末尾への移動には使わない。
 	if model.timeModal == nil && !model.settingsOpen && !model.quitMenuOpen &&
+		!model.confirmOpen &&
 		(message.String() == "g" || message.String() == "G") &&
 		!model.editingConsole() {
-		model.settingsOpen = true
-		model.settingCursor = 0
+		model.openQuitMenu()
 		return model, nil
 	}
 	if model.timeModal == nil && !model.settingsOpen && !model.quitMenuOpen &&
+		!model.confirmOpen &&
 		message.String() == "c" && !model.editingConsole() {
 		return model, model.copyServerAddress()
 	}
@@ -45,6 +46,9 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if model.settingsOpen {
 		return model.handleSettingsKey(key)
+	}
+	if model.confirmOpen {
+		return model.handleConfirmKey(key)
 	}
 	if model.quitMenuOpen {
 		return model.handleQuitMenuKey(key)
@@ -143,8 +147,7 @@ func hjklArrowKey(key tea.Key) tea.Key {
 }
 
 func (model *Model) editingConsole() bool {
-	return model.mode == modeFocus && model.panel == panelConsole &&
-		model.consoleFocus == consoleInput
+	return model.mode == modeFocus && model.panel == panelConsole
 }
 
 func (model *Model) handlePlayersKey(key tea.Key) (tea.Model, tea.Cmd) {
@@ -197,7 +200,6 @@ func (model *Model) applyPlayerCommand(index int) {
 	model.input = []rune(fmt.Sprintf(command.template, model.playerTarget))
 	model.playerStage = playerStagePlayers
 	model.panel = panelConsole
-	model.consoleFocus = consoleInput
 }
 
 const playerCommandAccelerators = "123456789qwertyuio"
@@ -263,7 +265,6 @@ func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
 			return model, nil
 		}
 		model.mode = modeFocus
-		model.consoleFocus = consoleInput
 	case tea.KeyEscape:
 		if buffer, _ := model.bufferFor(model.panel); buffer != nil && !buffer.Following() {
 			buffer.ScrollToEnd()
@@ -281,6 +282,7 @@ func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
 func (model *Model) openQuitMenu() {
 	model.quitMenuOpen = true
 	model.quitMenuCursor = 0
+	model.quitMenuHover = -1
 }
 
 func (model *Model) handleQuitMenuKey(key tea.Key) (tea.Model, tea.Cmd) {
@@ -292,14 +294,44 @@ func (model *Model) handleQuitMenuKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyDown:
 		model.quitMenuCursor = min(quitMenuItemCount-1, model.quitMenuCursor+1)
 	case tea.KeyEnter, tea.KeyKpEnter:
+		return model.activateQuitMenu(model.quitMenuCursor)
+	}
+	return model, nil
+}
+
+// activateQuitMenu はキーボードの Enter とマウスのクリックの共通の出口。
+func (model *Model) activateQuitMenu(item int) (tea.Model, tea.Cmd) {
+	model.quitMenuCursor = item
+	if item == quitMenuOptions {
 		model.quitMenuOpen = false
-		switch model.quitMenuCursor {
-		case quitMenuOptions:
-			model.settingsOpen = true
-			model.settingCursor = 0
-		case quitMenuQuit:
+		model.settingsOpen = true
+		model.settingCursor = 0
+		return model, nil
+	}
+	// サーバーを止める操作は確認を挟む。メニューは開いたままにしておき、
+	// やめたときにメニューへ戻る。
+	model.confirmOpen = true
+	model.confirmItem = item
+	model.confirmCursor = confirmOK
+	return model, nil
+}
+
+func (model *Model) handleConfirmKey(key tea.Key) (tea.Model, tea.Cmd) {
+	switch key.Code {
+	case tea.KeyEscape:
+		model.confirmOpen = false
+	case tea.KeyLeft, tea.KeyRight, tea.KeyTab:
+		model.confirmCursor = 1 - model.confirmCursor
+	case tea.KeyEnter, tea.KeyKpEnter:
+		model.confirmOpen = false
+		if model.confirmCursor != confirmOK {
+			break
+		}
+		model.quitMenuOpen = false
+		if model.confirmItem == quitMenuQuit {
 			return model, model.requestQuit()
 		}
+		return model, model.requestRestart()
 	}
 	return model, nil
 }
@@ -313,34 +345,22 @@ func (model *Model) handleConsoleKey(key tea.Key) (tea.Model, tea.Cmd) {
 		model.mode = modeSelect
 		model.selected = true
 	case tea.KeyTab:
-		if model.consoleFocus == consoleInput {
-			candidates := model.completions()
-			if len(candidates) == 1 {
-				model.insertCompletion(candidates[0])
-				return model, nil
-			}
-			if len(candidates) > 1 {
-				model.completionOpen = true
-				model.completionCursor = 0
-				return model, nil
-			}
+		// 候補が無いときは何もしない。巡回する先が入力欄しかない。
+		candidates := model.completions()
+		if len(candidates) == 1 {
+			model.insertCompletion(candidates[0])
+		} else if len(candidates) > 1 {
+			model.completionOpen = true
+			model.completionCursor = 0
 		}
-		model.consoleFocus = (model.consoleFocus + 1) % consoleFocusCount
 	case tea.KeyBackspace:
-		if model.consoleFocus == consoleInput && len(model.input) > 0 {
+		if len(model.input) > 0 {
 			model.input = model.input[:len(model.input)-1]
 		}
 	case tea.KeyEnter, tea.KeyKpEnter:
-		switch model.consoleFocus {
-		case consoleStop:
-			return model, model.requestQuit()
-		case consoleRestart:
-			return model, model.requestRestart()
-		default:
-			model.sendInput()
-		}
+		model.sendInput()
 	default:
-		if model.consoleFocus == consoleInput && key.Text != "" {
+		if key.Text != "" {
 			model.appendInput(key.Text)
 		}
 	}

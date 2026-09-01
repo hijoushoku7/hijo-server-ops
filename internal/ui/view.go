@@ -87,6 +87,9 @@ func (model *Model) View() tea.View {
 		case model.settingsOpen:
 			box, x, y := model.settingsModal()
 			content = overlay(content, box, x, y)
+		case model.confirmOpen:
+			box, x, y := model.confirmModal()
+			content = overlay(content, box, x, y)
 		case model.quitMenuOpen:
 			box, x, y := model.quitMenuModal()
 			content = overlay(content, box, x, y)
@@ -100,14 +103,16 @@ func (model *Model) View() tea.View {
 		}
 		// モーダルが重なっている間はキーが入力欄へ届かない。
 		if model.exit != nil || model.timeModal != nil || model.settingsOpen ||
-			model.quitMenuOpen {
+			model.quitMenuOpen || model.confirmOpen {
 			caretX = -1
 		}
 	}
 
 	view := tea.NewView(content)
 	view.MouseMode = tea.MouseModeCellMotion
-	if model.mode == modeSelect {
+	// メニューはフォーカス中でも開けるので、ホバーを追うためにここでも
+	// 動きを受け取る。
+	if model.mode == modeSelect || model.quitMenuOpen {
 		view.MouseMode = tea.MouseModeAllMotion
 	}
 	view.AltScreen = true
@@ -133,32 +138,11 @@ func (model *Model) windowTitle() string {
 // 居ないとき -1。キャレットは文字で描かず端末のカーソルそのものを置くので、
 // 行の側では 1 桁ぶんの空きだけ確保する。
 func (model *Model) consoleLine() (string, int) {
-	restart := "[restart]"
-	if model.restartPhase != 0 {
-		restart = "[restarting" + model.restartDots() + "]"
-	}
-	stop := "[stop]"
-	focused := model.mode == modeFocus && model.panel == panelConsole
 	caret := ""
-	if focused && model.consoleFocus == consoleInput {
+	if model.editingConsole() {
 		caret = " "
 	}
-	if focused && model.consoleFocus == consoleRestart {
-		restart = selectedStyle.Render(restart)
-	} else {
-		restart = dimStyle.Render(restart)
-	}
-	if focused && model.consoleFocus == consoleStop {
-		stop = selectedStyle.Render(stop)
-	} else {
-		stop = dimStyle.Render(stop)
-	}
-
-	buttons := restart + " " + stop
-	inputWidth := max(
-		0,
-		model.layout.width-2-stringWidth(buttons)-3,
-	)
+	inputWidth := max(0, model.layout.width-2-3)
 	input := tail(string(model.input), max(0, inputWidth-stringWidth(caret)))
 	caretX := -1
 	hint := ""
@@ -174,7 +158,7 @@ func (model *Model) consoleLine() (string, int) {
 			caret = ""
 		}
 	}
-	return fitLine("> "+input+caret+hint+" "+buttons, model.layout.width-2), caretX
+	return fitLine("> "+input+caret+hint, model.layout.width-2), caretX
 }
 
 func tail(value string, width int) string {
@@ -353,6 +337,13 @@ func (model *Model) keybar() string {
 			{"Enter/Esc", msg.BarClose},
 			{"^C", msg.BarExit},
 		}
+	case model.confirmOpen:
+		keys = [][2]string{
+			{"hl/←→", msg.BarItem},
+			{"Enter", msg.BarConfirm},
+			{"Esc", msg.BarCancel},
+			{"^C", msg.BarExit},
+		}
 	case model.quitMenuOpen:
 		keys = [][2]string{
 			{"kj/↑↓", msg.BarItem},
@@ -364,8 +355,7 @@ func (model *Model) keybar() string {
 		keys = [][2]string{
 			{"hjkl/←↑↓→", msg.BarSelectPanel},
 			{"Enter", msg.BarFocus},
-			{"Esc", msg.BarMenu},
-			{"G", msg.BarSettings},
+			{"g/Esc", msg.BarMenu},
 			{"^C", msg.BarExit},
 		}
 	case model.completionOpen:
@@ -376,13 +366,9 @@ func (model *Model) keybar() string {
 			{"^C", msg.BarExit},
 		}
 	case model.panel == panelConsole:
-		tab := msg.BarConsoleTab
-		if model.editingConsole() && len(model.completions()) > 0 {
-			tab = msg.BarComplete
-		}
 		keys = [][2]string{
 			{"Esc", msg.BarBackToSelect},
-			{"Tab", tab},
+			{"Tab", msg.BarComplete},
 			{"Enter", msg.BarExecute},
 			{"^C", msg.BarExit},
 		}

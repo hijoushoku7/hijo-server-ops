@@ -111,11 +111,10 @@ type Model struct {
 	mode             mode
 	panel            panel
 	// selected は選択モードで選択枠を出すかを表す。フォーカス中は常に枠を出す。
-	selected     bool
-	hover        panel
-	hovering     bool
-	consoleFocus consoleFocus
-	busy         bool
+	selected bool
+	hover    panel
+	hovering bool
+	busy     bool
 	// quitting は ^C でサーバーに stop を送り、終わるのを待っている状態。
 	quitting          bool
 	generation        uint64
@@ -143,8 +142,16 @@ type Model struct {
 	timeModal         *timeModalState
 	quitMenuOpen      bool
 	quitMenuCursor    int
-	exit              *exitState
-	restart           restartTracker
+	// quitMenuHover はマウスが指している項目。指していないときは -1。
+	quitMenuHover int
+	quitMenuHits  [quitMenuItemCount]hitbox
+	// confirmOpen は RESTART / QUIT の確認モーダル。confirmItem がどちらを
+	// 確認しているか、confirmCursor は 0 が OK、1 が CANCEL。
+	confirmOpen   bool
+	confirmItem   int
+	confirmCursor int
+	exit          *exitState
+	restart       restartTracker
 	// 0 は停止中、1..3 は表示する点の数。
 	restartPhase int
 	// 終了モーダル用に、最後に取れたメモリの値を控える。
@@ -255,6 +262,16 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ServerStartedMsg:
 		model.generation = message.Generation
 		model.resetServerState()
+		// 再起動を待っていたときだけ、立ち上がったことを Log へ 1 行残す。
+		// logMark より前に入れて、新しい世代のエラー行に数えさせない。
+		if model.restartPhase != 0 {
+			model.logs.Add(logRecord{
+				timestamp:       time.Now(),
+				timestampSource: serverlog.TimestampReceived,
+				kind:            serverlog.KindNotice,
+				text:            msg.ServerRestartedNotice,
+			})
+		}
 		model.onServerStarted()
 		model.restart.startedAt = message.StartedAt
 		if model.restart.startedAt.IsZero() {

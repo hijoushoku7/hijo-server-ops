@@ -18,18 +18,6 @@ const (
 	panelConsole
 )
 
-// consoleFocus は Console パネル内のサブフォーカス。
-// Console にフォーカス中は左右キーを入力に使うため、Tab で巡回する。
-type consoleFocus uint8
-
-const (
-	consoleInput consoleFocus = iota
-	consoleRestart
-	consoleStop
-)
-
-const consoleFocusCount = 3
-
 type playerStage uint8
 
 const (

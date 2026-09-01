@@ -54,21 +54,7 @@ func TestModelTypesHJKLInConsoleInput(t *testing.T) {
 		t.Fatalf("input = %q, want %q", got, "hjkl")
 	}
 	if model.panel != panelConsole || !model.editingConsole() {
-		t.Fatalf("panel = %d, mode = %d, focus = %d",
-			model.panel, model.mode, model.consoleFocus)
-	}
-}
-
-func TestModelUsesHJKLAsNavigationOnConsoleButtons(t *testing.T) {
-	model := newTestModel()
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	pressRune(model, 'h')
-
-	if got := string(model.input); got != "" {
-		t.Fatalf("input = %q, want empty", got)
-	}
-	if model.consoleFocus != consoleRestart {
-		t.Fatalf("consoleFocus = %d, want %d", model.consoleFocus, consoleRestart)
+		t.Fatalf("panel = %d, mode = %d", model.panel, model.mode)
 	}
 }
 

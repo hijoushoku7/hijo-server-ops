@@ -18,6 +18,9 @@ const (
 	KindPlayerLeave
 	KindLag
 	KindIgnored
+	// KindNotice はサーバーのログ由来ではなく、hso 自身が Log へ差し込む行。
+	// パーサは返さない。
+	KindNotice
 )
 
 func (kind Kind) String() string {
@@ -34,6 +37,8 @@ func (kind Kind) String() string {
 		return "lag"
 	case KindIgnored:
 		return "ignored"
+	case KindNotice:
+		return "notice"
 	default:
 		return "other"
 	}
