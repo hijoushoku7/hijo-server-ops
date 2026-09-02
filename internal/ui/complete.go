@@ -7,6 +7,8 @@ import (
 )
 
 var (
+	// コマンド名そのものの候補。引数まで補完できる並びに /clear を足したもの。
+	commandCompletions     = []string{"clear", "tell", "time", "weather"}
 	timeCommandCompletions = []string{"set"}
 	timeCompletions        = []string{"day", "night", "noon", "midnight"}
 	weatherCompletions     = []string{"clear", "rain", "thunder"}
@@ -28,6 +30,8 @@ func (model *Model) completionScan() (string, []string) {
 
 	candidatesFor := func(command []string) []string {
 		switch strings.Join(command, " ") {
+		case "":
+			return commandCompletions
 		case "tell":
 			return model.playerList
 		case "time":
@@ -44,15 +48,19 @@ func (model *Model) completionScan() (string, []string) {
 	prefix := ""
 	keep := original
 	candidates := candidatesFor(words)
-	if len(candidates) > 0 {
+	// 語が 1 つも無いとき（空か "/" だけ）はコマンド名の候補をそのまま出す。
+	// 空白を足すと先頭に空白の入った入力になってしまう。
+	if len(words) > 0 && len(candidates) > 0 {
 		if !strings.HasSuffix(keep, " ") {
 			keep += " "
 		}
 	} else if len(words) > 0 {
 		prefix = words[len(words)-1]
 		candidates = candidatesFor(words[:len(words)-1])
-		start := strings.LastIndex(original, " ") + 1
-		keep = original[:start]
+		// 語の切り出しで外した先頭の空白と "/" の分だけずらす。
+		// original 側で探すと 1 語目に空白が無く、"/" を落としてしまう。
+		offset := len(original) - len(input)
+		keep = original[:offset+strings.LastIndex(input, " ")+1]
 	}
 	if len(candidates) == 0 {
 		return "", nil

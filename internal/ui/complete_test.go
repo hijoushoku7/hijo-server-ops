@@ -28,6 +28,12 @@ func TestModelCompletions(t *testing.T) {
 		{name: "tell 引数の後", input: "tell Alice ", players: []string{"Alice"}, want: nil},
 		{name: "weather 引数の後", input: "weather clear ", want: nil},
 		{name: "対象外", input: "gamemode ", want: nil},
+		// コマンド名そのものも補完する。
+		{name: "コマンド名 空", input: "", want: []string{"clear", "tell", "time", "weather"}},
+		{name: "コマンド名 / だけ", input: "/", want: []string{"clear", "tell", "time", "weather"}},
+		{name: "コマンド名 打ちかけ", input: "/w", want: []string{"weather"}},
+		{name: "コマンド名 c", input: "c", want: []string{"clear"}},
+		{name: "コマンド名 対象外", input: "gamemode", want: nil},
 		// 先頭に空白があってもコマンド語を見失わない。"/" との併用も同じ。
 		{name: "先頭の空白", input: "  weather ", want: []string{"clear", "rain", "thunder"}},
 		{name: "先頭の空白と /", input: "  /tell Al", players: []string{"Alice"}, want: []string{"Alice"}},
@@ -45,6 +51,18 @@ func TestModelCompletions(t *testing.T) {
 				t.Fatalf("completions() = %#v, want %#v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
+	tests := map[string]string{"/w": "/weather ", "w": "weather ", "  /cl": "  /clear "}
+	for input, want := range tests {
+		model := newTestModel()
+		model.input = []rune(input)
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+		if got := string(model.input); got != want {
+			t.Fatalf("input %q: got %q, want %q", input, got, want)
+		}
 	}
 }
 
