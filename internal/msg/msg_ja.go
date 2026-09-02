@@ -205,7 +205,7 @@ const (
 	BarCandidate    = "候補"
 	BarClose        = "閉じる"
 	BarExit         = "終了"
-	BarQuitNow      = "即終了"
+	BarQuitNow      = "強制終了"
 	BarSelectPanel  = "選ぶ"
 	BarFocus        = "開く"
 	BarMenu         = "メニュー"
