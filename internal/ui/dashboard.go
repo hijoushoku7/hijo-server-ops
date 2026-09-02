@@ -111,7 +111,12 @@ func (model *Model) serverAddressLine() string {
 	}
 	// c キーでコピーできることをアドレスの隣に出す。c は複数モードで効くので
 	// キーバー 1 本では覆えず、どのキーバーも最小幅 72 で埋まっていて足せない。
-	return "Server " + address + " (c)"
+	// Stats 列に収まるときだけ説明付きにし、狭ければ "(c)" まで縮める。
+	line := "Server " + address + " (c to copy)"
+	if stringWidth(line) > model.layout.statsWidth-2 {
+		line = "Server " + address + " (c)"
+	}
+	return line
 }
 
 // serverAddress は IP と port が両方取れているときだけ "IP:port" を返す。

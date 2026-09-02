@@ -246,6 +246,13 @@ func TestModelDisplaysServerAddressAndReportsFailure(t *testing.T) {
 		t.Fatalf("address width = %d", width)
 	}
 
+	// 幅に余裕があるときは c キーの説明を添える。
+	model.resize(minimumWidth*2, minimumHeight)
+	if got := model.serverAddressLine(); got != "Server 255.255.255.255:65535 (c to copy)" {
+		t.Fatalf("wide address = %q", got)
+	}
+	model.resize(minimumWidth, minimumHeight)
+
 	// 前の世代から遅れて届いた結果で、再起動後の表示を上書きしない。
 	_, _ = model.Update(ServerAddressMsg{
 		Generation: 1,
