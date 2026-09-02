@@ -36,15 +36,17 @@ const (
 	LabelSelection  = "選択行"
 	LabelLog        = "ログ"
 
-	LabelAutoRestart = "自動再起動"
-	LabelTimezone    = "タイムゾーン"
-	LabelCurrentTime = "現在時刻"
-	LabelTimeDrift   = "ずれ"
+	LabelAutoRestart      = "自動再起動"
+	LabelTimezone         = "タイムゾーン"
+	LabelServerProperties = "server.properties を編集する"
+	LabelCurrentTime      = "現在時刻"
+	LabelTimeDrift        = "ずれ"
 )
 
 const (
 	OptSystemTime     = "システム時刻"
 	TimeSettingButton = "設定"
+	EditButton        = "編集"
 	TimeModalTitle    = "現在時刻の設定"
 )
 
@@ -99,7 +101,8 @@ const (
 const (
 	StatusIdle = "操作待ち"
 	// StatusStopping は ^C でサーバーの終了を待っている間の表示。
-	StatusStopping = "停止中 保存を待っています"
+	StatusStopping            = "停止中 保存を待っています"
+	PropertiesRestartRequired = "変更はサーバーの再起動後に反映されます"
 )
 
 // ServerStoppedNotice は hso が終わるときに端末へ残す 1 行。alt screen を畳んだ
@@ -108,6 +111,10 @@ const ServerStoppedNotice = "サーバーを停止しました"
 
 func SaveSettingsFailed(err error) string {
 	return "設定の保存に失敗: " + err.Error()
+}
+
+func EditorLaunchFailed(err error) string {
+	return "エディタの起動に失敗: " + err.Error()
 }
 
 func ActionFailed(err error) string {

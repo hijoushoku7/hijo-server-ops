@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -52,12 +54,13 @@ type settingOption struct {
 type settingItem struct {
 	section string
 	label   string
+	button  string
 	options []settingOption
 	get     func(Settings) string
 	set     func(*Settings, string)
 	// options が空の項目では、get は現在値の表示だけに使う。Enter で
 	// open を呼び、設定モーダルを残したまま追加のモーダルを開く。
-	open func(*Model)
+	open func(*Model) tea.Cmd
 }
 
 var settingItems = []settingItem{
@@ -200,7 +203,19 @@ var settingItems = []settingItem{
 	},
 	{
 		section: msg.SectionAdvanced,
-		label:   msg.LabelAutoRestart,
+		label:   msg.LabelServerProperties,
+		button:  msg.EditButton,
+		get:     func(Settings) string { return "server.properties" },
+		open: func(model *Model) tea.Cmd {
+			parts := resolveEditor()
+			command := exec.Command(parts[0], append(parts[1:], model.info.PropertiesPath)...)
+			return tea.ExecProcess(command, func(err error) tea.Msg {
+				return editorFinishedMsg{err: err}
+			})
+		},
+	},
+	{
+		label: msg.LabelAutoRestart,
 		// 値は文字列で持たせる。項目 1 つのために get/set を型で分けると、
 		// モーダルが項目の中身を知らずに済む今の形が崩れる。
 		options: []settingOption{
@@ -218,15 +233,31 @@ var settingItems = []settingItem{
 		},
 	},
 	{
-		label: msg.LabelTimezone,
+		label:  msg.LabelTimezone,
+		button: msg.TimeSettingButton,
 		get: func(settings Settings) string {
 			if settings.TimeOffsetMinutes == 0 {
 				return msg.OptSystemTime
 			}
 			return formatTimeOffset(settings.TimeOffsetMinutes)
 		},
-		open: func(model *Model) { model.openTimeModal() },
+		open: func(model *Model) tea.Cmd {
+			model.openTimeModal()
+			return nil
+		},
 	},
+}
+
+type editorFinishedMsg struct{ err error }
+
+func resolveEditor() []string {
+	for _, name := range []string{"VISUAL", "EDITOR"} {
+		// ponytail: 引用符を含む空白入りパスは解釈しない。
+		if parts := strings.Fields(os.Getenv(name)); len(parts) > 0 {
+			return parts
+		}
+	}
+	return []string{"vi"}
 }
 
 const (
@@ -272,8 +303,7 @@ func (item settingItem) shift(settings *Settings, step int) {
 func (model *Model) handleSettingsKey(key tea.Key) (tea.Model, tea.Cmd) {
 	item := settingItems[model.settingCursor]
 	if (key.Code == tea.KeyEnter || key.Code == tea.KeyKpEnter) && item.open != nil {
-		item.open(model)
-		return model, nil
+		return model, item.open(model)
 	}
 	switch key.Code {
 	case tea.KeyEscape, tea.KeyEnter, tea.KeyKpEnter:
@@ -320,7 +350,7 @@ func (model *Model) settingsModal() (string, int, int) {
 		valueWidth = max(valueWidth, stringWidth(item.valueLabel(model.settings)))
 		sectionWidth = max(sectionWidth, stringWidth(item.section))
 		if item.open != nil {
-			actionWidth = stringWidth(msg.TimeSettingButton) + 4
+			actionWidth = max(actionWidth, stringWidth(item.button)+4)
 		}
 	}
 	// 1 項目をラベル行と値行の 2 行に割るので、値は行いっぱいの
@@ -351,7 +381,7 @@ func (model *Model) settingsModal() (string, int, int) {
 		// ラベルは値行の "‹ 値 ›" と中心を揃える。
 		label := pad(settingsPad+max(0, (field-stringWidth(item.label))/2)) + item.label
 		if item.open != nil {
-			button := "[" + msg.TimeSettingButton + "]"
+			button := "[" + item.button + "]"
 			label = fitLine(label, max(0, contentWidth-settingsPad-stringWidth(button))) +
 				button + pad(settingsPad)
 		}

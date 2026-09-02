@@ -301,3 +301,40 @@ func TestSettingsModalKeepsCursorVisible(t *testing.T) {
 		t.Fatalf("cursor row is off screen:\n%s", content)
 	}
 }
+
+func TestResolveEditor(t *testing.T) {
+	tests := []struct {
+		name   string
+		visual string
+		editor string
+		want   string
+	}{
+		{name: "VISUAL", visual: "code -w", editor: "nano", want: "code -w"},
+		{name: "EDITOR", editor: "nano -w", want: "nano -w"},
+		{name: "fallback", want: "vi"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("VISUAL", test.visual)
+			t.Setenv("EDITOR", test.editor)
+			if got := strings.Join(resolveEditor(), " "); got != test.want {
+				t.Fatalf("resolveEditor() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestSettingsEnterReturnsOpenCommand(t *testing.T) {
+	original := settingItems
+	t.Cleanup(func() { settingItems = original })
+	want := func() tea.Msg { return "opened" }
+	settingItems = []settingItem{{
+		get:  func(Settings) string { return "value" },
+		open: func(*Model) tea.Cmd { return want },
+	}}
+	model := New(make(chan Action, 1), nil, 0, DefaultSettings(), ServerInfo{})
+	_, got := model.handleSettingsKey(tea.Key{Code: tea.KeyEnter})
+	if got == nil || got() != "opened" {
+		t.Fatal("Enter did not return the item's open command")
+	}
+}

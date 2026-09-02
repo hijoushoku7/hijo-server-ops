@@ -32,10 +32,11 @@ type Action struct {
 	Command string
 }
 
-// ServerInfo は画面に出す識別情報。表示専用で、取れなくても動作に影響しない。
+// ServerInfo はサーバー固有の表示情報と操作対象。値がなくても基本動作は続けられる。
 type ServerInfo struct {
-	Name    string
-	Version string
+	Name           string
+	Version        string
+	PropertiesPath string
 }
 
 type LogMsg struct {
@@ -311,6 +312,12 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if message.Action.Kind == ActionSendCommand {
 			model.addLog(serverlog.SentCommand(message.Action.Command))
+		}
+	case editorFinishedMsg:
+		if message.err != nil {
+			model.status = msg.EditorLaunchFailed(message.err)
+		} else {
+			model.status = msg.PropertiesRestartRequired
 		}
 	case ProcessExitedMsg:
 		if !model.accepts(message.Generation) {
