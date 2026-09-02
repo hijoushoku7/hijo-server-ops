@@ -55,7 +55,9 @@ func TestModelCompletions(t *testing.T) {
 }
 
 func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
-	tests := map[string]string{"/w": "/weather ", "w": "weather ", "  /cl": "  /clear "}
+	tests := map[string]string{
+		"/w": "/weather ", "w": "weather ", "  /cl": "  /clear ",
+	}
 	for input, want := range tests {
 		model := newTestModel()
 		model.input = []rune(input)
@@ -67,19 +69,26 @@ func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
 }
 
 func TestModelInsertsCommandCompletionFromModal(t *testing.T) {
-	model := newTestModel()
-	model.input = []rune("/t")
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := string(model.input); got != "/tell " {
-		t.Fatalf("got %q, want %q", got, "/tell ")
+	// 空白しか打っていないときは、その空白を残さず挿入する。
+	tests := map[string]string{"/t": "/tell ", "/ ": "/clear ", " ": "clear "}
+	for input, want := range tests {
+		model := newTestModel()
+		model.input = []rune(input)
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+		_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		if got := string(model.input); got != want {
+			t.Fatalf("input %q: got %q, want %q", input, got, want)
+		}
 	}
 }
 
 func TestModelHidesCompletionHintOnEmptyInput(t *testing.T) {
-	model := newTestModel()
-	if got := model.completionHint(); got != "" {
-		t.Fatalf("completionHint() = %q, want empty", got)
+	for _, input := range []string{"", " ", "/ "} {
+		model := newTestModel()
+		model.input = []rune(input)
+		if got := model.completionHint(); got != "" {
+			t.Fatalf("input %q: completionHint() = %q, want empty", input, got)
+		}
 	}
 }
 

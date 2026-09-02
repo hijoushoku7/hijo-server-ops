@@ -29,6 +29,12 @@ func (model *Model) completionScan() (string, []string) {
 	if strings.HasSuffix(input, " ") {
 		words = append(words, "")
 	}
+	// 空白しか打っていないなら何も打っていないのと同じ。末尾の空白を候補の
+	// 手前に残すと "/ clear" のような実行できない文字列になる。
+	if strings.TrimSpace(input) == "" {
+		words = nil
+		original = strings.TrimRight(original, " ")
+	}
 
 	candidatesFor := func(command []string) []string {
 		switch strings.Join(command, " ") {
@@ -91,7 +97,7 @@ func (model *Model) completionHint() string {
 	keep, candidates := model.completionScan()
 	// 何も打っていないうちは灰色を出さない。キャレットの桁が候補で埋まり、
 	// 空の入力欄が打ちかけと見分けられなくなる。
-	if len(candidates) == 0 || len(model.input) == 0 {
+	if len(candidates) == 0 || strings.TrimSpace(string(model.input)) == "" {
 		return ""
 	}
 	cursor := clamp(model.completionCursor, 0, len(candidates)-1)
