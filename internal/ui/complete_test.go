@@ -57,6 +57,8 @@ func TestModelCompletions(t *testing.T) {
 func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
 	tests := map[string]string{
 		"/w": "/weather ", "w": "weather ", "  /cl": "  /clear ",
+		// "/" の直後の空白は残さない。残すと実行できないコマンドになる。
+		"/ cl": "/clear ", "  / w": "  /weather ",
 	}
 	for input, want := range tests {
 		model := newTestModel()
@@ -70,7 +72,7 @@ func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
 
 func TestModelInsertsCommandCompletionFromModal(t *testing.T) {
 	// 空白しか打っていないときは、その空白を残さず挿入する。
-	tests := map[string]string{"/t": "/tell ", "/ ": "/clear ", " ": "clear "}
+	tests := map[string]string{"/t": "/tell ", "/ ": "/clear ", " ": "clear ", "/  ": "/clear "}
 	for input, want := range tests {
 		model := newTestModel()
 		model.input = []rune(input)

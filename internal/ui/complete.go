@@ -19,8 +19,12 @@ var (
 // completionScan は打ちかけの入力を解析し、候補の手前に残す文字列と候補を返す。
 func (model *Model) completionScan() (string, []string) {
 	original := string(model.input)
-	// 先頭の空白と "/" は打ち方の揺れなので、語の切り出しからだけ外す。
-	// 置き換え位置は original から取るため、打った空白はそのまま残る。
+	// "/" の直後の空白は打ち方の揺れではなく実行できない形なので、original
+	// 側でも畳んでおく。以降は先頭の空白と "/" を語の切り出しからだけ外す。
+	// 置き換え位置は original から取るため、語の間に打った空白は残る。
+	if rest, found := strings.CutPrefix(strings.TrimLeft(original, " "), "/"); found {
+		original = strings.Repeat(" ", len(original)-len(rest)-1) + "/" + strings.TrimLeft(rest, " ")
+	}
 	input := strings.TrimPrefix(strings.TrimLeft(original, " "), "/")
 	// 空白で区切った語だけを見る。末尾の空白は「次の引数を打ち始めていない」
 	// という情報なので、空の語として 1 つだけ残す。Split で作った空要素を
@@ -29,10 +33,9 @@ func (model *Model) completionScan() (string, []string) {
 	if strings.HasSuffix(input, " ") {
 		words = append(words, "")
 	}
-	// 空白しか打っていないなら何も打っていないのと同じ。末尾の空白を候補の
-	// 手前に残すと "/ clear" のような実行できない文字列になる。
-	if strings.TrimSpace(input) == "" {
-		words = nil
+	// 空白しか打っていないなら何も打っていないのと同じ。残すと先頭に空白の
+	// 入った文字列になり、灰色の候補まで出てしまう。
+	if len(words) == 0 {
 		original = strings.TrimRight(original, " ")
 	}
 
@@ -97,7 +100,7 @@ func (model *Model) completionHint() string {
 	keep, candidates := model.completionScan()
 	// 何も打っていないうちは灰色を出さない。キャレットの桁が候補で埋まり、
 	// 空の入力欄が打ちかけと見分けられなくなる。
-	if len(candidates) == 0 || strings.TrimSpace(string(model.input)) == "" {
+	if len(candidates) == 0 || len(model.input) == 0 {
 		return ""
 	}
 	cursor := clamp(model.completionCursor, 0, len(candidates)-1)
