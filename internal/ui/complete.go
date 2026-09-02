@@ -8,6 +8,8 @@ import (
 
 var (
 	// コマンド名そのものの候補。引数まで補完できる並びに /clear を足したもの。
+	// candidatesFor の case を増やしたらここにも足す（clear のように case を
+	// 持たない語があるため自動では導けない）。
 	commandCompletions     = []string{"clear", "tell", "time", "weather"}
 	timeCommandCompletions = []string{"set"}
 	timeCompletions        = []string{"day", "night", "noon", "midnight"}
@@ -87,7 +89,9 @@ func (model *Model) completions() []string {
 // completionHint は入力の続きとして表示する未確定の候補を返す。
 func (model *Model) completionHint() string {
 	keep, candidates := model.completionScan()
-	if len(candidates) == 0 {
+	// 何も打っていないうちは灰色を出さない。キャレットの桁が候補で埋まり、
+	// 空の入力欄が打ちかけと見分けられなくなる。
+	if len(candidates) == 0 || len(model.input) == 0 {
 		return ""
 	}
 	cursor := clamp(model.completionCursor, 0, len(candidates)-1)

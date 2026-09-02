@@ -66,6 +66,23 @@ func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
 	}
 }
 
+func TestModelInsertsCommandCompletionFromModal(t *testing.T) {
+	model := newTestModel()
+	model.input = []rune("/t")
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := string(model.input); got != "/tell " {
+		t.Fatalf("got %q, want %q", got, "/tell ")
+	}
+}
+
+func TestModelHidesCompletionHintOnEmptyInput(t *testing.T) {
+	model := newTestModel()
+	if got := model.completionHint(); got != "" {
+		t.Fatalf("completionHint() = %q, want empty", got)
+	}
+}
+
 func TestModelInsertsTimeSetCompletionOnTab(t *testing.T) {
 	for _, input := range []string{"time", "time ", "time s"} {
 		model := newTestModel()
