@@ -7,6 +7,10 @@ import (
 )
 
 var (
+	// コマンド名そのものの候補。引数まで補完できる並びに /clear を足したもの。
+	// candidatesFor の case を増やしたらここにも足す（clear のように case を
+	// 持たない語があるため自動では導けない）。
+	commandCompletions     = []string{"clear", "tell", "time", "weather"}
 	timeCommandCompletions = []string{"set"}
 	timeCompletions        = []string{"day", "night", "noon", "midnight"}
 	weatherCompletions     = []string{"clear", "rain", "thunder"}
@@ -15,8 +19,12 @@ var (
 // completionScan は打ちかけの入力を解析し、候補の手前に残す文字列と候補を返す。
 func (model *Model) completionScan() (string, []string) {
 	original := string(model.input)
-	// 先頭の空白と "/" は打ち方の揺れなので、語の切り出しからだけ外す。
-	// 置き換え位置は original から取るため、打った空白はそのまま残る。
+	// "/" の直後の空白は打ち方の揺れではなく実行できない形なので、original
+	// 側でも畳んでおく。以降は先頭の空白と "/" を語の切り出しからだけ外す。
+	// 置き換え位置は original から取るため、語の間に打った空白は残る。
+	if rest, found := strings.CutPrefix(strings.TrimLeft(original, " "), "/"); found {
+		original = strings.Repeat(" ", len(original)-len(rest)-1) + "/" + strings.TrimLeft(rest, " ")
+	}
 	input := strings.TrimPrefix(strings.TrimLeft(original, " "), "/")
 	// 空白で区切った語だけを見る。末尾の空白は「次の引数を打ち始めていない」
 	// という情報なので、空の語として 1 つだけ残す。Split で作った空要素を
@@ -25,9 +33,16 @@ func (model *Model) completionScan() (string, []string) {
 	if strings.HasSuffix(input, " ") {
 		words = append(words, "")
 	}
+	// 空白しか打っていないなら何も打っていないのと同じ。残すと先頭に空白の
+	// 入った文字列になり、灰色の候補まで出てしまう。
+	if len(words) == 0 {
+		original = strings.TrimRight(original, " ")
+	}
 
 	candidatesFor := func(command []string) []string {
 		switch strings.Join(command, " ") {
+		case "":
+			return commandCompletions
 		case "tell":
 			return model.playerList
 		case "time":
@@ -44,15 +59,19 @@ func (model *Model) completionScan() (string, []string) {
 	prefix := ""
 	keep := original
 	candidates := candidatesFor(words)
-	if len(candidates) > 0 {
+	// 語が 1 つも無いとき（空か "/" だけ）はコマンド名の候補をそのまま出す。
+	// 空白を足すと先頭に空白の入った入力になってしまう。
+	if len(words) > 0 && len(candidates) > 0 {
 		if !strings.HasSuffix(keep, " ") {
 			keep += " "
 		}
 	} else if len(words) > 0 {
 		prefix = words[len(words)-1]
 		candidates = candidatesFor(words[:len(words)-1])
-		start := strings.LastIndex(original, " ") + 1
-		keep = original[:start]
+		// 語の切り出しで外した先頭の空白と "/" の分だけずらす。
+		// original 側で探すと 1 語目に空白が無く、"/" を落としてしまう。
+		offset := len(original) - len(input)
+		keep = original[:offset+strings.LastIndex(input, " ")+1]
 	}
 	if len(candidates) == 0 {
 		return "", nil
@@ -79,7 +98,9 @@ func (model *Model) completions() []string {
 // completionHint は入力の続きとして表示する未確定の候補を返す。
 func (model *Model) completionHint() string {
 	keep, candidates := model.completionScan()
-	if len(candidates) == 0 {
+	// 何も打っていないうちは灰色を出さない。キャレットの桁が候補で埋まり、
+	// 空の入力欄が打ちかけと見分けられなくなる。
+	if len(candidates) == 0 || len(model.input) == 0 {
 		return ""
 	}
 	cursor := clamp(model.completionCursor, 0, len(candidates)-1)
