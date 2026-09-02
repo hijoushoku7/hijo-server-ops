@@ -34,8 +34,9 @@ func runTUI(configPath string, cfg config.Config) error {
 		initialGeneration,
 		settingsFrom(cfg),
 		ui.ServerInfo{
-			Name:    serverDisplayName(configPath, cfg, registeredName),
-			Version: version,
+			Name:           serverDisplayName(configPath, cfg, registeredName),
+			Version:        version,
+			PropertiesPath: filepath.Join(cfg.Server.WorkDir, "server.properties"),
 		},
 	)
 	program := tea.NewProgram(model, tea.WithContext(ctx))

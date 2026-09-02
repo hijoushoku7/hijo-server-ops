@@ -254,6 +254,10 @@ func TestMessagesAreNotEmpty(t *testing.T) {
 		"JavaVersionInstall":  JavaVersionInstall(21),
 		"CommandRequired":     CommandRequired().Error(),
 	}
+	messages["LabelServerProperties"] = LabelServerProperties
+	messages["EditButton"] = EditButton
+	messages["PropertiesRestartRequired"] = PropertiesRestartRequired
+	messages["EditorLaunchFailed"] = EditorLaunchFailed(sample)
 
 	for name, message := range messages {
 		if strings.TrimSpace(message) == "" {

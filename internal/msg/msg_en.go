@@ -38,15 +38,17 @@ const (
 	LabelSelection  = "selection"
 	LabelLog        = "log"
 
-	LabelAutoRestart = "auto restart"
-	LabelTimezone    = "time zone"
-	LabelCurrentTime = "current time"
-	LabelTimeDrift   = "offset"
+	LabelAutoRestart      = "auto restart"
+	LabelTimezone         = "time zone"
+	LabelServerProperties = "edit server.properties"
+	LabelCurrentTime      = "current time"
+	LabelTimeDrift        = "offset"
 )
 
 const (
 	OptSystemTime     = "system time"
 	TimeSettingButton = "set"
+	EditButton        = "edit"
 	TimeModalTitle    = "Set current time"
 )
 
@@ -101,7 +103,8 @@ const (
 const (
 	StatusIdle = "idle"
 	// StatusStopping is shown while ^C waits for the server to shut down.
-	StatusStopping = "stopping, waiting for the save"
+	StatusStopping            = "stopping, waiting for the save"
+	PropertiesRestartRequired = "changes take effect after the server restarts"
 )
 
 // ServerStoppedNotice is the line hso leaves on the terminal when it exits, after
@@ -110,6 +113,10 @@ const ServerStoppedNotice = "server stopped"
 
 func SaveSettingsFailed(err error) string {
 	return "failed to save settings: " + err.Error()
+}
+
+func EditorLaunchFailed(err error) string {
+	return "failed to launch editor: " + err.Error()
 }
 
 func ActionFailed(err error) string {
