@@ -18,6 +18,9 @@ import (
 
 func TestMain(m *testing.M) {
 	if command, ok := SupervisorCommand(os.Args); ok {
+		if os.Getenv("HSO_TEST_SHORT_KILL_GRACE") != "" {
+			os.Exit(runSupervisor(command, 100*time.Millisecond))
+		}
 		os.Exit(RunSupervisor(command))
 	}
 	os.Exit(m.Run())
@@ -153,6 +156,7 @@ func TestProcessWaitsForBackgroundProcessInGroup(t *testing.T) {
 }
 
 func TestSupervisorKillsProcessGroup(t *testing.T) {
+	t.Setenv("HSO_TEST_SHORT_KILL_GRACE", "1")
 	dir := t.TempDir()
 	script := filepath.Join(dir, "run.sh")
 	content := "#!/bin/sh\ntrap '' INT TERM HUP\n: > ready\nwhile :; do sleep 10; done\n"
@@ -191,6 +195,7 @@ func TestSupervisorKillsProcessGroup(t *testing.T) {
 }
 
 func TestSupervisorKillsProcessGroupWhenParentExits(t *testing.T) {
+	t.Setenv("HSO_TEST_SHORT_KILL_GRACE", "1")
 	dir := t.TempDir()
 	worker := filepath.Join(dir, "worker.sh")
 	workerContent := "#!/bin/sh\ntrap '' INT TERM HUP\nwhile :; do sleep 10; done\n"
@@ -230,6 +235,7 @@ func TestSupervisorKillsProcessGroupWhenParentExits(t *testing.T) {
 }
 
 func TestSupervisorDetectsAndStopsDetachedTmux(t *testing.T) {
+	t.Setenv("HSO_TEST_SHORT_KILL_GRACE", "1")
 	tmux, err := exec.LookPath("tmux")
 	if err != nil {
 		t.Skip("tmux is not installed")

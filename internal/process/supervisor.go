@@ -11,7 +11,12 @@ import (
 	"time"
 )
 
-const supervisorArgument = "__hso_supervise"
+const (
+	supervisorArgument = "__hso_supervise"
+	// killGraceWait は Minecraft のワールド保存を待つための猶予。
+	// 短すぎると保存途中の JVM を強制終了してしまう。
+	killGraceWait = 60 * time.Second
+)
 
 func SupervisorCommand(args []string) (string, bool) {
 	if len(args) != 3 || args[1] != supervisorArgument {
@@ -21,6 +26,10 @@ func SupervisorCommand(args []string) (string, bool) {
 }
 
 func RunSupervisor(command string) int {
+	return runSupervisor(command, killGraceWait)
+}
+
+func runSupervisor(command string, graceWait time.Duration) int {
 	control := os.NewFile(3, "hso-supervisor-control")
 	if control == nil {
 		fmt.Fprintln(os.Stderr, "hso supervisor: no control pipe")
@@ -93,7 +102,7 @@ func RunSupervisor(command string) int {
 			if exitSignal == 0 {
 				exitSignal = value
 				terminateManagedProcesses("/proc", os.Getpid(), serverPID, syscall.SIGTERM)
-				killTimer = time.After(time.Second)
+				killTimer = time.After(graceWait)
 			}
 		case <-killTimer:
 			terminateManagedProcesses("/proc", os.Getpid(), serverPID, syscall.SIGKILL)
