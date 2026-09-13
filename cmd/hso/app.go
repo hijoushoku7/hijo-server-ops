@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
@@ -40,6 +42,16 @@ func runTUI(configPath string, cfg config.Config) error {
 		},
 	)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(signals)
+	go func() {
+		<-signals
+		// hso が先に死ぬと Pdeathsig で supervisor も終了し、ワールドを
+		// 保存する前にサーバーが畳まれるため、通常の終了経路へ合流させる。
+		signal.Stop(signals)
+		program.Quit()
+	}()
 
 	controller := newServerController(ctx, cfg, program)
 	if err := controller.start(initialGeneration, false); err != nil {
