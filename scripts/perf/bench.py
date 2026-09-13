@@ -3,13 +3,13 @@
 
 usage: bench.py {bare|hso} <label> <settle_sec> <sample_sec>
 
-bare : mc-server-test/run.sh を直接起動（stdout はファイル）
+bare : hso.toml の [server] command を直接起動（stdout はファイル）
 hso  : pty 上で hso_ja -config hso.toml を起動
 
 出力: <label>.csv (毎秒のプロセス別サンプル), <label>.meta.json
 
 パスは既定でスクリプトの位置から導く。変えたいときは環境変数で上書きする:
-HSO_ROOT / HSO_SERVER_DIR / HSO_BINARY / HSO_PERF_OUT
+HSO_ROOT / HSO_SERVER_DIR / HSO_BINARY / HSO_CONFIG / HSO_PERF_OUT
 """
 import json
 import os
@@ -22,6 +22,7 @@ import subprocess
 import sys
 import termios
 import time
+import tomllib
 import fcntl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -32,10 +33,21 @@ LOG = os.path.join(SERVER_DIR, "logs", "latest.log")
 # 出力はこのスクリプトと同じ場所へ。analyze.py が読む先と揃える。
 OUT = os.environ.get("HSO_PERF_OUT") or HERE
 BINARY = os.environ.get("HSO_BINARY") or os.path.join(ROOT, "hso_ja")
+CONFIG = os.environ.get("HSO_CONFIG") or "hso.toml"
+
 HZ = os.sysconf("SC_CLK_TCK")
 PAGE = os.sysconf("SC_PAGE_SIZE")
 
 stat_re = re.compile(r"^(\d+) \((.*)\) (\S) (.*)$", re.S)
+
+
+def server_command():
+    """bare で叩く起動スクリプト。hso が読むのと同じ hso.toml から取る。
+
+    別々に書くと、比較しているつもりで違うものを起動してしまう。
+    """
+    with open(os.path.join(SERVER_DIR, CONFIG), "rb") as f:
+        return tomllib.load(f)["server"]["command"]
 
 
 def read_stat(pid):
@@ -133,32 +145,22 @@ def meminfo():
     return out
 
 
-def log_inode():
+def log_fresh(t_start):
+    """latest.log が今回の起動のものか。
+
+    inode で見分けると、MC がローテーションで作り直した latest.log に直前の
+    inode が再利用されたとき「変わっていない」と誤判定して永久に待つ。
+    """
     try:
-        return os.stat(LOG).st_ino
+        return os.stat(LOG).st_mtime >= t_start
     except OSError:
-        return None
-
-
-def wait_ready(old_inode, timeout=300):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        ino = log_inode()
-        if ino is not None and ino != old_inode:
-            try:
-                with open(LOG, errors="replace") as f:
-                    if "Done (" in f.read():
-                        return True
-            except OSError:
-                pass
-        time.sleep(0.5)
-    return False
+        return False
 
 
 def start_bare():
     stdout = open(os.path.join(OUT, "bare-server.out"), "wb")
     proc = subprocess.Popen(
-        ["./run.sh"],
+        [server_command()],
         cwd=SERVER_DIR,
         stdin=subprocess.PIPE,
         stdout=stdout,
@@ -175,7 +177,7 @@ def start_hso():
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLUMNS"] = "120"
         os.environ["LINES"] = "40"
-        os.execv(BINARY, [BINARY, "-config", "hso.toml"])
+        os.execv(BINARY, [BINARY, "-config", CONFIG])
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     return pid, fd
@@ -198,7 +200,6 @@ def drain(fd, sink):
 
 def main():
     mode, label, settle, sample = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4])
-    old_inode = log_inode()
     t_start = time.time()
 
     sink = open(os.path.join(OUT, f"{label}.raw"), "wb")
@@ -241,8 +242,7 @@ def main():
         if fd is not None:
             drain(fd, sink)
         tick("startup")
-        ino = log_inode()
-        if ino is not None and ino != old_inode:
+        if log_fresh(t_start):
             try:
                 with open(LOG, errors="replace") as f:
                     if "Done (" in f.read():
