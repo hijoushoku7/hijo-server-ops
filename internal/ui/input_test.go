@@ -344,3 +344,16 @@ func TestModelCtrlCCrashKeepsExitModal(t *testing.T) {
 		t.Fatalf("command = %T", command())
 	}
 }
+
+func TestQuitMenuCursorWrapsAtBothEnds(t *testing.T) {
+	model := New(make(chan Action, 1), nil, 0, DefaultSettings(), ServerInfo{})
+	model.quitMenuOpen = true
+	model.handleQuitMenuKey(tea.Key{Code: tea.KeyUp})
+	if model.quitMenuCursor != quitMenuItemCount-1 {
+		t.Fatalf("先頭で上を押したら末尾に回るはず: %d", model.quitMenuCursor)
+	}
+	model.handleQuitMenuKey(tea.Key{Code: tea.KeyDown})
+	if model.quitMenuCursor != 0 {
+		t.Fatalf("末尾で下を押したら先頭に回るはず: %d", model.quitMenuCursor)
+	}
+}

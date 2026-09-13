@@ -7,10 +7,9 @@ import (
 )
 
 var (
-	// コマンド名そのものの候補。引数まで補完できる並びに /clear を足したもの。
-	// candidatesFor の case を増やしたらここにも足す（clear のように case を
-	// 持たない語があるため自動では導けない）。
-	commandCompletions     = []string{"clear", "tell", "time", "weather"}
+	// コマンド名そのものの候補。candidatesFor の case を増やしたらここにも
+	// 足す（引数を補完しない語も置けるため自動では導けない）。
+	commandCompletions     = []string{"tell", "time", "weather"}
 	timeCommandCompletions = []string{"set"}
 	timeCompletions        = []string{"day", "night", "noon", "midnight"}
 	weatherCompletions     = []string{"clear", "rain", "thunder"}
