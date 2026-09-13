@@ -721,6 +721,11 @@ func UpdateAvailable(latest string) string {
 	return fmt.Sprintf("A new version, %s, is available. Run hso update to install it.", latest)
 }
 
+// UpdateNotice is the one-line update notice shown in the settings modal.
+func UpdateNotice(latest string) string {
+	return fmt.Sprintf("Update available %s (hso update)", latest)
+}
+
 func UpdateArgumentsNotAllowed() error {
 	return errors.New("the update subcommand does not accept arguments")
 }

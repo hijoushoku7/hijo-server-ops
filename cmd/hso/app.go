@@ -54,6 +54,16 @@ func runTUI(configPath string, cfg config.Config) error {
 		program.Quit()
 	}()
 
+	// 更新の確認は 1 回だけ。失敗しても黙って諦める。開発ビルドはタグと
+	// 比べようがないので確認しない。
+	if version != "dev" {
+		go func() {
+			if latest, err := latestRelease(versionHTTPClient); err == nil && latest.Tag != version {
+				program.Send(ui.UpdateAvailableMsg{Version: latest.Tag})
+			}
+		}()
+	}
+
 	controller := newServerController(ctx, cfg, program)
 	if err := controller.start(initialGeneration, false); err != nil {
 		return err

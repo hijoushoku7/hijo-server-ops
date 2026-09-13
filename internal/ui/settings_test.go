@@ -351,3 +351,18 @@ func TestSettingsCursorWrapsAtBothEnds(t *testing.T) {
 		t.Fatalf("末尾で下を押したら先頭に回るはず: %d", model.settingCursor)
 	}
 }
+
+func TestSettingsModalShowsUpdateNotice(t *testing.T) {
+	t.Cleanup(func() { applyTheme(DefaultSettings()) })
+	model := New(make(chan Action, 1), nil, 0, DefaultSettings(), ServerInfo{})
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	model.settingsOpen = true
+	if strings.Contains(stripANSI(model.View().Content), msg.UpdateNotice("v9.9.9")) {
+		t.Fatal("update notice shown before the release was found")
+	}
+
+	_, _ = model.Update(UpdateAvailableMsg{Version: "v9.9.9"})
+	if !strings.Contains(stripANSI(model.View().Content), msg.UpdateNotice("v9.9.9")) {
+		t.Fatal("update notice is missing")
+	}
+}

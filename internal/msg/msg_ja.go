@@ -719,6 +719,11 @@ func UpdateAvailable(latest string) string {
 	return fmt.Sprintf("新しいバージョン %s があります。hso update で更新できます。", latest)
 }
 
+// UpdateNotice は設定モーダルへ 1 行で出す更新の知らせ。
+func UpdateNotice(latest string) string {
+	return fmt.Sprintf("更新あり %s (hso update)", latest)
+}
+
 func UpdateArgumentsNotAllowed() error {
 	return errors.New("update サブコマンドに引数は指定できません")
 }
