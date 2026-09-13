@@ -312,7 +312,6 @@ func (controller *serverController) restart() {
 		return
 	}
 
-	runtime.cancel()
 	controller.program.Send(ui.ServerRestartingMsg{})
 	if err := stopServer(runtime.server, true, gracefulStopWait); err != nil {
 		runtime.close()
