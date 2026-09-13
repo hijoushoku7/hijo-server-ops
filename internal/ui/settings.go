@@ -310,9 +310,10 @@ func (model *Model) handleSettingsKey(key tea.Key) (tea.Model, tea.Cmd) {
 		model.settingsOpen = false
 		model.saveSettings()
 	case tea.KeyUp:
-		model.settingCursor = max(0, model.settingCursor-1)
+		// 端で止めずに反対側へ回す。項目が増えても端まで戻る手間が要らない。
+		model.settingCursor = (model.settingCursor - 1 + len(settingItems)) % len(settingItems)
 	case tea.KeyDown:
-		model.settingCursor = min(len(settingItems)-1, model.settingCursor+1)
+		model.settingCursor = (model.settingCursor + 1) % len(settingItems)
 	case tea.KeyLeft:
 		if item.open == nil {
 			item.shift(&model.settings, -1)

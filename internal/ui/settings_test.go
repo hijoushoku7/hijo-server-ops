@@ -338,3 +338,16 @@ func TestSettingsEnterReturnsOpenCommand(t *testing.T) {
 		t.Fatal("Enter did not return the item's open command")
 	}
 }
+
+func TestSettingsCursorWrapsAtBothEnds(t *testing.T) {
+	model := New(make(chan Action, 1), nil, 0, DefaultSettings(), ServerInfo{})
+	last := len(settingItems) - 1
+	model.handleSettingsKey(tea.Key{Code: tea.KeyUp})
+	if model.settingCursor != last {
+		t.Fatalf("先頭で上を押したら末尾に回るはず: %d", model.settingCursor)
+	}
+	model.handleSettingsKey(tea.Key{Code: tea.KeyDown})
+	if model.settingCursor != 0 {
+		t.Fatalf("末尾で下を押したら先頭に回るはず: %d", model.settingCursor)
+	}
+}

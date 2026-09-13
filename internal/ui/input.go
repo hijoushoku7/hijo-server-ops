@@ -290,9 +290,10 @@ func (model *Model) handleQuitMenuKey(key tea.Key) (tea.Model, tea.Cmd) {
 	case tea.KeyEscape:
 		model.quitMenuOpen = false
 	case tea.KeyUp:
-		model.quitMenuCursor = max(0, model.quitMenuCursor-1)
+		// 設定モーダルと同じく端で止めずに反対側へ回す。
+		model.quitMenuCursor = (model.quitMenuCursor - 1 + quitMenuItemCount) % quitMenuItemCount
 	case tea.KeyDown:
-		model.quitMenuCursor = min(quitMenuItemCount-1, model.quitMenuCursor+1)
+		model.quitMenuCursor = (model.quitMenuCursor + 1) % quitMenuItemCount
 	case tea.KeyEnter, tea.KeyKpEnter:
 		return model.activateQuitMenu(model.quitMenuCursor)
 	}

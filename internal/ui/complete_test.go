@@ -29,10 +29,10 @@ func TestModelCompletions(t *testing.T) {
 		{name: "weather 引数の後", input: "weather clear ", want: nil},
 		{name: "対象外", input: "gamemode ", want: nil},
 		// コマンド名そのものも補完する。
-		{name: "コマンド名 空", input: "", want: []string{"clear", "tell", "time", "weather"}},
-		{name: "コマンド名 / だけ", input: "/", want: []string{"clear", "tell", "time", "weather"}},
+		{name: "コマンド名 空", input: "", want: []string{"tell", "time", "weather"}},
+		{name: "コマンド名 / だけ", input: "/", want: []string{"tell", "time", "weather"}},
 		{name: "コマンド名 打ちかけ", input: "/w", want: []string{"weather"}},
-		{name: "コマンド名 c", input: "c", want: []string{"clear"}},
+		{name: "コマンド名 t", input: "t", want: []string{"tell", "time"}},
 		{name: "コマンド名 対象外", input: "gamemode", want: nil},
 		// 先頭に空白があってもコマンド語を見失わない。"/" との併用も同じ。
 		{name: "先頭の空白", input: "  weather ", want: []string{"clear", "rain", "thunder"}},
@@ -56,9 +56,9 @@ func TestModelCompletions(t *testing.T) {
 
 func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
 	tests := map[string]string{
-		"/w": "/weather ", "w": "weather ", "  /cl": "  /clear ",
+		"/w": "/weather ", "w": "weather ", "  /te": "  /tell ",
 		// "/" の直後の空白は残さない。残すと実行できないコマンドになる。
-		"/ cl": "/clear ", "  / w": "  /weather ",
+		"/ te": "/tell ", "  / w": "  /weather ",
 	}
 	for input, want := range tests {
 		model := newTestModel()
@@ -72,7 +72,7 @@ func TestModelInsertsCommandCompletionOnTab(t *testing.T) {
 
 func TestModelInsertsCommandCompletionFromModal(t *testing.T) {
 	// 空白しか打っていないときは、その空白を残さず挿入する。
-	tests := map[string]string{"/t": "/tell ", "/ ": "/clear ", " ": "clear ", "/  ": "/clear "}
+	tests := map[string]string{"/t": "/tell ", "/ ": "/tell ", " ": "tell ", "/  ": "/tell "}
 	for input, want := range tests {
 		model := newTestModel()
 		model.input = []rune(input)
