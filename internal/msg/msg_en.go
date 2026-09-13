@@ -589,6 +589,12 @@ func FindJavaFailed(err error) error {
 	return fmt.Errorf("locate java process: %w", err)
 }
 
+func JavaMetricsUnavailable(err error) string {
+	return "Could not locate java, so metrics are unavailable. The server is still running: " + FindJavaFailed(err).Error()
+}
+
+const DetachedTerminalWarning = "The start script uses screen or tmux, so metrics are unavailable and commands cannot be sent from the console. The server is still running."
+
 // Command line.
 const (
 	Lang                = "en"

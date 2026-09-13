@@ -587,6 +587,12 @@ func FindJavaFailed(err error) error {
 	return fmt.Errorf("javaプロセスの特定: %w", err)
 }
 
+func JavaMetricsUnavailable(err error) string {
+	return "javaを特定できなかったためメトリクスを表示できません。サーバーはそのまま動作しています: " + FindJavaFailed(err).Error()
+}
+
+const DetachedTerminalWarning = "起動スクリプトがscreen / tmuxを使用しているため、メトリクスを表示できず、コンソールからコマンドを送れません。サーバーはそのまま動作しています。"
+
 // コマンドライン。
 const (
 	Lang                = "ja"

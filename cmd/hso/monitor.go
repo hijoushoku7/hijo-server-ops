@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -37,8 +36,17 @@ func findJava(
 		if errors.Is(err, context.Canceled) {
 			return
 		}
-		program.Send(ui.FatalMsg{Generation: generation, Err: msg.FindJavaFailed(err)})
-		_ = server.Signal(syscall.SIGTERM)
+		message := msg.JavaMetricsUnavailable(err)
+		if errors.Is(err, process.ErrDetachedTerminal) {
+			message = msg.DetachedTerminalWarning
+		}
+		program.Send(ui.LogMsg{
+			Generation: generation,
+			Entry: serverlog.Entry{
+				Kind:    serverlog.KindOther,
+				Message: message,
+			},
+		})
 		return
 	}
 
