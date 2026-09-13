@@ -215,14 +215,30 @@ func TestStopServerFallsBackToSIGTERMAfterTimeout(t *testing.T) {
 	}
 }
 
-func TestStopServerUsesSIGTERMBeforeJavaIsFound(t *testing.T) {
+func TestStopServerSendsMinecraftStopBeforeJavaIsFound(t *testing.T) {
 	server := newFakeStoppableServer()
-	server.finishOnSignal = true
+	server.finishOnSend = true
 
 	if err := stopServer(server, false, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if len(server.commands) != 0 {
+	if len(server.commands) != 1 || server.commands[0] != "stop" {
+		t.Fatalf("commands = %v", server.commands)
+	}
+	if len(server.signals) != 0 {
+		t.Fatalf("signals = %v", server.signals)
+	}
+}
+
+func TestStopServerUsesSIGTERMWithoutWaitingWhenSendFails(t *testing.T) {
+	server := newFakeStoppableServer()
+	server.sendErr = errors.New("send failed")
+	server.finishOnSignal = true
+
+	if err := stopServer(server, false, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if len(server.commands) != 1 || server.commands[0] != "stop" {
 		t.Fatalf("commands = %v", server.commands)
 	}
 	if len(server.signals) != 1 || server.signals[0] != syscall.SIGTERM {
@@ -232,6 +248,7 @@ func TestStopServerUsesSIGTERMBeforeJavaIsFound(t *testing.T) {
 
 func TestStopServerReturnsSignalError(t *testing.T) {
 	server := newFakeStoppableServer()
+	server.sendErr = errors.New("send failed")
 	server.signalErr = errors.New("signal failed")
 
 	if err := stopServer(server, false, time.Second); err == nil {
@@ -578,6 +595,7 @@ type fakeStoppableServer struct {
 	signals        []os.Signal
 	finishOnSend   bool
 	finishOnSignal bool
+	sendErr        error
 	signalErr      error
 }
 
@@ -591,6 +609,9 @@ func (s *fakeStoppableServer) Done() <-chan struct{} {
 
 func (s *fakeStoppableServer) Send(command string) error {
 	s.commands = append(s.commands, command)
+	if s.sendErr != nil {
+		return s.sendErr
+	}
 	if s.finishOnSend {
 		close(s.done)
 	}

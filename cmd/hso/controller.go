@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	logQueueSize     = 16
-	gracefulStopWait = 60 * time.Second
+	logQueueSize         = 16
+	gracefulStopWait     = 60 * time.Second
+	javaNotFoundStopWait = 5 * time.Second
 )
 
 type stoppableServer interface {
@@ -437,15 +438,20 @@ func stopServer(server stoppableServer, javaFound bool, wait time.Duration) erro
 	default:
 	}
 
-	if javaFound {
-		if err := server.Send("stop"); err == nil {
-			timer := time.NewTimer(wait)
-			defer timer.Stop()
-			select {
-			case <-server.Done():
-				return nil
-			case <-timer.C:
-			}
+	// java の特定前でも stdin はサーバーへつながっているため、ワールドを
+	// 安全に保存できるよう、まず必ず通常の stop コマンドを試す。
+	if err := server.Send("stop"); err == nil {
+		stopWait := wait
+		// java でない起動スクリプトが stop を無視する場合に長時間待たない。
+		if !javaFound {
+			stopWait = min(wait, javaNotFoundStopWait)
+		}
+		timer := time.NewTimer(stopWait)
+		defer timer.Stop()
+		select {
+		case <-server.Done():
+			return nil
+		case <-timer.C:
 		}
 	}
 
