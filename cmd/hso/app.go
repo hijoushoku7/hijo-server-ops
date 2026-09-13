@@ -49,7 +49,8 @@ func runTUI(configPath string, cfg config.Config) error {
 		<-signals
 		// hso が先に死ぬと Pdeathsig で supervisor も終了し、ワールドを
 		// 保存する前にサーバーが畳まれるため、通常の終了経路へ合流させる。
-		signal.Stop(signals)
+		// ここで購読を解除しない。解除すると 2 回目の SIGTERM が既定動作に
+		// 戻り、停止を待っている最中の hso をその場で殺してしまう。
 		program.Quit()
 	}()
 

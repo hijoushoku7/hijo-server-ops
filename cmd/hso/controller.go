@@ -318,6 +318,9 @@ func (controller *serverController) restart() {
 		controller.program.Send(ui.FatalMsg{Err: err})
 		return
 	}
+	// 排出を待ってから閉じる。close は runtimeCtx を切ってパイプも閉じるので、
+	// 先に呼ぶと停止直前の Saving... が読み切られる前に消える。
+	<-runtime.logsDone
 	runtime.close()
 	if controller.ctx.Err() != nil {
 		return
