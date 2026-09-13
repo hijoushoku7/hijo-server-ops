@@ -39,6 +39,12 @@ type ServerInfo struct {
 	PropertiesPath string
 }
 
+// UpdateAvailableMsg は新しいリリースが見つかったことを伝える。設定モーダルへ
+// 1 行出すだけで、取得に失敗したときは何も送られてこない。
+type UpdateAvailableMsg struct {
+	Version string
+}
+
 type LogMsg struct {
 	Generation uint64
 	Entry      serverlog.Entry
@@ -139,10 +145,12 @@ type Model struct {
 	samples           sampleBuffer
 	settings          Settings
 	settingsOpen      bool
-	settingCursor     int
-	timeModal         *timeModalState
-	quitMenuOpen      bool
-	quitMenuCursor    int
+	// updateVersion は取得できた新しいリリースのタグ。空なら表示しない。
+	updateVersion  string
+	settingCursor  int
+	timeModal      *timeModalState
+	quitMenuOpen   bool
+	quitMenuCursor int
 	// quitMenuHover はマウスが指している項目。指していないときは -1。
 	quitMenuHover int
 	quitMenuHits  [quitMenuItemCount]hitbox
@@ -238,6 +246,8 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return model.handleMouseWheel(message)
 	case tea.WindowSizeMsg:
 		model.resize(message.Width, message.Height)
+	case UpdateAvailableMsg:
+		model.updateVersion = message.Version
 	case LogMsg:
 		if !model.accepts(message.Generation) {
 			break

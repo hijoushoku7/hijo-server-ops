@@ -408,6 +408,10 @@ func (model *Model) settingsModal() (string, int, int) {
 		lines = append(lines, line)
 	}
 	lines = append(lines, "")
+	if model.updateVersion != "" {
+		notice := pad(settingsPad) + msg.UpdateNotice(model.updateVersion)
+		lines = append(lines, dimStyle.Render(fitLine(notice, contentWidth)))
+	}
 
 	height := min(len(lines)+2, model.layout.height)
 	// 端末が低いと全項目は入らない。選択行を中心に窓を切り、カーソルが
