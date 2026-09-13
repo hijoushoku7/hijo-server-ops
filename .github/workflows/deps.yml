@@ -68,4 +68,7 @@ jobs:
           fi
 
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        # @latest は go.mod の Go より新しいツールチェーンを要求することがある
+        # （x/vuln v1.8.0 は go >= 1.26）。GOTOOLCHAIN=local なので、go.mod の
+        # バージョンで動く最後のものに固定する。go.mod を上げるときに見直す。
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
