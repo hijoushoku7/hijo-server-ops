@@ -61,6 +61,12 @@ func runTUI(configPath string, cfg config.Config) error {
 
 	_, programErr := program.Run()
 	cancel()
+	// 停止を待つ間に固まったと誤解して ^C を押させないため、alt screen を
+	// 畳んだ直後に待機中であることを端末へ残す。すでに止まっているなら
+	// 待ちは無いので出さない。
+	if controller.currentRuntime() != nil {
+		fmt.Fprintln(os.Stdout, msg.ServerStoppingNotice)
+	}
 	stopErr := controller.shutdown()
 
 	if model.Err() != nil {

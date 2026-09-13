@@ -105,9 +105,11 @@ const (
 	PropertiesRestartRequired = "変更はサーバーの再起動後に反映されます"
 )
 
-// ServerStoppedNotice は hso が終わるときに端末へ残す 1 行。alt screen を畳んだ
-// 後なので、TUI が消えても停止したことが手元に残る。
-const ServerStoppedNotice = "サーバーを停止しました"
+// hso が alt screen を畳んだ後に端末へ残す停止処理の案内。
+const (
+	ServerStoppingNotice = "サーバーの停止を待っています"
+	ServerStoppedNotice  = "サーバーを停止しました"
+)
 
 func SaveSettingsFailed(err error) string {
 	return "設定の保存に失敗: " + err.Error()
