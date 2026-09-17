@@ -121,6 +121,13 @@ pidfile は再起動でも消えます。
 - [ビルド手順](dev-docs/build.md)
 - [仕様・技術調査](dev-docs/spec.md)
 
+## ライセンス
+
+MIT。[LICENSE](LICENSE) を参照。
+
+同梱する依存はそれぞれのライセンス（すべて MIT または BSD-3-Clause）に従う。
+全文は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) にある。
+
 ## 作者
 
 hijoushoku https://github.com/hijoushoku7

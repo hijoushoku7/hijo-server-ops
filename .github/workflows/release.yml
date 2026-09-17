@@ -39,6 +39,8 @@ jobs:
                 $tags -trimpath -ldflags="-s -w -X main.version=$VERSION" \
                 -o "dist/$name/hso" ./cmd/hso
               cp hso.toml.example "dist/$name/hso.toml"
+              # MIT / BSD-3-Clause はバイナリ配布にも著作権表示の同梱を求める。
+              cp LICENSE THIRD_PARTY_LICENSES.md "dist/$name/"
               # README は表示言語に合わせる。英語版が README.md。
               if [ "$lang" = "ja" ]; then
                 cp README.ja.md "dist/$name/README.md"
