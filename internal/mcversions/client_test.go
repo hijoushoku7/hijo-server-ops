@@ -77,11 +77,11 @@ func TestPaper(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Version{
-		{Version: "26.3-rc-3"},
 		{Version: "26.3", Stable: true},
+		{Version: "26.3-rc-3"},
+		{Version: "1.21.11", Stable: true},
 		{Version: "1.21.11-rc3"},
 		{Version: "1.21.11-pre1"},
-		{Version: "1.21.11", Stable: true},
 		{Version: "1.21.1", Stable: true},
 		{Version: "1.21", Stable: true},
 	}
@@ -146,13 +146,13 @@ func TestHTTPErrorAndInvalidJSON(t *testing.T) {
 }
 
 func TestSortVersionsOrdersNumerically(t *testing.T) {
-	versions := []Version{{Version: "1.9"}, {Version: "26.3"}, {Version: "1.21.11"}, {Version: "1.21.1"}, {Version: "1.21"}, {Version: "1.7.10_pre4"}, {Version: "1.20.6"}}
+	versions := []Version{{Version: "1.9"}, {Version: "26.3"}, {Version: "26.3-rc-3"}, {Version: "1.21.11"}, {Version: "1.21.1"}, {Version: "1.21"}, {Version: "1.7.10_pre4"}, {Version: "1.20.6"}}
 	sortVersions(versions)
 	got := make([]string, len(versions))
 	for i, v := range versions {
 		got[i] = v.Version
 	}
-	want := []string{"26.3", "1.21.11", "1.21.1", "1.21", "1.20.6", "1.9", "1.7.10_pre4"}
+	want := []string{"26.3", "26.3-rc-3", "1.21.11", "1.21.1", "1.21", "1.20.6", "1.9", "1.7.10_pre4"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sortVersions = %v, want %v", got, want)
 	}

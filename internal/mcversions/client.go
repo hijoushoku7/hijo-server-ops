@@ -248,21 +248,35 @@ func sortVersions(versions []Version) {
 }
 
 // compareVersion は a が b より新しければ正、古ければ負を返す。
-// 数値にならない区切り（"1.7.10_pre4" の "10_pre4" など）は文字列として比べる。
+// 区切りは先頭の数字で比べ、残りの接尾辞（"10_pre4" の "_pre4" など）は文字列で比べる。
 func compareVersion(a, b string) int {
 	as, bs := strings.Split(a, "."), strings.Split(b, ".")
 	for i := 0; i < len(as) && i < len(bs); i++ {
-		an, aerr := strconv.Atoi(as[i])
-		bn, berr := strconv.Atoi(bs[i])
-		if aerr == nil && berr == nil {
-			if an != bn {
-				return an - bn
-			}
-			continue
+		an, arest := splitNumber(as[i])
+		bn, brest := splitNumber(bs[i])
+		if an != bn {
+			return an - bn
 		}
-		if as[i] != bs[i] {
-			return strings.Compare(as[i], bs[i])
+		if arest != brest {
+			// "3" と "3-rc-3" のような接尾辞付きはプレリリースなので古い扱いにする。
+			if arest == "" || brest == "" {
+				return len(brest) - len(arest)
+			}
+			return strings.Compare(arest, brest)
 		}
 	}
 	return len(as) - len(bs)
+}
+
+// splitNumber は "21-rc1" を 21 と "-rc1" に分ける。数字で始まらなければ 0 と全体を返す。
+func splitNumber(segment string) (int, string) {
+	i := 0
+	for i < len(segment) && segment[i] >= '0' && segment[i] <= '9' {
+		i++
+	}
+	n, err := strconv.Atoi(segment[:i])
+	if err != nil {
+		return 0, segment
+	}
+	return n, segment[i:]
 }
