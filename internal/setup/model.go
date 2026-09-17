@@ -335,7 +335,9 @@ func (m *model) loadVersions() tea.Cmd {
 		if err != nil {
 			return versionsMsg{err: err}
 		}
-		cache.FetchedAt = time.Now()
+		// 取得時刻は種別ごとに分けていないので、取り直した種別だけを残す。
+		// 他の種別を抱えたままにすると、取得時刻の更新でまとめて延命されてしまう。
+		cache = mcversions.Cache{FetchedAt: time.Now(), FabricLoader: cache.FabricLoader}
 		switch kind {
 		case "vanilla":
 			cache.Vanilla = versions
@@ -429,8 +431,9 @@ func (m *model) loadLoaders() tea.Cmd {
 	client, dir, minecraft := m.client, m.cacheDir, m.minecraft
 	return func() tea.Msg {
 		cache, _ := mcversions.ReadCache(dir)
-		if cache.Fresh(time.Now()) && cache.FabricLoader != nil && cache.FabricLoader.Minecraft == minecraft && len(cache.FabricLoader.Loaders) != 0 {
-			return loadersMsg{loaders: cache.FabricLoader.Loaders, fetchedAt: cache.FetchedAt}
+		if cache.FabricLoader != nil && cache.FabricLoader.Fresh(time.Now()) &&
+			cache.FabricLoader.Minecraft == minecraft && len(cache.FabricLoader.Loaders) != 0 {
+			return loadersMsg{loaders: cache.FabricLoader.Loaders, fetchedAt: cache.FabricLoader.FetchedAt}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -438,10 +441,11 @@ func (m *model) loadLoaders() tea.Cmd {
 		if err != nil {
 			return loadersMsg{err: err}
 		}
-		cache.FetchedAt = time.Now()
-		cache.FabricLoader = &mcversions.FabricLoaderCache{Minecraft: minecraft, Loaders: loaders}
+		cache.FabricLoader = &mcversions.FabricLoaderCache{
+			Minecraft: minecraft, FetchedAt: time.Now(), Loaders: loaders,
+		}
 		_ = mcversions.WriteCache(dir, cache)
-		return loadersMsg{loaders: loaders, fetchedAt: cache.FetchedAt}
+		return loadersMsg{loaders: loaders, fetchedAt: cache.FabricLoader.FetchedAt}
 	}
 }
 
