@@ -24,7 +24,7 @@ func TestLoadAndRenderJavaKeepSymlink(t *testing.T) {
 	if cfg.Server.Java != link {
 		t.Fatalf("Java = %q, want symlink %q", cfg.Server.Java, link)
 	}
-	if got := render(cfg); !strings.Contains(got, `java = "`+link+`"`) {
+	if got := Render(cfg); !strings.Contains(got, `java = "`+link+`"`) {
 		t.Fatalf("render:\n%s", got)
 	}
 }

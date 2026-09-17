@@ -228,24 +228,6 @@ func expandHome(path string) string {
 	return filepath.Join(home, strings.TrimPrefix(path, "~"))
 }
 
-// render は書き出す TOML を組み立てる。workdir は設定ファイルと同じ
-// ディレクトリなら省略する（config.Load の既定値と同じになる）。
-func render(command, workDir, configDir, java, version string) string {
-	var out strings.Builder
-	out.WriteString("[server]\n")
-	out.WriteString("command = " + quote(command) + "\n")
-	if workDir != configDir {
-		out.WriteString("workdir = " + quote(workDir) + "\n")
-	}
-	if java != "" {
-		out.WriteString("java = " + quote(java) + "\n")
-	}
-	if version != "" {
-		out.WriteString("version = " + quote(version) + "\n")
-	}
-	return out.String()
-}
-
 // installKinds はインストールできる種別。選択肢の並び順と、ダウンロード先を
 // 選ぶ id と、画面に出す綴りをここだけに持つ。別々に持つと一覧の順と id が
 // ずれたり、種別を足したときに片方だけ漏れたりする。
@@ -285,19 +267,6 @@ func serverVersion(kind, minecraft, loader string) string {
 		return label + " " + minecraft + " (" + loader + ")"
 	}
 	return label + " " + minecraft
-}
-
-// quote は TOML の基本文字列にする。改行を含むパスは滅多にないが、
-// そのまま書くと次の起動で読めない設定ファイルができるのでエスケープする。
-func quote(value string) string {
-	replacer := strings.NewReplacer(
-		`\`, `\\`,
-		`"`, `\"`,
-		"\n", `\n`,
-		"\r", `\r`,
-		"\t", `\t`,
-	)
-	return `"` + replacer.Replace(value) + `"`
 }
 
 func writeConfig(path, content string) error {

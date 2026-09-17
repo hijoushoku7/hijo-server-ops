@@ -890,10 +890,16 @@ func moveCursor(key tea.Key, cursor, count int) int {
 }
 
 func (m *model) preview() string {
-	if m.register {
-		return render(m.command, m.workDir, "", "", "")
+	workDir := m.workDir
+	if !m.register && workDir == m.configDir {
+		workDir = ""
 	}
-	return render(m.command, m.workDir, m.configDir, m.javaHome, m.installed)
+	return config.Render(config.Config{Server: config.Server{
+		Command: m.command,
+		WorkDir: workDir,
+		Java:    m.javaHome,
+		Version: m.installed,
+	}})
 }
 
 func defaultServerName(workDir string) string {
