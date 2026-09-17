@@ -300,11 +300,11 @@ func TestResolveWorkDir(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	same := render("./run.sh", "/srv/mc", "/srv/mc", "")
+	same := render("./run.sh", "/srv/mc", "/srv/mc", "", "")
 	if strings.Contains(same, "workdir") {
 		t.Fatalf("workdir を省略すべき: %q", same)
 	}
-	differs := render("./run.sh", "/srv/mc", "/home/user", "")
+	differs := render("./run.sh", "/srv/mc", "/home/user", "", "")
 	if !strings.Contains(differs, `workdir = "/srv/mc"`) {
 		t.Fatalf("differs = %q", differs)
 	}
@@ -768,5 +768,26 @@ func TestRegisterSavesNameAndConfig(t *testing.T) {
 	}
 	if len(servers.Servers) != 1 || servers.Servers[0] != (registry.Server{Name: "survival", Config: wantPath}) {
 		t.Fatalf("servers = %#v", servers.Servers)
+	}
+}
+
+func TestServerVersion(t *testing.T) {
+	for _, testCase := range []struct {
+		kind, minecraft, loader, want string
+	}{
+		{"vanilla", "1.21.4", "", "Vanilla 1.21.4"},
+		{"neoforge", "1.21.1", "21.1.90", "NeoForge 1.21.1 (21.1.90)"},
+		{"", "1.21.4", "", ""},
+	} {
+		got := serverVersion(testCase.kind, testCase.minecraft, testCase.loader)
+		if got != testCase.want {
+			t.Errorf("serverVersion(%q, %q, %q) = %q, want %q",
+				testCase.kind, testCase.minecraft, testCase.loader, got, testCase.want)
+		}
+	}
+
+	written := render("./run.sh", "/srv/mc", "/srv/mc", "", "Forge 1.20.4 (47.2.0)")
+	if !strings.Contains(written, `version = "Forge 1.20.4 (47.2.0)"`) {
+		t.Errorf("render に version が無い: %q", written)
 	}
 }

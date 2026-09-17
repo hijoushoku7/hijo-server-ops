@@ -230,7 +230,7 @@ func expandHome(path string) string {
 
 // render は書き出す TOML を組み立てる。workdir は設定ファイルと同じ
 // ディレクトリなら省略する（config.Load の既定値と同じになる）。
-func render(command, workDir, configDir, java string) string {
+func render(command, workDir, configDir, java, version string) string {
 	var out strings.Builder
 	out.WriteString("[server]\n")
 	out.WriteString("command = " + quote(command) + "\n")
@@ -240,7 +240,33 @@ func render(command, workDir, configDir, java string) string {
 	if java != "" {
 		out.WriteString("java = " + quote(java) + "\n")
 	}
+	if version != "" {
+		out.WriteString("version = " + quote(version) + "\n")
+	}
 	return out.String()
+}
+
+// loaderLabels はインストール種別の表示名。ToUpper で作ると NeoForge が
+// Neoforge になるので、表示に出す綴りはここに持つ。
+var loaderLabels = map[string]string{
+	"vanilla":  "Vanilla",
+	"fabric":   "Fabric",
+	"paper":    "Paper",
+	"forge":    "Forge",
+	"neoforge": "NeoForge",
+}
+
+// serverVersion は設定に書く版の 1 行を作る。分かるのはウィザードから
+// インストールしたときだけで、手持ちのサーバーを登録した場合は空を返す。
+func serverVersion(kind, minecraft, loader string) string {
+	label, known := loaderLabels[kind]
+	if !known || minecraft == "" {
+		return ""
+	}
+	if loader != "" {
+		return label + " " + minecraft + " (" + loader + ")"
+	}
+	return label + " " + minecraft
 }
 
 // quote は TOML の基本文字列にする。改行を含むパスは滅多にないが、

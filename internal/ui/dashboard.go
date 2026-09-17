@@ -17,6 +17,10 @@ func (model *Model) statsTitle() string {
 	if model.info.Version != "" {
 		version = " · hso " + model.info.Version
 	}
+	server := ""
+	if model.info.ServerVersion != "" {
+		server = " · " + model.info.ServerVersion
+	}
 	degraded := ""
 	if model.jvmMetricError != "" || model.memoryMetricError != "" {
 		degraded = " · metrics degraded"
@@ -24,12 +28,13 @@ func (model *Model) statsTitle() string {
 
 	// タイトルは renderPanelLines が幅 - 5 で切り詰めるので、同じ幅で自分で
 	// 組み立てる。末尾から機械的に切られると、名前が長いだけで運転状況が
-	// 消えてしまう。落とす順はバージョン → uptime で、サーバー名と status・
-	// metrics degraded は最後まで残す。端末を並べたときに最初に要るのは
-	// どのサーバーかと、動いているかどうかのため。
+	// 消えてしまう。落とす順は hso のバージョン → サーバーの版 → uptime で、
+	// サーバー名と status・metrics degraded は最後まで残す。端末を並べたときに
+	// 最初に要るのはどのサーバーかと、動いているかどうかのため。
 	budget := max(0, model.layout.statsWidth-5)
 	for _, tail := range []string{
-		version + status + uptime + degraded,
+		server + version + status + uptime + degraded,
+		server + status + uptime + degraded,
 		status + uptime + degraded,
 		status + degraded,
 	} {

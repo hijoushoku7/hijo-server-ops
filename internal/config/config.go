@@ -25,6 +25,9 @@ type Server struct {
 	Command string `toml:"command"`
 	WorkDir string `toml:"workdir"`
 	Java    string `toml:"java"`
+	// Version はセットアップでインストールしたときの版と loader。表示専用で、
+	// 手持ちのサーバーを登録しただけのときは空のままになる。
+	Version string `toml:"version"`
 	// AutoRestart は異常終了したサーバーを hso が自動で立て直すか。配色では
 	// なく挙動なので [ui.theme] ではなくここに置く。既定は無効。
 	AutoRestart bool `toml:"auto_restart"`
@@ -152,6 +155,9 @@ func render(cfg Config) string {
 	}
 	if cfg.Server.Java != "" {
 		out.WriteString("java = " + quote(cfg.Server.Java) + "\n")
+	}
+	if cfg.Server.Version != "" {
+		out.WriteString("version = " + quote(cfg.Server.Version) + "\n")
 	}
 	if cfg.Server.AutoRestart {
 		out.WriteString("auto_restart = true\n")

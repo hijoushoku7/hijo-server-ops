@@ -884,9 +884,10 @@ func moveCursor(key tea.Key, cursor, count int) int {
 
 func (m *model) preview() string {
 	if m.register {
-		return render(m.command, m.workDir, "", "")
+		return render(m.command, m.workDir, "", "", "")
 	}
-	return render(m.command, m.workDir, m.configDir, m.javaHome)
+	return render(m.command, m.workDir, m.configDir, m.javaHome,
+		serverVersion(m.installKind, m.minecraft, m.loader))
 }
 
 func defaultServerName(workDir string) string {
