@@ -19,6 +19,7 @@ head_or_body() {
   awk -v want="$2" '
     !started && (/^[[:space:]]*$/ ||
                  tolower($0) ~ /^[[:space:]]*copyright/ ||
+                 tolower($0) ~ /^[[:space:]]*all rights reserved/ ||
                  (length($0) < 60 && tolower($0) ~ /licen[cs]e/)) {
       if (want == "head" && tolower($0) ~ /^[[:space:]]*copyright/) print
       next
@@ -30,8 +31,10 @@ head_or_body() {
 body() { head_or_body "$1" body; }
 
 # 権利者が複数ある場合に落とさないよう、頭にある著作権行はすべて並べる。
-# paste -d は区切り文字を循環させるので、"; " を渡すと 3 行以上で崩れる。
-copyrights() { head_or_body "$1" head | paste -sd';' - | sed 's/;/; /g'; }
+# 区切りを入れるだけで原文には触らない（著作権行が ";" を含むことがある）。
+copyrights() {
+  head_or_body "$1" head | awk '{ printf "%s%s", sep, $0; sep = "; " } END { print "" }'
+}
 
 # 本文が同一かどうかは空白を潰した文字列で判定する。同じ MIT でも改行位置や
 # "The MIT License (MIT)" の有無が違うだけのことが多い。
@@ -91,8 +94,10 @@ add "Go standard library and runtime" "$(go env GOROOT)/LICENSE"
   # モジュール数の多い束から出す。
   for d in $(for k in "$work"/*/; do printf '%s\t%s\n' "$(wc -l < "$k/mods")" "$k"; done |
                sort -rn | cut -f2); do
-    if grep -qiE 'Redistributions of source code' "$d/body"; then
+    if grep -qiE 'Neither the name of' "$d/body"; then
       name="BSD 3-Clause License"
+    elif grep -qiE 'Redistributions of source code' "$d/body"; then
+      name="BSD 2-Clause License"
     elif grep -qiE 'Permission is hereby granted, free of charge' "$d/body"; then
       name="MIT License"
     else
