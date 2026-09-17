@@ -793,9 +793,8 @@ func (m *model) selectCommand(input string, fromInput bool) {
 
 func (m *model) updateInstallJava(key tea.Key) (tea.Model, tea.Cmd) {
 	count := len(m.installations) + 1
+	// インストールは済んでいるので戻れる先がない。Esc は受けない。
 	switch key.Code {
-	case tea.KeyEscape:
-		m.step = stepInstallConfirm
 	case tea.KeyEnter, tea.KeyKpEnter:
 		m.javaHome = ""
 		if m.cursor > 0 {

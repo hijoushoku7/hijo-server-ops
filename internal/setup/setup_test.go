@@ -115,6 +115,27 @@ func TestInstalledWithoutJavaSkipsSelection(t *testing.T) {
 	}
 }
 
+// インストールは済んでいるので Java 選択から戻せる先はない。Esc を受けて
+// stepInstallConfirm へ戻すと、生成済みのファイルで再インストールが弾かれて
+// 先へも進めなくなる。
+func TestInstalledJavaIgnoresEscape(t *testing.T) {
+	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
+	model.workDir = "/srv/minecraft"
+	model.installedJava = func(string) ([]javaenv.Installation, error) {
+		return []javaenv.Installation{{Home: "/usr/lib/jvm/java-21", Major: 21}}, nil
+	}
+
+	_, _ = model.Update(installedMsg{})
+	press(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.step != stepInstallJava {
+		t.Fatalf("step = %d", model.step)
+	}
+	press(t, model, enter)
+	if model.step != stepConfirm {
+		t.Fatalf("step = %d", model.step)
+	}
+}
+
 func TestInstalledJavaCanRemainUnselected(t *testing.T) {
 	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
 	model.workDir = "/srv/minecraft"

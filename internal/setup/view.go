@@ -243,7 +243,9 @@ func (m *model) keybar() string {
 			[2]string{"Enter", msg.KeyNext},
 			[2]string{"Esc", msg.KeyBack},
 		)
-	case stepInstallKind, stepInstallLoader, stepInstallJava:
+	case stepInstallJava:
+		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"Enter", msg.KeyConfirm})
+	case stepInstallKind, stepInstallLoader:
 		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"Enter", msg.KeyConfirm}, [2]string{"Esc", msg.KeyBack})
 		if m.step == stepInstallLoader && m.installKind == "forge" {
 			keys = append(keys, [2]string{"a", msg.KeyAllForgeBuilds})
