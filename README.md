@@ -123,6 +123,13 @@ Written in Japanese.
 - [Build instructions](dev-docs/build.md)
 - [Specification and technical notes](dev-docs/spec.md)
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+Bundled dependencies keep their own licenses (all MIT or BSD-3-Clause);
+full texts are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
 ## Author
 
 hijoushoku https://github.com/hijoushoku7
