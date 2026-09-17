@@ -439,12 +439,22 @@ func (m *model) visibleVersions() []mcversions.Version {
 
 // versionGroupKey は "1.20.1" のようなバージョン文字列から "1.20" を切り出す。
 // バージョン数が多い vanilla / paper 等を大分類でまず絞り込めるようにする。
+// "26.3-rc-3" のようにドットが1個しかないプレリリース版は、末尾の非数字（-rc-3
+// など）を落として "26.3" にする。正式版の "26.3" と別グループになると、
+// スナップショット表示に切り替えても同じ画面に出てこないため。
 func versionGroupKey(version string) string {
 	parts := strings.SplitN(version, ".", 3)
 	if len(parts) < 2 {
 		return version
 	}
-	return parts[0] + "." + parts[1]
+	minor := parts[1]
+	if i := strings.IndexFunc(minor, func(r rune) bool { return r < '0' || r > '9' }); i >= 0 {
+		minor = minor[:i]
+	}
+	if minor == "" {
+		return version
+	}
+	return parts[0] + "." + minor
 }
 
 // versionGroups は visibleVersions の並び順のまま大分類を重複なく列挙する。

@@ -114,6 +114,18 @@ func TestVersionGroupNarrowsThenSelectsVersion(t *testing.T) {
 	}
 }
 
+// paper の "26.3-rc-3" のようにドットが1個しかないプレリリース版は、正式版
+// "26.3" と同じ大分類にまとまらないと、スナップショット表示に切り替えても
+// 一覧に出てこない。
+func TestVersionGroupKeyMergesPrereleaseWithRelease(t *testing.T) {
+	if got := versionGroupKey("26.3-rc-3"); got != "26.3" {
+		t.Fatalf("versionGroupKey(26.3-rc-3) = %q", got)
+	}
+	if got := versionGroupKey("1.21.11-rc3"); got != "1.21" {
+		t.Fatalf("versionGroupKey(1.21.11-rc3) = %q", got)
+	}
+}
+
 func TestInstalledJavaSelectionAppearsInPreview(t *testing.T) {
 	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
 	model.workDir = "/srv/minecraft"
