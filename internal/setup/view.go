@@ -175,9 +175,9 @@ func selectionLines(labels []string, cursor int) []string {
 	end := min(start+listViewport, len(labels))
 	lines := make([]string, 0, end-start)
 	for index := start; index < end; index++ {
-		number := "  "
+		number := "    "
 		if index < 9 {
-			number = fmt.Sprintf("%d ", index+1)
+			number = fmt.Sprintf("(%d) ", index+1)
 		}
 		label := number + labels[index]
 		if index == cursor {

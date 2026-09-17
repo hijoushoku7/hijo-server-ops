@@ -516,7 +516,7 @@ func TestModelSelectsCommandWithNumber(t *testing.T) {
 		t.Fatalf("範囲外の番号で cursor = %d", model.cursor)
 	}
 	view := model.View().Content
-	if !strings.Contains(view, "3 "+msg.SetupManualEntry) || !strings.Contains(view, "↑↓ / 1-9") {
+	if !strings.Contains(view, "(3) "+msg.SetupManualEntry) || !strings.Contains(view, "↑↓ / 1-9") {
 		t.Fatalf("view = %q", view)
 	}
 }
