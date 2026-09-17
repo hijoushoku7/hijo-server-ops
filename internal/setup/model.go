@@ -1,11 +1,15 @@
 package setup
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -71,6 +75,9 @@ type model struct {
 	fetchedAt     time.Time
 	downloaded    atomic.Int64
 	downloadTotal atomic.Int64
+	java          string
+	outputMu      sync.Mutex
+	installOutput []string
 }
 
 type versionsMsg struct {
@@ -80,6 +87,7 @@ type versionsMsg struct {
 }
 type loadersMsg struct {
 	loaders   []mcversions.Loader
+	fallback  []mcversions.Loader
 	fetchedAt time.Time
 	err       error
 }
@@ -114,6 +122,7 @@ func newModelWithVersion(configPath string, servers registry.Registry, version, 
 		httpClient: http.DefaultClient,
 		client:     mcversions.NewClient(http.DefaultClient, version),
 		cacheDir:   cacheDir,
+		java:       "java",
 	}
 }
 
@@ -286,7 +295,7 @@ func (m *model) updateCommandInput(key tea.Key) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) updateInstallKind(key tea.Key) (tea.Model, tea.Cmd) {
-	kinds := []string{"vanilla", "fabric", "paper"}
+	kinds := []string{"vanilla", "fabric", "paper", "forge", "neoforge"}
 	switch key.Code {
 	case tea.KeyEscape:
 		m.step = stepCommand
@@ -317,6 +326,10 @@ func (m *model) loadVersions() tea.Cmd {
 			versions = cache.Fabric
 		case "paper":
 			versions = cache.Paper
+		case "forge":
+			versions = cache.Forge
+		case "neoforge":
+			versions = cache.NeoForge
 		}
 		if cache.Fresh(time.Now()) && len(versions) != 0 {
 			return versionsMsg{versions: versions, fetchedAt: cache.FetchedAt}
@@ -331,6 +344,10 @@ func (m *model) loadVersions() tea.Cmd {
 			versions, err = client.Fabric(ctx)
 		case "paper":
 			versions, err = client.Paper(ctx)
+		case "forge":
+			versions, err = client.Forge(ctx)
+		case "neoforge":
+			versions, err = client.NeoForge(ctx)
 		}
 		if err != nil {
 			return versionsMsg{err: err}
@@ -345,6 +362,10 @@ func (m *model) loadVersions() tea.Cmd {
 			cache.Fabric = versions
 		case "paper":
 			cache.Paper = versions
+		case "forge":
+			cache.Forge = versions
+		case "neoforge":
+			cache.NeoForge = versions
 		}
 		_ = mcversions.WriteCache(dir, cache)
 		return versionsMsg{versions: versions, fetchedAt: cache.FetchedAt}
@@ -353,6 +374,12 @@ func (m *model) loadVersions() tea.Cmd {
 
 func (m *model) receiveVersions(message versionsMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil || len(message.versions) == 0 {
+		if m.installKind == "forge" || m.installKind == "neoforge" {
+			// 版とローダーが対で決まるので、版だけ手入力しても選べない。種別選択へ戻す。
+			m.step, m.cursor = stepInstallKind, 0
+			m.message = msg.SetupVersionsUnavailable
+			return m, nil
+		}
 		m.step = stepInstallVersionInput
 		m.input = nil
 		return m, nil
@@ -375,6 +402,11 @@ func (m *model) visibleVersions() []mcversions.Version {
 }
 
 func (m *model) updateInstallVersion(key tea.Key) (tea.Model, tea.Cmd) {
+	// 取得中でも Esc だけは効かせる。応答が返らない間に詰まらせないため。
+	if key.Code == tea.KeyEscape {
+		m.step, m.cursor = stepInstallKind, 0
+		return m, nil
+	}
 	if m.versions == nil {
 		return m, nil
 	}
@@ -385,18 +417,21 @@ func (m *model) updateInstallVersion(key tea.Key) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch key.Code {
-	case tea.KeyEscape:
-		m.step, m.cursor = stepInstallKind, 0
 	case tea.KeyEnter, tea.KeyKpEnter:
 		if len(versions) == 0 {
 			return m, nil
 		}
-		m.minecraft = versions[m.cursor].Version
-		if m.installKind != "fabric" {
+		selected := versions[m.cursor]
+		m.minecraft = selected.Version
+		if m.installKind != "fabric" && m.installKind != "forge" && m.installKind != "neoforge" {
 			m.step = stepInstallConfirm
 			return m, nil
 		}
 		m.step, m.cursor = stepInstallLoader, 0
+		if m.installKind == "forge" || m.installKind == "neoforge" {
+			m.loaders = selected.Loaders
+			return m, nil
+		}
 		return m, m.loadLoaders()
 	default:
 		if len(versions) != 0 {
@@ -451,6 +486,10 @@ func (m *model) loadLoaders() tea.Cmd {
 
 func (m *model) receiveLoaders(message loadersMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil || len(message.loaders) == 0 {
+		if len(message.fallback) != 0 {
+			m.loaders, m.cursor = message.fallback, 0
+			return m, nil
+		}
 		// Loader を選べないので版の一覧へ黙って戻し、選び直せるようにする。
 		m.step = stepInstallVersion
 		m.cursor = 0
@@ -461,12 +500,26 @@ func (m *model) receiveLoaders(message loadersMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) updateInstallLoader(key tea.Key) (tea.Model, tea.Cmd) {
+	if key.Code == tea.KeyEscape {
+		m.step, m.cursor = stepInstallVersion, 0
+		return m, nil
+	}
 	if m.loaders == nil {
 		return m, nil
 	}
+	if m.installKind == "forge" && key.Text == "a" {
+		fallback := m.loaders
+		m.loaders = nil
+		m.cursor = 0
+		client, minecraft := m.client, m.minecraft
+		return m, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			loaders, err := client.ForgeLoaders(ctx, minecraft)
+			return loadersMsg{loaders: loaders, fallback: fallback, err: err}
+		}
+	}
 	switch key.Code {
-	case tea.KeyEscape:
-		m.step, m.cursor = stepInstallVersion, 0
 	case tea.KeyEnter, tea.KeyKpEnter:
 		if len(m.loaders) != 0 {
 			m.loader = m.loaders[m.cursor].Version
@@ -482,7 +535,7 @@ func (m *model) updateInstallLoader(key tea.Key) (tea.Model, tea.Cmd) {
 
 func (m *model) updateInstallConfirm(key tea.Key) (tea.Model, tea.Cmd) {
 	if key.Code == tea.KeyEscape {
-		if m.installKind == "fabric" {
+		if m.installKind == "fabric" || m.installKind == "forge" || m.installKind == "neoforge" {
 			m.step = stepInstallLoader
 		} else {
 			m.step = stepInstallVersion
@@ -493,7 +546,11 @@ func (m *model) updateInstallConfirm(key tea.Key) (tea.Model, tea.Cmd) {
 	if key.Code != tea.KeyEnter && key.Code != tea.KeyKpEnter {
 		return m, nil
 	}
-	for _, name := range []string{"server.jar", "run.sh", "eula.txt"} {
+	names := []string{"server.jar", "run.sh", "eula.txt"}
+	if m.installKind == "forge" || m.installKind == "neoforge" {
+		names = []string{"run.sh", "eula.txt"}
+	}
+	for _, name := range names {
 		if _, err := os.Stat(filepath.Join(m.workDir, name)); err == nil {
 			m.message = msg.SetupInstallFileExists(name)
 			return m, nil
@@ -501,6 +558,9 @@ func (m *model) updateInstallConfirm(key tea.Key) (tea.Model, tea.Cmd) {
 	}
 	m.downloaded.Store(0)
 	m.downloadTotal.Store(0)
+	m.outputMu.Lock()
+	m.installOutput = nil
+	m.outputMu.Unlock()
 	m.step = stepInstalling
 	return m, tea.Batch(m.install(), installTick())
 }
@@ -518,11 +578,19 @@ func (m *model) install() tea.Cmd {
 			jar, err = client.FabricJar(ctx, minecraft, loader)
 		case "paper":
 			jar, err = client.PaperJar(ctx, minecraft)
+		case "forge":
+			jar, err = client.ForgeInstaller(ctx, minecraft, loader)
+		case "neoforge":
+			jar, err = client.NeoForgeInstaller(ctx, loader)
 		}
 		if err != nil {
 			return installedMsg{err: err}
 		}
 		jarPath := filepath.Join(dir, "server.jar")
+		installer := kind == "forge" || kind == "neoforge"
+		if installer {
+			jarPath = filepath.Join(dir, ".hso-installer.jar")
+		}
 		if err = mcversions.Download(ctx, httpClient, jar, jarPath, func(done, total int64) { m.downloaded.Store(done); m.downloadTotal.Store(total) }); err != nil {
 			return installedMsg{err: err}
 		}
@@ -534,16 +602,99 @@ func (m *model) install() tea.Cmd {
 				}
 			}
 		}()
+		if installer {
+			if err = m.runInstaller(ctx, jarPath, dir); err != nil {
+				return installedMsg{err: m.installerError(err)}
+			}
+			if err = os.Remove(jarPath); err != nil {
+				return installedMsg{err: err}
+			}
+			created = created[1:]
+			if err = m.prepareInstallerRunScript(dir, minecraft, loader); err != nil {
+				return installedMsg{err: err}
+			}
+		}
 		if err = writeExclusive(filepath.Join(dir, "eula.txt"), []byte("eula=true\n"), 0o644); err != nil {
 			return installedMsg{err: err}
 		}
 		created = append(created, filepath.Join(dir, "eula.txt"))
-		script := "#!/bin/sh\n# hso が生成した起動スクリプト。JVM 引数はここで調整する。\nexec java -Xmx2G -jar server.jar nogui\n"
-		if err = writeExclusive(filepath.Join(dir, "run.sh"), []byte(script), 0o755); err != nil {
-			return installedMsg{err: err}
+		if !installer {
+			script := "#!/bin/sh\n# hso が生成した起動スクリプト。JVM 引数はここで調整する。\nexec java -Xmx2G -jar server.jar nogui\n"
+			if err = writeExclusive(filepath.Join(dir, "run.sh"), []byte(script), 0o755); err != nil {
+				return installedMsg{err: err}
+			}
 		}
 		return installedMsg{}
 	}
+}
+
+func (m *model) runInstaller(ctx context.Context, jarPath, dir string) error {
+	command := exec.CommandContext(ctx, m.java, "-jar", filepath.Base(jarPath), "--installServer")
+	command.Dir = dir
+	output, err := command.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	command.Stderr = command.Stdout
+	if err := command.Start(); err != nil {
+		return err
+	}
+	scanner := bufio.NewScanner(output)
+	for scanner.Scan() {
+		m.appendInstallOutput(scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		_ = command.Wait()
+		return err
+	}
+	return command.Wait()
+}
+
+func (m *model) appendInstallOutput(line string) {
+	m.outputMu.Lock()
+	defer m.outputMu.Unlock()
+	m.installOutput = append(m.installOutput, line)
+	if len(m.installOutput) > 10 {
+		m.installOutput = m.installOutput[len(m.installOutput)-10:]
+	}
+}
+
+func (m *model) installerOutputLines() []string {
+	m.outputMu.Lock()
+	defer m.outputMu.Unlock()
+	return append([]string(nil), m.installOutput...)
+}
+
+func (m *model) installerError(err error) error {
+	lines := m.installerOutputLines()
+	if len(lines) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w\n%s", err, strings.Join(lines, "\n"))
+}
+
+func (m *model) prepareInstallerRunScript(dir, minecraft, loader string) error {
+	runPath := filepath.Join(dir, "run.sh")
+	if info, err := os.Stat(runPath); err == nil {
+		if info.Mode().Perm()&0o111 == 0 {
+			return os.Chmod(runPath, info.Mode().Perm()|0o111)
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "forge-"+minecraft+"-"+loader+"*.jar"))
+	if err != nil {
+		return err
+	}
+	for _, match := range matches {
+		if strings.HasSuffix(match, "-installer.jar") {
+			continue
+		}
+		script := "#!/bin/sh\n# hso が生成した起動スクリプト。JVM 引数はここで調整する。\nexec java -Xmx2G -jar " + filepath.Base(match) + " nogui\n"
+		return writeExclusive(runPath, []byte(script), 0o755)
+	}
+	return fmt.Errorf("forge server jar not found: %s-%s", minecraft, loader)
 }
 
 func writeExclusive(path string, content []byte, mode os.FileMode) error {

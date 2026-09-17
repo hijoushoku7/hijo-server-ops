@@ -21,6 +21,8 @@ const (
 	paperBuildsURL     = "https://fill.papermc.io/v3/projects/paper/versions/"
 	forgeURL           = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
 	neoForgeURL        = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
+	forgeMavenURL      = "https://maven.minecraftforge.net/net/minecraftforge/forge/"
+	neoForgeMavenURL   = "https://maven.neoforged.net/releases/net/neoforged/neoforge/"
 )
 
 // Version は Minecraft の版と、その版で選択できるローダーを表す。
@@ -46,6 +48,7 @@ type Client struct {
 
 type urls struct {
 	vanilla, fabricGame, fabricLoader, fabricInstaller, fabricServer, paper, paperBuilds, forge, neoForge string
+	forgeMaven, neoForgeMaven                                                                             string
 }
 
 // NewClient は一覧取得用のクライアントを作る。version は hso のバージョンで、
@@ -58,6 +61,7 @@ func NewClient(httpClient *http.Client, version string) *Client {
 		vanilla: vanillaURL, fabricGame: fabricGameURL, fabricLoader: fabricLoaderURL,
 		fabricInstaller: fabricInstallerURL, fabricServer: fabricServerURL,
 		paper: paperURL, paperBuilds: paperBuildsURL, forge: forgeURL, neoForge: neoForgeURL,
+		forgeMaven: forgeMavenURL, neoForgeMaven: neoForgeMavenURL,
 	}}
 }
 

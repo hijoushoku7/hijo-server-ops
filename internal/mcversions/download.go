@@ -5,14 +5,93 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/xml"
 	"fmt"
 	"hash"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
+
+// ForgeInstaller は指定した Forge のサーバーインストーラを返す。
+func (c *Client) ForgeInstaller(ctx context.Context, minecraft, forge string) (ServerJar, error) {
+	version := minecraft + "-" + forge
+	url := c.urls.forgeMaven + version + "/forge-" + version + "-installer.jar"
+	sum, err := c.checksum(ctx, url+".sha1")
+	if err != nil {
+		return ServerJar{}, err
+	}
+	return ServerJar{URL: url, Sum: sum}, nil
+}
+
+// NeoForgeInstaller は指定した NeoForge のサーバーインストーラを返す。
+func (c *Client) NeoForgeInstaller(ctx context.Context, version string) (ServerJar, error) {
+	url := c.urls.neoForgeMaven + version + "/neoforge-" + version + "-installer.jar"
+	sum, err := c.checksum(ctx, url+".sha1")
+	if err != nil {
+		return ServerJar{}, err
+	}
+	return ServerJar{URL: url, Sum: sum}, nil
+}
+
+// ForgeLoaders は指定した Minecraft バージョン向けの全 Forge ビルドを返す。
+func (c *Client) ForgeLoaders(ctx context.Context, minecraft string) ([]Loader, error) {
+	url := c.urls.forgeMaven + "maven-metadata.xml"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
+	}
+	var metadata struct {
+		Versions []string `xml:"versioning>versions>version"`
+	}
+	if err := xml.NewDecoder(resp.Body).Decode(&metadata); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", url, err)
+	}
+	prefix := minecraft + "-"
+	loaders := make([]Loader, 0)
+	for _, version := range metadata.Versions {
+		if strings.HasPrefix(version, prefix) {
+			loaders = append(loaders, Loader{Version: strings.TrimPrefix(version, prefix)})
+		}
+	}
+	return loaders, nil
+}
+
+func (c *Client) checksum(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("GET %s: %s", url, resp.Status)
+	}
+	content, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		return "", err
+	}
+	sum := strings.TrimSpace(string(content))
+	decoded, err := hex.DecodeString(sum)
+	if err != nil || len(decoded) != sha1.Size {
+		return "", fmt.Errorf("invalid SHA-1 from %s", url)
+	}
+	return strings.ToLower(sum), nil
+}
 
 // ServerJar はダウンロードするサーバー jar の在り処と検証値。
 type ServerJar struct {

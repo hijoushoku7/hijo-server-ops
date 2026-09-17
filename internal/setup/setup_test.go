@@ -82,6 +82,71 @@ func TestInstallCreatesVanillaServer(t *testing.T) {
 	}
 }
 
+func TestInstallForgeWithGeneratedRunScript(t *testing.T) {
+	testInstallerLayout(t, "1.20.1", "47.4.0", "printf '#!/bin/sh\\n' > run.sh\nchmod 644 run.sh\necho installed\n", false)
+}
+
+func TestInstallForgeLegacyLayout(t *testing.T) {
+	testInstallerLayout(t, "1.16.5", "36.2.39", "touch forge-1.16.5-36.2.39.jar\necho installed\n", true)
+}
+
+func testInstallerLayout(t *testing.T, minecraft, loader, javaBody string, legacy bool) {
+	t.Helper()
+	content := []byte("installer jar")
+	sum := sha1.Sum(content)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".sha1") {
+			fmt.Fprintf(w, "%x\n", sum)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "-installer.jar") {
+			_, _ = w.Write(content)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpClient := &http.Client{Transport: rewriteTransport{target: target}}
+	dir := t.TempDir()
+	java := filepath.Join(dir, "fake-java")
+	if err := os.WriteFile(java, []byte("#!/bin/sh\n"+javaBody), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
+	model.client = mcversions.NewClient(httpClient, "test")
+	model.httpClient = httpClient
+	model.java = java
+	model.workDir = dir
+	model.installKind = "forge"
+	model.minecraft = minecraft
+	model.loader = loader
+	message := model.install()()
+	if result := message.(installedMsg); result.err != nil {
+		t.Fatal(result.err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".hso-installer.jar")); !os.IsNotExist(err) {
+		t.Fatalf("installer remains: %v", err)
+	}
+	run, err := os.ReadFile(filepath.Join(dir, "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(filepath.Join(dir, "run.sh"))
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("run.sh is not executable: %o", info.Mode().Perm())
+	}
+	if legacy && !strings.Contains(string(run), "forge-1.16.5-36.2.39.jar") {
+		t.Fatalf("run.sh = %q", run)
+	}
+	if got := strings.Join(model.installerOutputLines(), "\n"); !strings.Contains(got, "installed") {
+		t.Fatalf("installer output = %q", got)
+	}
+}
+
 func writeFile(t *testing.T, path string, mode os.FileMode) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), mode); err != nil {

@@ -78,7 +78,7 @@ func (m *model) body() []string {
 			"  " + string(m.input) + "█",
 		}
 	case stepInstallKind:
-		return append([]string{msg.SetupStepInstallKind, ""}, selectionLines([]string{"Vanilla", "Fabric", "Paper"}, m.cursor)...)
+		return append([]string{msg.SetupStepInstallKind, ""}, selectionLines([]string{"Vanilla", "Fabric", "Paper", "Forge", "NeoForge"}, m.cursor)...)
 	case stepInstallVersion:
 		versions := m.visibleVersions()
 		if m.versions == nil {
@@ -99,6 +99,9 @@ func (m *model) body() []string {
 		labels := make([]string, len(m.loaders))
 		for i, loader := range m.loaders {
 			labels[i] = loader.Version
+			if loader.Recommended {
+				labels[i] += " " + msg.SetupLoaderRecommended
+			}
 		}
 		lines := append([]string{msg.SetupStepInstallLoader, ""}, selectionLines(labels, m.cursor)...)
 		return append(lines, "", dimStyle.Render("  "+msg.SetupCacheTime(m.fetchedAt)))
@@ -116,7 +119,11 @@ func (m *model) body() []string {
 		if total > 0 {
 			progress = msg.SetupDownloadingProgress(done, total)
 		}
-		return []string{msg.SetupInstalling, "", "  " + progress}
+		lines := []string{msg.SetupInstalling, "", "  " + progress}
+		for _, line := range m.installerOutputLines() {
+			lines = append(lines, "  "+line)
+		}
+		return lines
 	default:
 		lines := []string{
 			msg.SetupStepConfirm,
@@ -231,6 +238,9 @@ func (m *model) keybar() string {
 		)
 	case stepInstallKind, stepInstallLoader:
 		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"Enter", msg.KeyConfirm}, [2]string{"Esc", msg.KeyBack})
+		if m.step == stepInstallLoader && m.installKind == "forge" {
+			keys = append(keys, [2]string{"a", msg.KeyAllForgeBuilds})
+		}
 	case stepInstallVersion:
 		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"s", msg.KeyToggleSnapshots}, [2]string{"Enter", msg.KeyConfirm}, [2]string{"Esc", msg.KeyBack})
 	case stepInstallVersionInput:
