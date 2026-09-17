@@ -113,7 +113,9 @@ Forge の maven-metadata.xml は Phase 3 で足す。
 ### Phase 4: Java の選択
 
 - インストール完了後に `javaenv.Installed` の一覧から使う JDK を選ぶ
-- 選択結果を `config.SetJava` で `hso.toml` へ書く
+- 選択結果は `hso.toml` を新規作成するときにそのまま `[server] java` として書く。
+  `config.SetJava` は既存の設定を書き換えるためのもので、ここでは作りたての設定を
+  読み直して書き換えることになるので使わない
 - 選ばずに飛ばせること。飛ばしても起動はできる
 
 ## やらないこと
