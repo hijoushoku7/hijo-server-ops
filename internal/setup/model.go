@@ -789,6 +789,9 @@ func (m *model) selectCommand(input string, fromInput bool) {
 	m.needsChmod = info.Mode().Perm()&0o111 == 0
 	m.installations = nil
 	m.javaHome = ""
+	// インストール後に別の起動スクリプトを選び直したなら、入れたものと
+	// 動かすものが食い違う。分からない扱いに戻す。
+	m.installed = ""
 	// 実行権限がなければ hso は起動できないので、付ける側を初期値にする。
 	// c で断れる。
 	m.grantChmod = m.needsChmod

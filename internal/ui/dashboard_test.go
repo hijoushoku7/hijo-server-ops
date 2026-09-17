@@ -54,6 +54,32 @@ func TestStatsTitleDropsVersionOnNarrowTerminal(t *testing.T) {
 	}
 }
 
+// TestStatsTitleDropsHsoVersionBeforeServerVersion は、狭い端末で先に消えるのが
+// hso のバージョンのほうだということを見る。並べた端末で知りたいのは、hso の
+// 版より動かしているサーバーの版のため。
+func TestStatsTitleDropsHsoVersionBeforeServerVersion(t *testing.T) {
+	model := New(
+		make(chan Action, 1),
+		nil,
+		0,
+		DefaultSettings(),
+		ServerInfo{Name: "survival", Version: "v1.2.3", ServerVersion: "Paper 1.21.4"},
+	)
+	// 両方入る幅では両方出る。
+	model.resize(110, minimumHeight)
+	if got := model.statsTitle(); !strings.Contains(got, "hso v1.2.3") ||
+		!strings.Contains(got, "Paper 1.21.4") {
+		t.Fatalf("title = %q", got)
+	}
+
+	// 片方しか入らない幅で残るのはサーバーの版のほう。
+	model.resize(100, minimumHeight)
+	if got := model.statsTitle(); strings.Contains(got, "hso v1.2.3") ||
+		!strings.Contains(got, "Paper 1.21.4") {
+		t.Fatalf("title = %q", got)
+	}
+}
+
 // TestStatsTitleTruncatesLongNameToKeepStatus は、登録名が長いだけで運転状況が
 // 消えないことを見る。名前は 30 文字まで登録できるのに対し、最小幅の Stats の
 // タイトルは 29 桁しかない。
