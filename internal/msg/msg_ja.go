@@ -250,11 +250,13 @@ const (
 	SetupStepInstallKind         = "インストールするサーバーの種別"
 	SetupStepInstallVersion      = "Minecraft のバージョン"
 	SetupStepInstallVersionInput = "Minecraft のバージョンを入力してください"
-	SetupStepInstallLoader       = "Fabric Loader のバージョン"
+	SetupStepInstallLoader       = "ローダーのバージョン"
 	SetupStepInstallConfirm      = "EULA に同意してインストール"
 	SetupLoading                 = "取得中…"
 	SetupEULA                    = "Minecraft EULA に同意する必要があります"
 	SetupInstalling              = "サーバーをインストールしています…"
+	SetupLoaderRecommended       = "（推奨）"
+	SetupVersionsUnavailable     = "バージョン一覧を取得できませんでした"
 	SetupNotExecutable           = "(実行権限なし)"
 	SetupNoCandidates            = "起動スクリプトの候補が見つかりません"
 	SetupChmodGrant              = "[x] 実行権限を付ける（読める相手にだけ実行を許す）"
@@ -293,6 +295,7 @@ const (
 	KeyDoNotAddConfig  = "追加しない"
 	KeyToggleSnapshots = "スナップショット表示を切替"
 	KeyAgreeInstall    = "同意してインストール"
+	KeyAllForgeBuilds  = "全ビルドを取得"
 )
 
 func SetupCacheTime(t time.Time) string {

@@ -251,11 +251,13 @@ const (
 	SetupStepInstallKind         = "Server type to install"
 	SetupStepInstallVersion      = "Minecraft version"
 	SetupStepInstallVersionInput = "Enter the Minecraft version"
-	SetupStepInstallLoader       = "Fabric Loader version"
+	SetupStepInstallLoader       = "Loader version"
 	SetupStepInstallConfirm      = "Agree to the EULA and install"
 	SetupLoading                 = "loading..."
 	SetupEULA                    = "You must agree to the Minecraft EULA"
 	SetupInstalling              = "Installing the server..."
+	SetupLoaderRecommended       = "(recommended)"
+	SetupVersionsUnavailable     = "could not fetch the version list"
 	SetupNotExecutable           = "(not executable)"
 	SetupNoCandidates            = "no start script candidates found"
 	SetupChmodGrant              = "[x] add execute permission (only for those who can already read it)"
@@ -294,6 +296,7 @@ const (
 	KeyDoNotAddConfig  = "don't add"
 	KeyToggleSnapshots = "toggle snapshots"
 	KeyAgreeInstall    = "agree and install"
+	KeyAllForgeBuilds  = "load all builds"
 )
 
 func SetupCacheTime(t time.Time) string {
