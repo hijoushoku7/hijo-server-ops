@@ -230,7 +230,7 @@ func expandHome(path string) string {
 
 // render は書き出す TOML を組み立てる。workdir は設定ファイルと同じ
 // ディレクトリなら省略する（config.Load の既定値と同じになる）。
-func render(command, workDir, configDir, java string) string {
+func render(command, workDir, configDir, java, version string) string {
 	var out strings.Builder
 	out.WriteString("[server]\n")
 	out.WriteString("command = " + quote(command) + "\n")
@@ -240,7 +240,51 @@ func render(command, workDir, configDir, java string) string {
 	if java != "" {
 		out.WriteString("java = " + quote(java) + "\n")
 	}
+	if version != "" {
+		out.WriteString("version = " + quote(version) + "\n")
+	}
 	return out.String()
+}
+
+// installKinds はインストールできる種別。選択肢の並び順と、ダウンロード先を
+// 選ぶ id と、画面に出す綴りをここだけに持つ。別々に持つと一覧の順と id が
+// ずれたり、種別を足したときに片方だけ漏れたりする。
+var installKinds = []struct{ id, label string }{
+	{"vanilla", "Vanilla"},
+	{"fabric", "Fabric"},
+	{"paper", "Paper"},
+	{"forge", "Forge"},
+	{"neoforge", "NeoForge"},
+}
+
+func installKindLabels() []string {
+	labels := make([]string, len(installKinds))
+	for i, kind := range installKinds {
+		labels[i] = kind.label
+	}
+	return labels
+}
+
+func installKindLabel(id string) string {
+	for _, kind := range installKinds {
+		if kind.id == id {
+			return kind.label
+		}
+	}
+	return id
+}
+
+// serverVersion は設定に書く版の 1 行を作る。インストールが済んだときだけ
+// 呼ばれる。
+func serverVersion(kind, minecraft, loader string) string {
+	if kind == "" || minecraft == "" {
+		return ""
+	}
+	label := installKindLabel(kind)
+	if loader != "" {
+		return label + " " + minecraft + " (" + loader + ")"
+	}
+	return label + " " + minecraft
 }
 
 // quote は TOML の基本文字列にする。改行を含むパスは滅多にないが、

@@ -69,6 +69,7 @@ type model struct {
 	httpClient    *http.Client
 	cacheDir      string
 	installKind   string
+	installed     string // インストールが済んだサーバーの版。設定に書く
 	versions      []mcversions.Version
 	loaders       []mcversions.Loader
 	minecraft     string
@@ -153,6 +154,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.step = stepInstallConfirm
 			return m, nil
 		}
+		// 設定に書く版はここで確定させる。選んだだけで Esc で戻り、元から
+		// ある起動スクリプトを選んだときに、入れていない版が残るのを防ぐ。
+		m.installed = serverVersion(m.installKind, m.minecraft, m.loader)
 		m.command = "./run.sh"
 		m.commandAbs = filepath.Join(m.workDir, "run.sh")
 		m.needsChmod = false
@@ -319,12 +323,11 @@ func (m *model) updateCommandInput(key tea.Key) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) updateInstallKind(key tea.Key) (tea.Model, tea.Cmd) {
-	kinds := []string{"vanilla", "fabric", "paper", "forge", "neoforge"}
 	switch key.Code {
 	case tea.KeyEscape:
 		m.step = stepCommand
 	case tea.KeyEnter, tea.KeyKpEnter:
-		m.installKind = kinds[m.cursor]
+		m.installKind = installKinds[m.cursor].id
 		m.cursor = 0
 		m.showSnapshots = false
 		m.versions = nil
@@ -333,7 +336,7 @@ func (m *model) updateInstallKind(key tea.Key) (tea.Model, tea.Cmd) {
 		m.step = stepInstallVersion
 		return m, m.loadVersions()
 	default:
-		m.cursor = moveCursor(key, m.cursor, len(kinds))
+		m.cursor = moveCursor(key, m.cursor, len(installKinds))
 	}
 	return m, nil
 }
@@ -762,10 +765,11 @@ func installTick() tea.Cmd {
 }
 
 func (m *model) installDescription() string {
+	label := installKindLabel(m.installKind)
 	if m.loader == "" {
-		return fmt.Sprintf("%s %s", m.installKind, m.minecraft)
+		return fmt.Sprintf("%s %s", label, m.minecraft)
 	}
-	return fmt.Sprintf("%s %s / %s", m.installKind, m.minecraft, m.loader)
+	return fmt.Sprintf("%s %s / %s", label, m.minecraft, m.loader)
 }
 
 func (m *model) selectCommand(input string, fromInput bool) {
@@ -785,6 +789,9 @@ func (m *model) selectCommand(input string, fromInput bool) {
 	m.needsChmod = info.Mode().Perm()&0o111 == 0
 	m.installations = nil
 	m.javaHome = ""
+	// インストール後に別の起動スクリプトを選び直したなら、入れたものと
+	// 動かすものが食い違う。分からない扱いに戻す。
+	m.installed = ""
 	// 実行権限がなければ hso は起動できないので、付ける側を初期値にする。
 	// c で断れる。
 	m.grantChmod = m.needsChmod
@@ -884,9 +891,9 @@ func moveCursor(key tea.Key, cursor, count int) int {
 
 func (m *model) preview() string {
 	if m.register {
-		return render(m.command, m.workDir, "", "")
+		return render(m.command, m.workDir, "", "", "")
 	}
-	return render(m.command, m.workDir, m.configDir, m.javaHome)
+	return render(m.command, m.workDir, m.configDir, m.javaHome, m.installed)
 }
 
 func defaultServerName(workDir string) string {

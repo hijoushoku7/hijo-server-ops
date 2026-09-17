@@ -34,8 +34,11 @@ type Action struct {
 
 // ServerInfo はサーバー固有の表示情報と操作対象。値がなくても基本動作は続けられる。
 type ServerInfo struct {
-	Name           string
-	Version        string
+	Name    string
+	Version string
+	// ServerVersion はセットアップでインストールしたときの版と loader。
+	// 分からないサーバーもあるので、空なら表示しない。
+	ServerVersion  string
 	PropertiesPath string
 }
 

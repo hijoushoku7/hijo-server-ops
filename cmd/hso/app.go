@@ -38,6 +38,7 @@ func runTUI(configPath string, cfg config.Config) error {
 		ui.ServerInfo{
 			Name:           serverDisplayName(configPath, cfg, registeredName),
 			Version:        version,
+			ServerVersion:  cfg.Server.Version,
 			PropertiesPath: filepath.Join(cfg.Server.WorkDir, "server.properties"),
 		},
 	)
