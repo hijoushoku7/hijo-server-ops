@@ -16,8 +16,8 @@ standard library and runtime. Licenses sharing the same text are grouped.
 - `github.com/charmbracelet/colorprofile@v0.4.3` — Copyright (c) 2020-2024 Charmbracelet, Inc
 - `github.com/charmbracelet/ultraviolet@v0.0.0-20260703014108-f5a850f9c2b7` — Copyright (c) 2025 Charmbracelet, Inc
 - `github.com/charmbracelet/x/ansi@v0.11.7` — Copyright (c) 2023 Charmbracelet, Inc.
-- `github.com/charmbracelet/x/termios@v0.1.1` — Copyright (c) 2023 Charmbracelet, Inc.
 - `github.com/charmbracelet/x/term@v0.2.2` — Copyright (c) 2023 Charmbracelet, Inc.
+- `github.com/charmbracelet/x/termios@v0.1.1` — Copyright (c) 2023 Charmbracelet, Inc.
 - `github.com/charmbracelet/x/windows@v0.2.2` — Copyright (c) 2023 Charmbracelet, Inc.
 - `github.com/clipperhouse/displaywidth@v0.11.0` — Copyright (c) 2025 Matt Sherman
 - `github.com/clipperhouse/uax29/v2@v2.7.0` — Copyright (c) 2020 Matt Sherman

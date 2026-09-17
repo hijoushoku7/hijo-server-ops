@@ -4,6 +4,11 @@
 # 依存を足したら実行して差分をコミットする（deps workflow が古さを検出する）。
 set -euo pipefail
 
+# sort の照合順はロケールで変わる（UTF-8 ロケールは句読点を無視するため
+# "term@..." と "termios@..." の順序が C ロケールと逆になる）。生成物を環境に
+# よらず同じにするため、このスクリプトの中ではバイト順に固定する。
+export LC_ALL=C
+
 cd "$(dirname "$0")/.."
 out=THIRD_PARTY_LICENSES.md
 work=$(mktemp -d)
