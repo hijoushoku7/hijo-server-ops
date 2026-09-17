@@ -252,6 +252,8 @@ const (
 	SetupStepInstallVersionInput = "Minecraft のバージョンを入力してください"
 	SetupStepInstallLoader       = "ローダーのバージョン"
 	SetupStepInstallConfirm      = "EULA に同意してインストール"
+	SetupStepInstallJava         = "起動に使う Java"
+	SetupJavaNone                = "選ばない（PATH の java を使う）"
 	SetupLoading                 = "取得中…"
 	SetupEULA                    = "Minecraft EULA に同意する必要があります"
 	SetupInstalling              = "サーバーをインストールしています…"

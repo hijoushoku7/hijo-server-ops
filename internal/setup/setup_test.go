@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/javaenv"
 	"github.com/hijoushoku7/hijo-server-ops/internal/mcversions"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
@@ -60,6 +61,7 @@ func TestInstallCreatesVanillaServer(t *testing.T) {
 	model.installKind = "vanilla"
 	model.minecraft = "1.21.1"
 	model.step = stepInstalling
+	model.installedJava = func(string) ([]javaenv.Installation, error) { return nil, nil }
 	message := model.install(context.Background())()
 	if result := message.(installedMsg); result.err != nil {
 		t.Fatal(result.err)
@@ -80,6 +82,71 @@ func TestInstallCreatesVanillaServer(t *testing.T) {
 	info, _ := os.Stat(filepath.Join(dir, "run.sh"))
 	if info.Mode().Perm() != 0o755 {
 		t.Fatalf("run.sh mode = %o", info.Mode().Perm())
+	}
+}
+
+func TestInstalledJavaSelectionAppearsInPreview(t *testing.T) {
+	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
+	model.workDir = "/srv/minecraft"
+	model.installedJava = func(root string) ([]javaenv.Installation, error) {
+		if root != "/usr/lib/jvm" {
+			t.Fatalf("root = %q", root)
+		}
+		return []javaenv.Installation{{Home: "/usr/lib/jvm/java-21", Major: 21, Implementor: "Eclipse Adoptium"}}, nil
+	}
+
+	_, _ = model.Update(installedMsg{})
+	if model.step != stepInstallJava || model.cursor != 0 {
+		t.Fatalf("step = %d, cursor = %d", model.step, model.cursor)
+	}
+	press(t, model, tea.KeyPressMsg{Code: tea.KeyDown}, enter)
+	if !strings.Contains(model.preview(), `java = "/usr/lib/jvm/java-21"`) {
+		t.Fatalf("preview = %q", model.preview())
+	}
+}
+
+func TestInstalledWithoutJavaSkipsSelection(t *testing.T) {
+	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
+	model.installedJava = func(string) ([]javaenv.Installation, error) { return nil, nil }
+
+	_, _ = model.Update(installedMsg{})
+	if model.step != stepConfirm {
+		t.Fatalf("step = %d", model.step)
+	}
+}
+
+// インストールは済んでいるので Java 選択から戻せる先はない。Esc を受けて
+// stepInstallConfirm へ戻すと、生成済みのファイルで再インストールが弾かれて
+// 先へも進めなくなる。
+func TestInstalledJavaIgnoresEscape(t *testing.T) {
+	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
+	model.workDir = "/srv/minecraft"
+	model.installedJava = func(string) ([]javaenv.Installation, error) {
+		return []javaenv.Installation{{Home: "/usr/lib/jvm/java-21", Major: 21}}, nil
+	}
+
+	_, _ = model.Update(installedMsg{})
+	press(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.step != stepInstallJava {
+		t.Fatalf("step = %d", model.step)
+	}
+	press(t, model, enter)
+	if model.step != stepConfirm {
+		t.Fatalf("step = %d", model.step)
+	}
+}
+
+func TestInstalledJavaCanRemainUnselected(t *testing.T) {
+	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
+	model.workDir = "/srv/minecraft"
+	model.installedJava = func(string) ([]javaenv.Installation, error) {
+		return []javaenv.Installation{{Home: "/usr/lib/jvm/java-21", Major: 21}}, nil
+	}
+
+	_, _ = model.Update(installedMsg{})
+	press(t, model, enter)
+	if strings.Contains(model.preview(), "java =") {
+		t.Fatalf("java 行を省略すべき: %q", model.preview())
 	}
 }
 
@@ -233,11 +300,11 @@ func TestResolveWorkDir(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	same := render("./run.sh", "/srv/mc", "/srv/mc")
+	same := render("./run.sh", "/srv/mc", "/srv/mc", "")
 	if strings.Contains(same, "workdir") {
 		t.Fatalf("workdir を省略すべき: %q", same)
 	}
-	differs := render("./run.sh", "/srv/mc", "/home/user")
+	differs := render("./run.sh", "/srv/mc", "/home/user", "")
 	if !strings.Contains(differs, `workdir = "/srv/mc"`) {
 		t.Fatalf("differs = %q", differs)
 	}

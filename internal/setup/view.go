@@ -124,6 +124,13 @@ func (m *model) body() []string {
 			lines = append(lines, "  "+line)
 		}
 		return lines
+	case stepInstallJava:
+		labels := make([]string, 1, len(m.installations)+1)
+		labels[0] = msg.SetupJavaNone
+		for _, installation := range m.installations {
+			labels = append(labels, fmt.Sprintf("Java %d  %s  %s", installation.Major, installation.Implementor, installation.Home))
+		}
+		return append([]string{msg.SetupStepInstallJava, ""}, selectionLines(labels, m.cursor)...)
 	default:
 		lines := []string{
 			msg.SetupStepConfirm,
@@ -236,6 +243,8 @@ func (m *model) keybar() string {
 			[2]string{"Enter", msg.KeyNext},
 			[2]string{"Esc", msg.KeyBack},
 		)
+	case stepInstallJava:
+		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"Enter", msg.KeyConfirm})
 	case stepInstallKind, stepInstallLoader:
 		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"Enter", msg.KeyConfirm}, [2]string{"Esc", msg.KeyBack})
 		if m.step == stepInstallLoader && m.installKind == "forge" {

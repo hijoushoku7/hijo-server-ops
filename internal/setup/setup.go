@@ -230,12 +230,15 @@ func expandHome(path string) string {
 
 // render は書き出す TOML を組み立てる。workdir は設定ファイルと同じ
 // ディレクトリなら省略する（config.Load の既定値と同じになる）。
-func render(command, workDir, configDir string) string {
+func render(command, workDir, configDir, java string) string {
 	var out strings.Builder
 	out.WriteString("[server]\n")
 	out.WriteString("command = " + quote(command) + "\n")
 	if workDir != configDir {
 		out.WriteString("workdir = " + quote(workDir) + "\n")
+	}
+	if java != "" {
+		out.WriteString("java = " + quote(java) + "\n")
 	}
 	return out.String()
 }
