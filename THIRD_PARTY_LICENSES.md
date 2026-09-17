@@ -1,7 +1,10 @@
-# サードパーティライセンス
+# サードパーティライセンス / Third-party licenses
 
 hso のバイナリには以下の Go モジュールと Go 本体が静的リンクされている。
 同じ本文のライセンスはまとめ、著作権表示を原文のまま列挙する。
+
+The hso binary statically links the Go modules listed below, plus the Go
+standard library and runtime. Licenses sharing the same text are grouped.
 
 このファイルは `./scripts/gen-third-party-licenses.sh` で生成する。
 

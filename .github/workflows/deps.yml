@@ -67,6 +67,14 @@ jobs:
             exit 1
           fi
 
+      - name: THIRD_PARTY_LICENSES.md の差分チェック
+        run: |
+          ./scripts/gen-third-party-licenses.sh
+          if ! git diff --exit-code THIRD_PARTY_LICENSES.md; then
+            echo "./scripts/gen-third-party-licenses.sh を実行して THIRD_PARTY_LICENSES.md をコミットしてください。" >&2
+            exit 1
+          fi
+
       - name: govulncheck
         # @latest は go.mod の Go より新しいツールチェーンを要求することがある
         # （x/vuln v1.8.0 は go >= 1.26）。GOTOOLCHAIN=local なので、go.mod の
