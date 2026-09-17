@@ -133,14 +133,17 @@ func (c *Client) FabricLoaders(ctx context.Context, minecraft string) ([]Loader,
 // Paper は Paper が対応する Minecraft バージョン一覧を返す。
 func (c *Client) Paper(ctx context.Context) ([]Version, error) {
 	var response struct {
-		Versions map[string]json.RawMessage `json:"versions"`
+		Versions map[string][]string `json:"versions"`
 	}
 	if err := c.get(ctx, c.urls.paper, &response, true); err != nil {
 		return nil, err
 	}
-	versions := make([]Version, 0, len(response.Versions))
-	for version := range response.Versions {
-		versions = append(versions, Version{Version: version, Stable: true})
+	var versions []Version
+	for _, series := range response.Versions {
+		for _, version := range series {
+			stable := !strings.Contains(version, "-rc") && !strings.Contains(version, "-pre")
+			versions = append(versions, Version{Version: version, Stable: stable})
+		}
 	}
 	sortVersions(versions)
 	return versions, nil
@@ -211,7 +214,7 @@ func (c *Client) NeoForge(ctx context.Context) ([]Version, error) {
 
 func neoForgeMinecraft(version string) (string, bool) {
 	parts := strings.Split(version, ".")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
+	if len(parts) != 3 && len(parts) != 4 {
 		return "", false
 	}
 	// 通常版のほか、配布 API に含まれる「20.6.120-beta」の形も受け入れる。
@@ -226,7 +229,14 @@ func neoForgeMinecraft(version string) (string, bool) {
 			}
 		}
 	}
-	return "1." + parts[0] + "." + parts[1], true
+	minecraft := parts[:len(parts)-1]
+	if len(parts) == 3 {
+		minecraft = append([]string{"1"}, minecraft...)
+	}
+	if minecraft[len(minecraft)-1] == "0" {
+		minecraft = minecraft[:len(minecraft)-1]
+	}
+	return strings.Join(minecraft, "."), true
 }
 
 // sortVersions は新しい版を先頭にする。文字列比較では "1.9" が "1.21" より

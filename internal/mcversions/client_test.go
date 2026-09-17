@@ -65,7 +65,7 @@ func TestFabricLoaders(t *testing.T) {
 }
 
 func TestPaper(t *testing.T) {
-	client, url := testClient(t, `{"versions":{"1.21.1":{},"1.20.6":{}}}`, func(r *http.Request) {
+	client, url := testClient(t, `{"versions":{"26.3":["26.3","26.3-rc-3"],"1.21":["1.21.11","1.21.11-rc3","1.21.11-pre1","1.21.1","1.21"]}}`, func(r *http.Request) {
 		want := "hso/v1.2.3 (https://github.com/hijoushoku7/hijo-server-ops)"
 		if got := r.Header.Get("User-Agent"); got != want {
 			t.Errorf("User-Agent = %q, want %q", got, want)
@@ -76,7 +76,15 @@ func TestPaper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Version{{Version: "1.21.1", Stable: true}, {Version: "1.20.6", Stable: true}}
+	want := []Version{
+		{Version: "26.3-rc-3"},
+		{Version: "26.3", Stable: true},
+		{Version: "1.21.11-rc3"},
+		{Version: "1.21.11-pre1"},
+		{Version: "1.21.11", Stable: true},
+		{Version: "1.21.1", Stable: true},
+		{Version: "1.21", Stable: true},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Paper() = %#v, want %#v", got, want)
 	}
@@ -100,7 +108,7 @@ func TestForge(t *testing.T) {
 }
 
 func TestNeoForge(t *testing.T) {
-	body := `{"versions":["21.1.209","21.1.208","20.6.120-beta","0.25w14craftmine.3-beta","21.1.2.3"]}`
+	body := `{"versions":["21.1.209","20.6.120-beta","21.0.167","26.1.2.94","26.2.0.88","0.25w14craftmine.3-beta","26.1.0.0-alpha.1+snapshot-1"]}`
 	client, url := testClient(t, body, nil)
 	client.urls.neoForge = url
 	got, err := client.NeoForge(context.Background())
@@ -108,7 +116,10 @@ func TestNeoForge(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Version{
-		{Version: "1.21.1", Stable: true, Loaders: []Loader{{Version: "21.1.209"}, {Version: "21.1.208"}}},
+		{Version: "26.2", Stable: true, Loaders: []Loader{{Version: "26.2.0.88"}}},
+		{Version: "26.1.2", Stable: true, Loaders: []Loader{{Version: "26.1.2.94"}}},
+		{Version: "1.21.1", Stable: true, Loaders: []Loader{{Version: "21.1.209"}}},
+		{Version: "1.21", Stable: true, Loaders: []Loader{{Version: "21.0.167"}}},
 		{Version: "1.20.6", Stable: true, Loaders: []Loader{{Version: "20.6.120-beta"}}},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -135,13 +146,13 @@ func TestHTTPErrorAndInvalidJSON(t *testing.T) {
 }
 
 func TestSortVersionsOrdersNumerically(t *testing.T) {
-	versions := []Version{{Version: "1.9"}, {Version: "1.21.1"}, {Version: "1.21"}, {Version: "1.7.10_pre4"}, {Version: "1.20.6"}}
+	versions := []Version{{Version: "1.9"}, {Version: "26.3"}, {Version: "1.21.11"}, {Version: "1.21.1"}, {Version: "1.21"}, {Version: "1.7.10_pre4"}, {Version: "1.20.6"}}
 	sortVersions(versions)
 	got := make([]string, len(versions))
 	for i, v := range versions {
 		got[i] = v.Version
 	}
-	want := []string{"1.21.1", "1.21", "1.20.6", "1.9", "1.7.10_pre4"}
+	want := []string{"26.3", "1.21.11", "1.21.1", "1.21", "1.20.6", "1.9", "1.7.10_pre4"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sortVersions = %v, want %v", got, want)
 	}
