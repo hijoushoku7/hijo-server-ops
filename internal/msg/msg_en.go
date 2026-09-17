@@ -253,6 +253,8 @@ const (
 	SetupStepInstallVersionInput = "Enter the Minecraft version"
 	SetupStepInstallLoader       = "Loader version"
 	SetupStepInstallConfirm      = "Agree to the EULA and install"
+	SetupStepInstallJava         = "Java used to start the server"
+	SetupJavaNone                = "do not select (use java from PATH)"
 	SetupLoading                 = "loading..."
 	SetupEULA                    = "You must agree to the Minecraft EULA"
 	SetupInstalling              = "Installing the server..."

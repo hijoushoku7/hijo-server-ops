@@ -16,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/javaenv"
 	"github.com/hijoushoku7/hijo-server-ops/internal/mcversions"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
@@ -39,6 +40,7 @@ const (
 	stepInstallLoader
 	stepInstallConfirm
 	stepInstalling
+	stepInstallJava
 	stepConfirm
 	stepRegisterNotice
 )
@@ -76,6 +78,9 @@ type model struct {
 	downloaded    atomic.Int64
 	downloadTotal atomic.Int64
 	java          string
+	installedJava func(string) ([]javaenv.Installation, error)
+	installations []javaenv.Installation
+	javaHome      string
 	cancelInstall context.CancelFunc
 	outputMu      sync.Mutex
 	installOutput []string
@@ -119,14 +124,15 @@ func newModelWithVersion(configPath string, servers registry.Registry, version, 
 	// 設定ファイルの置き場所をそのままサーバーディレクトリの初期値にする。
 	// 大半のケースで同じディレクトリになる。
 	return &model{
-		configPath: configPath,
-		configDir:  configDir,
-		input:      []rune(configDir),
-		servers:    servers,
-		httpClient: http.DefaultClient,
-		client:     mcversions.NewClient(http.DefaultClient, version),
-		cacheDir:   cacheDir,
-		java:       "java",
+		configPath:    configPath,
+		configDir:     configDir,
+		input:         []rune(configDir),
+		servers:       servers,
+		httpClient:    http.DefaultClient,
+		client:        mcversions.NewClient(http.DefaultClient, version),
+		cacheDir:      cacheDir,
+		java:          "java",
+		installedJava: javaenv.Installed,
 	}
 }
 
@@ -151,7 +157,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.commandAbs = filepath.Join(m.workDir, "run.sh")
 		m.needsChmod = false
 		m.fromInput = false
-		m.step = stepConfirm
+		installations, err := m.installedJava("/usr/lib/jvm")
+		if err != nil || len(installations) == 0 {
+			m.step = stepConfirm
+			return m, nil
+		}
+		m.installations = installations
+		m.cursor = 0
+		m.step = stepInstallJava
 		return m, nil
 	case tickMsg:
 		if m.step == stepInstalling {
@@ -196,6 +209,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateInstallConfirm(key.Key())
 	case stepInstalling:
 		return m, nil
+	case stepInstallJava:
+		return m.updateInstallJava(key.Key())
 	default:
 		return m.updateConfirm(key.Key())
 	}
@@ -768,10 +783,29 @@ func (m *model) selectCommand(input string, fromInput bool) {
 	m.commandAbs = path
 	m.fromInput = fromInput
 	m.needsChmod = info.Mode().Perm()&0o111 == 0
+	m.installations = nil
+	m.javaHome = ""
 	// 実行権限がなければ hso は起動できないので、付ける側を初期値にする。
 	// c で断れる。
 	m.grantChmod = m.needsChmod
 	m.step = stepConfirm
+}
+
+func (m *model) updateInstallJava(key tea.Key) (tea.Model, tea.Cmd) {
+	count := len(m.installations) + 1
+	switch key.Code {
+	case tea.KeyEscape:
+		m.step = stepInstallConfirm
+	case tea.KeyEnter, tea.KeyKpEnter:
+		m.javaHome = ""
+		if m.cursor > 0 {
+			m.javaHome = m.installations[m.cursor-1].Home
+		}
+		m.step = stepConfirm
+	default:
+		m.cursor = moveCursor(key, m.cursor, count)
+	}
+	return m, nil
 }
 
 func (m *model) updateConfirm(key tea.Key) (tea.Model, tea.Cmd) {
@@ -781,6 +815,10 @@ func (m *model) updateConfirm(key tea.Key) (tea.Model, tea.Cmd) {
 	}
 	switch key.Code {
 	case tea.KeyEscape:
+		if len(m.installations) != 0 {
+			m.step = stepInstallJava
+			break
+		}
 		// 直前にいた画面へ戻す。
 		if m.fromInput {
 			m.step = stepCommandInput
@@ -847,9 +885,9 @@ func moveCursor(key tea.Key, cursor, count int) int {
 
 func (m *model) preview() string {
 	if m.register {
-		return render(m.command, m.workDir, "")
+		return render(m.command, m.workDir, "", "")
 	}
-	return render(m.command, m.workDir, m.configDir)
+	return render(m.command, m.workDir, m.configDir, m.javaHome)
 }
 
 func defaultServerName(workDir string) string {
