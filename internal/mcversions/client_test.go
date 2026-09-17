@@ -2,11 +2,110 @@ package mcversions
 
 import (
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
+
+func TestVanillaJar(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/manifest":
+			fmt.Fprintf(w, `{"versions":[{"id":"1.21.1","url":%q}]}`, "http://"+r.Host+"/version")
+		case "/version":
+			_, _ = w.Write([]byte(`{"downloads":{"server":{"url":"https://example.test/server.jar","sha1":"abc123"}}}`))
+		}
+	}))
+	defer server.Close()
+	client := NewClient(server.Client(), "dev")
+	client.urls.vanilla = server.URL + "/manifest"
+	got, err := client.VanillaJar(context.Background(), "1.21.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ServerJar{URL: "https://example.test/server.jar", Sum: "abc123"}
+	if got != want {
+		t.Fatalf("VanillaJar() = %#v, want %#v", got, want)
+	}
+}
+
+func TestPaperJar(t *testing.T) {
+	body := `[{"id":61,"channel":"EXPERIMENTAL","downloads":{"server:default":{"url":"https://example.test/new.jar","checksums":{"sha256":"new"}}}},{"id":60,"channel":"STABLE","downloads":{"server:default":{"url":"https://example.test/stable.jar","checksums":{"sha256":"stable"}}}}]`
+	client, url := testClient(t, body, func(r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != "hso/v1.2.3 (https://github.com/hijoushoku7/hijo-server-ops)" {
+			t.Errorf("User-Agent = %q", got)
+		}
+	})
+	client.urls.paperBuilds = url + "/"
+	got, err := client.PaperJar(context.Background(), "1.21.8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ServerJar{URL: "https://example.test/stable.jar", Sum: "stable", SHA256: true}
+	if got != want {
+		t.Fatalf("PaperJar() = %#v, want %#v", got, want)
+	}
+}
+
+func TestFabricJar(t *testing.T) {
+	client, url := testClient(t, `[{"version":"1.1.3","stable":false},{"version":"1.1.2","stable":true}]`, nil)
+	client.urls.fabricInstaller = url
+	client.urls.fabricServer = "https://example.test/loader/"
+	got, err := client.FabricJar(context.Background(), "1.21.1", "0.16.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ServerJar{URL: "https://example.test/loader/1.21.1/0.16.10/1.1.2/server/jar"}
+	if got != want {
+		t.Fatalf("FabricJar() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDownload(t *testing.T) {
+	content := []byte("server jar")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(content) }))
+	defer server.Close()
+	t.Run("sha1", func(t *testing.T) {
+		dest := filepath.Join(t.TempDir(), "server.jar")
+		sum := sha1.Sum(content)
+		if err := Download(context.Background(), server.Client(), ServerJar{URL: server.URL, Sum: fmt.Sprintf("%x", sum)}, dest, nil); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := os.ReadFile(dest)
+		if string(got) != string(content) {
+			t.Fatalf("content = %q", got)
+		}
+	})
+	t.Run("sha256 mismatch", func(t *testing.T) {
+		dest := filepath.Join(t.TempDir(), "server.jar")
+		sum := sha256.Sum256([]byte("other"))
+		if err := Download(context.Background(), server.Client(), ServerJar{URL: server.URL, Sum: fmt.Sprintf("%x", sum), SHA256: true}, dest, nil); err == nil {
+			t.Fatal("不一致がエラーにならない")
+		}
+		if _, err := os.Stat(dest); !os.IsNotExist(err) {
+			t.Fatalf("dest が残った: %v", err)
+		}
+	})
+	t.Run("existing", func(t *testing.T) {
+		dest := filepath.Join(t.TempDir(), "server.jar")
+		if err := os.WriteFile(dest, []byte("existing"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := Download(context.Background(), server.Client(), ServerJar{URL: server.URL}, dest, nil); err == nil {
+			t.Fatal("既存ファイルを拒否しない")
+		}
+		got, _ := os.ReadFile(dest)
+		if string(got) != "existing" {
+			t.Fatalf("existing = %q", got)
+		}
+	})
+}
 
 func testClient(t *testing.T, body string, check func(*http.Request)) (*Client, string) {
 	t.Helper()

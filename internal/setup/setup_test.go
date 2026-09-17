@@ -1,6 +1,11 @@
 package setup
 
 import (
+	"crypto/sha1"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,9 +14,73 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hijoushoku7/hijo-server-ops/internal/config"
+	"github.com/hijoushoku7/hijo-server-ops/internal/mcversions"
 	"github.com/hijoushoku7/hijo-server-ops/internal/msg"
 	"github.com/hijoushoku7/hijo-server-ops/internal/registry"
 )
+
+type rewriteTransport struct {
+	target *url.URL
+}
+
+func (t rewriteTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	copy := request.Clone(request.Context())
+	copy.URL.Scheme = t.target.Scheme
+	copy.URL.Host = t.target.Host
+	return http.DefaultTransport.RoundTrip(copy)
+}
+
+func TestInstallCreatesVanillaServer(t *testing.T) {
+	content := []byte("server jar")
+	sum := sha1.Sum(content)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mc/game/version_manifest_v2.json":
+			fmt.Fprintf(w, `{"versions":[{"id":"1.21.1","url":%q}]}`, "https://piston-meta.mojang.com/version.json")
+		case "/version.json":
+			fmt.Fprintf(w, `{"downloads":{"server":{"url":"https://piston-data.mojang.com/server.jar","sha1":"%x"}}}`, sum)
+		case "/server.jar":
+			_, _ = w.Write(content)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpClient := &http.Client{Transport: rewriteTransport{target: target}}
+	dir := t.TempDir()
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
+	model.client = mcversions.NewClient(httpClient, "test")
+	model.httpClient = httpClient
+	model.workDir = dir
+	model.installKind = "vanilla"
+	model.minecraft = "1.21.1"
+	model.step = stepInstalling
+	message := model.install()()
+	if result := message.(installedMsg); result.err != nil {
+		t.Fatal(result.err)
+	}
+	_, _ = model.Update(message)
+	if model.command != "./run.sh" || model.step != stepConfirm {
+		t.Fatalf("command = %q, step = %d", model.command, model.step)
+	}
+	for _, name := range []string{"server.jar", "eula.txt", "run.sh"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	eula, _ := os.ReadFile(filepath.Join(dir, "eula.txt"))
+	if string(eula) != "eula=true\n" {
+		t.Fatalf("eula.txt = %q", eula)
+	}
+	info, _ := os.Stat(filepath.Join(dir, "run.sh"))
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("run.sh mode = %o", info.Mode().Perm())
+	}
+}
 
 func writeFile(t *testing.T, path string, mode os.FileMode) {
 	t.Helper()
@@ -283,6 +352,23 @@ func TestModelCreatesConfig(t *testing.T) {
 	}
 }
 
+func TestModelWithoutCandidatesShowsCommandChoices(t *testing.T) {
+	dir := t.TempDir()
+	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
+	press(t, model, enter, enter)
+	if model.step != stepCommand || model.message != msg.SetupNoCandidates {
+		t.Fatalf("step = %d, message = %q", model.step, model.message)
+	}
+	view := model.View().Content
+	if !strings.Contains(view, msg.SetupManualEntry) || !strings.Contains(view, msg.SetupInstallEntry) {
+		t.Fatalf("選択肢がない: %q", view)
+	}
+	press(t, model, typeText("2"), enter)
+	if model.step != stepInstallKind {
+		t.Fatalf("step = %d", model.step)
+	}
+}
+
 func TestModelSelectsCommandWithNumber(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "run.sh"), 0o755)
@@ -322,7 +408,7 @@ func TestModelManualEntry(t *testing.T) {
 	if model.workDir != server {
 		t.Fatalf("workDir = %q (%s)", model.workDir, model.message)
 	}
-	press(t, model, enter, tea.KeyPressMsg{Code: tea.KeyEnd}, enter)
+	press(t, model, enter, typeText("2"), enter)
 	if model.step != stepCommandInput {
 		t.Fatalf("step = %d", model.step)
 	}
@@ -357,7 +443,7 @@ func TestModelEscapeReturnsToManualEntry(t *testing.T) {
 
 	model := newModel(filepath.Join(dir, "hso.toml"), registry.Registry{})
 	press(t, model, enter, enter)
-	press(t, model, tea.KeyPressMsg{Code: tea.KeyEnd}, enter)
+	press(t, model, typeText("2"), enter)
 	press(t, model, typeText("run.sh"), enter)
 	if model.step != stepConfirm {
 		t.Fatalf("step = %d (%s)", model.step, model.message)
@@ -493,7 +579,7 @@ func TestRunRejectsRegisteredConfigBeforeWizard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	created, err := Run(configPath)
+	created, err := Run(configPath, "test")
 	if err == nil || !strings.Contains(err.Error(), "hso delete survival") {
 		t.Fatalf("created = %q, err = %v", created, err)
 	}

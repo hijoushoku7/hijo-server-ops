@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"time"
 )
 
 // Settings modal section headings.
@@ -236,20 +237,29 @@ const (
 
 // Setup wizard screens.
 const (
-	SetupTitle            = "hijo-server-ops setup"
-	SetupRegisterTitle    = "Add an existing hso.toml to the server list"
-	SetupRegisterNotice   = "hso.toml already exists. Add this configuration to the hso server list?"
-	SetupRegisterStepName = "Enter the server name shown in the list"
-	SetupStepWorkDir      = "1/4 Minecraft server directory"
-	SetupStepName         = "2/4 Server name"
-	SetupStepCommand      = "3/4 Choose the start script"
-	SetupStepCommandInput = "3/4 Start script path"
-	SetupStepConfirm      = "4/4 Create with these contents"
-	SetupManualEntry      = "enter a path directly"
-	SetupNotExecutable    = "(not executable)"
-	SetupNoCandidates     = "no start script candidates found"
-	SetupChmodGrant       = "[x] add execute permission (only for those who can already read it)"
-	SetupChmodDeny        = "[ ] leave execute permission off (hso cannot start as is)"
+	SetupTitle                   = "hijo-server-ops setup"
+	SetupRegisterTitle           = "Add an existing hso.toml to the server list"
+	SetupRegisterNotice          = "hso.toml already exists. Add this configuration to the hso server list?"
+	SetupRegisterStepName        = "Enter the server name shown in the list"
+	SetupStepWorkDir             = "1/4 Minecraft server directory"
+	SetupStepName                = "2/4 Server name"
+	SetupStepCommand             = "3/4 Choose the start script"
+	SetupStepCommandInput        = "3/4 Start script path"
+	SetupStepConfirm             = "4/4 Create with these contents"
+	SetupManualEntry             = "enter a path directly"
+	SetupInstallEntry            = "install a new server"
+	SetupStepInstallKind         = "Server type to install"
+	SetupStepInstallVersion      = "Minecraft version"
+	SetupStepInstallVersionInput = "Enter the Minecraft version"
+	SetupStepInstallLoader       = "Fabric Loader version"
+	SetupStepInstallConfirm      = "Agree to the EULA and install"
+	SetupLoading                 = "loading..."
+	SetupEULA                    = "You must agree to the Minecraft EULA"
+	SetupInstalling              = "Installing the server..."
+	SetupNotExecutable           = "(not executable)"
+	SetupNoCandidates            = "no start script candidates found"
+	SetupChmodGrant              = "[x] add execute permission (only for those who can already read it)"
+	SetupChmodDeny               = "[ ] leave execute permission off (hso cannot start as is)"
 )
 
 func SetupTarget(path string) string {
@@ -272,17 +282,36 @@ func SetupServerName(name string) string {
 
 // Key bar descriptions.
 const (
-	KeyNext           = "next"
-	KeyAbort          = "abort"
-	KeySelect         = "select"
-	KeyConfirm        = "confirm"
-	KeyBack           = "back"
-	KeyCreate         = "create"
-	KeyToggleChmod    = "toggle execute permission"
-	KeyRegister       = "register"
-	KeyAddConfig      = "add"
-	KeyDoNotAddConfig = "don't add"
+	KeyNext            = "next"
+	KeyAbort           = "abort"
+	KeySelect          = "select"
+	KeyConfirm         = "confirm"
+	KeyBack            = "back"
+	KeyCreate          = "create"
+	KeyToggleChmod     = "toggle execute permission"
+	KeyRegister        = "register"
+	KeyAddConfig       = "add"
+	KeyDoNotAddConfig  = "don't add"
+	KeyToggleSnapshots = "toggle snapshots"
+	KeyAgreeInstall    = "agree and install"
 )
+
+func SetupCacheTime(t time.Time) string {
+	if t.IsZero() {
+		return "cache fetched: unknown"
+	}
+	return "cache fetched: " + t.Format("2006-01-02 15:04:05")
+}
+
+func SetupInstallDirectory(dir string) string       { return "installing to: " + dir }
+func SetupInstallSelection(selection string) string { return "type and version: " + selection }
+func SetupInstallFileExists(name string) string {
+	return name + " already exists and will not be overwritten"
+}
+func SetupDownloadingBytes(done int64) string { return fmt.Sprintf("%d bytes", done) }
+func SetupDownloadingProgress(done, total int64) string {
+	return fmt.Sprintf("%d / %d bytes (%d%%)", done, total, done*100/total)
+}
 
 // Setup input validation.
 func EnterCommand() error {

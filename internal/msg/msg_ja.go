@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"time"
 )
 
 // 設定モーダルの見出し。
@@ -235,20 +236,29 @@ const (
 
 // セットアップウィザードの画面。
 const (
-	SetupTitle            = "hijo-server-ops セットアップ"
-	SetupRegisterTitle    = "既存の hso.toml をサーバー一覧に追加"
-	SetupRegisterNotice   = "hso.toml が既にあります。この設定をサーバー一覧に追加しますか？"
-	SetupRegisterStepName = "一覧に表示するサーバー名を入力してください"
-	SetupStepWorkDir      = "1/4 Minecraft サーバーのディレクトリ"
-	SetupStepName         = "2/4 サーバー名"
-	SetupStepCommand      = "3/4 起動スクリプトを選ぶ"
-	SetupStepCommandInput = "3/4 起動スクリプトのパス"
-	SetupStepConfirm      = "4/4 この内容で作成する"
-	SetupManualEntry      = "パスを直接入力する"
-	SetupNotExecutable    = "(実行権限なし)"
-	SetupNoCandidates     = "起動スクリプトの候補が見つかりません"
-	SetupChmodGrant       = "[x] 実行権限を付ける（読める相手にだけ実行を許す）"
-	SetupChmodDeny        = "[ ] 実行権限を付けない（このままでは hso は起動できない）"
+	SetupTitle                   = "hijo-server-ops セットアップ"
+	SetupRegisterTitle           = "既存の hso.toml をサーバー一覧に追加"
+	SetupRegisterNotice          = "hso.toml が既にあります。この設定をサーバー一覧に追加しますか？"
+	SetupRegisterStepName        = "一覧に表示するサーバー名を入力してください"
+	SetupStepWorkDir             = "1/4 Minecraft サーバーのディレクトリ"
+	SetupStepName                = "2/4 サーバー名"
+	SetupStepCommand             = "3/4 起動スクリプトを選ぶ"
+	SetupStepCommandInput        = "3/4 起動スクリプトのパス"
+	SetupStepConfirm             = "4/4 この内容で作成する"
+	SetupManualEntry             = "パスを直接入力する"
+	SetupInstallEntry            = "新しくサーバーをインストールする"
+	SetupStepInstallKind         = "インストールするサーバーの種別"
+	SetupStepInstallVersion      = "Minecraft のバージョン"
+	SetupStepInstallVersionInput = "Minecraft のバージョンを入力してください"
+	SetupStepInstallLoader       = "Fabric Loader のバージョン"
+	SetupStepInstallConfirm      = "EULA に同意してインストール"
+	SetupLoading                 = "取得中…"
+	SetupEULA                    = "Minecraft EULA に同意する必要があります"
+	SetupInstalling              = "サーバーをインストールしています…"
+	SetupNotExecutable           = "(実行権限なし)"
+	SetupNoCandidates            = "起動スクリプトの候補が見つかりません"
+	SetupChmodGrant              = "[x] 実行権限を付ける（読める相手にだけ実行を許す）"
+	SetupChmodDeny               = "[ ] 実行権限を付けない（このままでは hso は起動できない）"
 )
 
 func SetupTarget(path string) string {
@@ -271,17 +281,36 @@ func SetupServerName(name string) string {
 
 // キーバーの説明。
 const (
-	KeyNext           = "次へ"
-	KeyAbort          = "中止"
-	KeySelect         = "選ぶ"
-	KeyConfirm        = "決定"
-	KeyBack           = "戻る"
-	KeyCreate         = "作成"
-	KeyToggleChmod    = "実行権限の付与を切替"
-	KeyRegister       = "登録"
-	KeyAddConfig      = "追加する"
-	KeyDoNotAddConfig = "追加しない"
+	KeyNext            = "次へ"
+	KeyAbort           = "中止"
+	KeySelect          = "選ぶ"
+	KeyConfirm         = "決定"
+	KeyBack            = "戻る"
+	KeyCreate          = "作成"
+	KeyToggleChmod     = "実行権限の付与を切替"
+	KeyRegister        = "登録"
+	KeyAddConfig       = "追加する"
+	KeyDoNotAddConfig  = "追加しない"
+	KeyToggleSnapshots = "スナップショット表示を切替"
+	KeyAgreeInstall    = "同意してインストール"
 )
+
+func SetupCacheTime(t time.Time) string {
+	if t.IsZero() {
+		return "キャッシュ取得時刻: 不明"
+	}
+	return "キャッシュ取得時刻: " + t.Format("2006-01-02 15:04:05")
+}
+
+func SetupInstallDirectory(dir string) string       { return "インストール先: " + dir }
+func SetupInstallSelection(selection string) string { return "種別・版: " + selection }
+func SetupInstallFileExists(name string) string {
+	return name + " が既にあるため上書きできません"
+}
+func SetupDownloadingBytes(done int64) string { return fmt.Sprintf("%d bytes", done) }
+func SetupDownloadingProgress(done, total int64) string {
+	return fmt.Sprintf("%d / %d bytes (%d%%)", done, total, done*100/total)
+}
 
 // セットアップの入力検証。
 func EnterCommand() error {

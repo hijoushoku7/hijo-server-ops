@@ -14,9 +14,16 @@ const (
 )
 
 // FabricLoaderCache は直近に選んだ Minecraft バージョンの Loader 一覧を保持する。
+// 取得時刻を自分で持つのは、バージョン一覧と別のタイミングで取りに行くため。
 type FabricLoaderCache struct {
-	Minecraft string   `json:"minecraft"`
-	Loaders   []Loader `json:"loaders"`
+	Minecraft string    `json:"minecraft"`
+	FetchedAt time.Time `json:"fetched_at"`
+	Loaders   []Loader  `json:"loaders"`
+}
+
+// Fresh は取得時刻から TTL 内なら true を返す。
+func (c FabricLoaderCache) Fresh(now time.Time) bool {
+	return fresh(c.FetchedAt, now)
 }
 
 // Cache は配布元から取得したバージョン一覧のキャッシュ。
@@ -32,7 +39,11 @@ type Cache struct {
 
 // Fresh は取得時刻から TTL 内なら true を返す。
 func (c Cache) Fresh(now time.Time) bool {
-	return !c.FetchedAt.IsZero() && !now.Before(c.FetchedAt) && now.Sub(c.FetchedAt) < CacheTTL
+	return fresh(c.FetchedAt, now)
+}
+
+func fresh(fetchedAt, now time.Time) bool {
+	return !fetchedAt.IsZero() && !now.Before(fetchedAt) && now.Sub(fetchedAt) < CacheTTL
 }
 
 // ReadCache は dir 内の versions.json を読む。
