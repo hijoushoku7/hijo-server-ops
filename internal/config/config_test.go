@@ -324,3 +324,12 @@ func TestSaveRoundTripsTimeOffsetAndOmitsZero(t *testing.T) {
 		t.Fatalf("written:\n%s", written)
 	}
 }
+
+func TestRenderQuotesSpecialCharacters(t *testing.T) {
+	if got := Render(Config{Server: Server{Command: `a"b\c`}}); got != "[server]\ncommand = \"a\\\"b\\\\c\"\n" {
+		t.Fatalf("render = %s", got)
+	}
+	if got := Render(Config{Server: Server{Command: "a\nb\tc"}}); got != "[server]\ncommand = \"a\\nb\\tc\"\n" {
+		t.Fatalf("render = %s", got)
+	}
+}

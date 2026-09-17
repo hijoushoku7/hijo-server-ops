@@ -122,7 +122,7 @@ func Save(path string, cfg Config) error {
 	// 既存ファイルの mode に合わせる。
 	permission := permissionOf(path)
 	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, []byte(render(cfg)), permission); err != nil {
+	if err := os.WriteFile(temporary, []byte(Render(cfg)), permission); err != nil {
 		return msg.WriteConfigFailed(err)
 	}
 	if err := os.Chmod(temporary, permission); err != nil {
@@ -146,7 +146,8 @@ func permissionOf(path string) os.FileMode {
 	return info.Mode().Perm()
 }
 
-func render(cfg Config) string {
+// Render は設定を TOML 文字列にする。
+func Render(cfg Config) string {
 	var out strings.Builder
 	out.WriteString("[server]\n")
 	out.WriteString("command = " + quote(cfg.Server.Command) + "\n")

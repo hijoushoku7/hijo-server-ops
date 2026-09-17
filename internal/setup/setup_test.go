@@ -300,11 +300,15 @@ func TestResolveWorkDir(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	same := render("./run.sh", "/srv/mc", "/srv/mc", "", "")
+	model := newModel("/srv/mc/hso.toml", registry.Registry{})
+	model.command = "./run.sh"
+	model.workDir = "/srv/mc"
+	same := model.preview()
 	if strings.Contains(same, "workdir") {
 		t.Fatalf("workdir を省略すべき: %q", same)
 	}
-	differs := render("./run.sh", "/srv/mc", "/home/user", "", "")
+	model.configDir = "/home/user"
+	differs := model.preview()
 	if !strings.Contains(differs, `workdir = "/srv/mc"`) {
 		t.Fatalf("differs = %q", differs)
 	}
@@ -318,15 +322,6 @@ func TestScanCommandsKeepsExtensionlessExecutable(t *testing.T) {
 	candidates := scanCommands(dir)
 	if len(candidates) != 1 || candidates[0].name != "start" {
 		t.Fatalf("candidates = %#v", candidates)
-	}
-}
-
-func TestQuote(t *testing.T) {
-	if got := quote(`a"b\c`); got != `"a\"b\\c"` {
-		t.Fatalf("quote = %s", got)
-	}
-	if got := quote("a\nb\tc"); got != `"a\nb\tc"` {
-		t.Fatalf("quote = %s", got)
 	}
 }
 
@@ -521,7 +516,7 @@ func TestModelSelectsCommandWithNumber(t *testing.T) {
 		t.Fatalf("範囲外の番号で cursor = %d", model.cursor)
 	}
 	view := model.View().Content
-	if !strings.Contains(view, "3 "+msg.SetupManualEntry) || !strings.Contains(view, "↑↓ / 1-9") {
+	if !strings.Contains(view, "(3) "+msg.SetupManualEntry) || !strings.Contains(view, "↑↓ / 1-9") {
 		t.Fatalf("view = %q", view)
 	}
 }
@@ -555,7 +550,7 @@ func TestModelManualEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[server]\ncommand = \"./start.sh\"\nworkdir = " + quote(server) + "\n"
+	want := config.Render(config.Config{Server: config.Server{Command: "./start.sh", WorkDir: server}})
 	if string(content) != want {
 		t.Fatalf("content = %q", content)
 	}
@@ -787,7 +782,7 @@ func TestServerVersion(t *testing.T) {
 		}
 	}
 
-	written := render("./run.sh", "/srv/mc", "/srv/mc", "", "Forge 1.20.4 (47.2.0)")
+	written := config.Render(config.Config{Server: config.Server{Command: "./run.sh", Version: "Forge 1.20.4 (47.2.0)"}})
 	if !strings.Contains(written, `version = "Forge 1.20.4 (47.2.0)"`) {
 		t.Errorf("render に version が無い: %q", written)
 	}
