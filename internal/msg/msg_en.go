@@ -249,6 +249,7 @@ const (
 	SetupManualEntry             = "enter a path directly"
 	SetupInstallEntry            = "install a new server"
 	SetupStepInstallKind         = "Server type to install"
+	SetupStepInstallVersionGroup = "Minecraft version (major.minor)"
 	SetupStepInstallVersion      = "Minecraft version"
 	SetupStepInstallVersionInput = "Enter the Minecraft version"
 	SetupStepInstallLoader       = "Loader version"
@@ -274,6 +275,10 @@ func SetupTarget(path string) string {
 // and therefore cannot say "creating".
 func SetupRegisterTarget(path string) string {
 	return "target: " + path
+}
+
+func SetupStepInstallVersionOf(group string) string {
+	return "Minecraft version (" + group + ".x)"
 }
 
 func SetupRelativeHint(dir string) string {

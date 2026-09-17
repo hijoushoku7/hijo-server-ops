@@ -79,16 +79,19 @@ func (m *model) body() []string {
 		}
 	case stepInstallKind:
 		return append([]string{msg.SetupStepInstallKind, ""}, selectionLines(installKindLabels(), m.cursor)...)
-	case stepInstallVersion:
-		versions := m.visibleVersions()
+	case stepInstallVersionGroup:
 		if m.versions == nil {
-			return []string{msg.SetupStepInstallVersion, "", "  " + msg.SetupLoading, "", dimStyle.Render("  " + msg.SetupCacheTime(m.fetchedAt))}
+			return []string{msg.SetupStepInstallVersionGroup, "", "  " + msg.SetupLoading, "", dimStyle.Render("  " + msg.SetupCacheTime(m.fetchedAt))}
 		}
+		lines := append([]string{msg.SetupStepInstallVersionGroup, ""}, selectionLines(m.versionGroups(), m.cursor)...)
+		return append(lines, "", dimStyle.Render("  "+msg.SetupCacheTime(m.fetchedAt)))
+	case stepInstallVersion:
+		versions := m.groupVersions()
 		labels := make([]string, len(versions))
 		for i, version := range versions {
 			labels[i] = version.Version
 		}
-		lines := append([]string{msg.SetupStepInstallVersion, ""}, selectionLines(labels, m.cursor)...)
+		lines := append([]string{msg.SetupStepInstallVersionOf(m.versionGroup), ""}, selectionLines(labels, m.cursor)...)
 		return append(lines, "", dimStyle.Render("  "+msg.SetupCacheTime(m.fetchedAt)))
 	case stepInstallVersionInput:
 		return []string{msg.SetupStepInstallVersionInput, "", "  " + string(m.input) + "█"}
@@ -250,7 +253,7 @@ func (m *model) keybar() string {
 		if m.step == stepInstallLoader && m.installKind == "forge" {
 			keys = append(keys, [2]string{"a", msg.KeyAllForgeBuilds})
 		}
-	case stepInstallVersion:
+	case stepInstallVersionGroup, stepInstallVersion:
 		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"s", msg.KeyToggleSnapshots}, [2]string{"Enter", msg.KeyConfirm}, [2]string{"Esc", msg.KeyBack})
 	case stepInstallVersionInput:
 		keys = append(keys, [2]string{"Enter", msg.KeyNext}, [2]string{"Esc", msg.KeyBack})

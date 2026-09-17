@@ -35,6 +35,7 @@ const (
 	stepCommand
 	stepCommandInput
 	stepInstallKind
+	stepInstallVersionGroup
 	stepInstallVersion
 	stepInstallVersionInput
 	stepInstallLoader
@@ -71,6 +72,7 @@ type model struct {
 	installKind   string
 	installed     string // インストールが済んだサーバーの版。設定に書く
 	versions      []mcversions.Version
+	versionGroup  string
 	loaders       []mcversions.Loader
 	minecraft     string
 	loader        string
@@ -203,6 +205,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateCommandInput(key.Key())
 	case stepInstallKind:
 		return m.updateInstallKind(key.Key())
+	case stepInstallVersionGroup:
+		return m.updateInstallVersionGroup(key.Key())
 	case stepInstallVersion:
 		return m.updateInstallVersion(key.Key())
 	case stepInstallVersionInput:
@@ -331,9 +335,10 @@ func (m *model) updateInstallKind(key tea.Key) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		m.showSnapshots = false
 		m.versions = nil
+		m.versionGroup = ""
 		m.loaders = nil
 		m.fetchedAt = time.Time{}
-		m.step = stepInstallVersion
+		m.step = stepInstallVersionGroup
 		return m, m.loadVersions()
 	default:
 		m.cursor = moveCursor(key, m.cursor, len(installKinds))
@@ -401,7 +406,7 @@ func (m *model) loadVersions() tea.Cmd {
 
 func (m *model) receiveVersions(message versionsMsg) (tea.Model, tea.Cmd) {
 	// 取得中に別の種別へ移っていたら、古い応答は捨てる。
-	if message.kind != m.installKind || m.step != stepInstallVersion {
+	if message.kind != m.installKind || m.step != stepInstallVersionGroup {
 		return m, nil
 	}
 	if message.err != nil || len(message.versions) == 0 {
@@ -432,7 +437,45 @@ func (m *model) visibleVersions() []mcversions.Version {
 	return versions
 }
 
-func (m *model) updateInstallVersion(key tea.Key) (tea.Model, tea.Cmd) {
+// versionGroupKey は "1.20.1" のようなバージョン文字列から "1.20" を切り出す。
+// バージョン数が多い vanilla / paper 等を大分類でまず絞り込めるようにする。
+func versionGroupKey(version string) string {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return version
+	}
+	return parts[0] + "." + parts[1]
+}
+
+// versionGroups は visibleVersions の並び順のまま大分類を重複なく列挙する。
+func (m *model) versionGroups() []string {
+	versions := m.visibleVersions()
+	groups := make([]string, 0, len(versions))
+	seen := make(map[string]bool, len(versions))
+	for _, version := range versions {
+		key := versionGroupKey(version.Version)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		groups = append(groups, key)
+	}
+	return groups
+}
+
+// groupVersions は選んだ大分類に属する版だけを visibleVersions から絞り込む。
+func (m *model) groupVersions() []mcversions.Version {
+	versions := m.visibleVersions()
+	filtered := make([]mcversions.Version, 0, len(versions))
+	for _, version := range versions {
+		if versionGroupKey(version.Version) == m.versionGroup {
+			filtered = append(filtered, version)
+		}
+	}
+	return filtered
+}
+
+func (m *model) updateInstallVersionGroup(key tea.Key) (tea.Model, tea.Cmd) {
 	// 取得中でも Esc だけは効かせる。応答が返らない間に詰まらせないため。
 	if key.Code == tea.KeyEscape {
 		m.step, m.cursor = stepInstallKind, 0
@@ -441,7 +484,36 @@ func (m *model) updateInstallVersion(key tea.Key) (tea.Model, tea.Cmd) {
 	if m.versions == nil {
 		return m, nil
 	}
-	versions := m.visibleVersions()
+	if key.Text == "s" {
+		m.showSnapshots = !m.showSnapshots
+		m.cursor = 0
+		return m, nil
+	}
+	groups := m.versionGroups()
+	switch key.Code {
+	case tea.KeyEnter, tea.KeyKpEnter:
+		if len(groups) == 0 {
+			return m, nil
+		}
+		m.versionGroup = groups[m.cursor]
+		m.step, m.cursor = stepInstallVersion, 0
+	default:
+		if len(groups) != 0 {
+			m.cursor = moveCursor(key, m.cursor, len(groups))
+		}
+	}
+	return m, nil
+}
+
+func (m *model) updateInstallVersion(key tea.Key) (tea.Model, tea.Cmd) {
+	if key.Code == tea.KeyEscape {
+		m.step, m.cursor = stepInstallVersionGroup, 0
+		return m, nil
+	}
+	if m.versions == nil {
+		return m, nil
+	}
+	versions := m.groupVersions()
 	if key.Text == "s" {
 		m.showSnapshots = !m.showSnapshots
 		m.cursor = 0

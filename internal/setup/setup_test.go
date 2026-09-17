@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -82,6 +83,34 @@ func TestInstallCreatesVanillaServer(t *testing.T) {
 	info, _ := os.Stat(filepath.Join(dir, "run.sh"))
 	if info.Mode().Perm() != 0o755 {
 		t.Fatalf("run.sh mode = %o", info.Mode().Perm())
+	}
+}
+
+func TestVersionGroupNarrowsThenSelectsVersion(t *testing.T) {
+	model := newModel("/srv/minecraft/hso.toml", registry.Registry{})
+	model.installKind = "vanilla"
+	model.step = stepInstallVersionGroup
+	model.versions = []mcversions.Version{
+		{Version: "1.21.1", Stable: true},
+		{Version: "1.21", Stable: true},
+		{Version: "1.20.1", Stable: true},
+	}
+
+	if groups := model.versionGroups(); !reflect.DeepEqual(groups, []string{"1.21", "1.20"}) {
+		t.Fatalf("versionGroups() = %v", groups)
+	}
+
+	press(t, model, tea.KeyPressMsg{Code: tea.KeyDown}, enter)
+	if model.step != stepInstallVersion || model.versionGroup != "1.20" || model.cursor != 0 {
+		t.Fatalf("step = %d, versionGroup = %q, cursor = %d", model.step, model.versionGroup, model.cursor)
+	}
+	if versions := model.groupVersions(); len(versions) != 1 || versions[0].Version != "1.20.1" {
+		t.Fatalf("groupVersions() = %v", versions)
+	}
+
+	press(t, model, escape)
+	if model.step != stepInstallVersionGroup || model.cursor != 0 {
+		t.Fatalf("step = %d, cursor = %d", model.step, model.cursor)
 	}
 }
 

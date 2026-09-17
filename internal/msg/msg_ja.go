@@ -248,6 +248,7 @@ const (
 	SetupManualEntry             = "パスを直接入力する"
 	SetupInstallEntry            = "新しくサーバーをインストールする"
 	SetupStepInstallKind         = "インストールするサーバーの種別"
+	SetupStepInstallVersionGroup = "Minecraft のバージョン（大分類）"
 	SetupStepInstallVersion      = "Minecraft のバージョン"
 	SetupStepInstallVersionInput = "Minecraft のバージョンを入力してください"
 	SetupStepInstallLoader       = "ローダーのバージョン"
@@ -273,6 +274,10 @@ func SetupTarget(path string) string {
 // ので「作成先」とは書けない。
 func SetupRegisterTarget(path string) string {
 	return "対象: " + path
+}
+
+func SetupStepInstallVersionOf(group string) string {
+	return "Minecraft のバージョン（" + group + ".x）"
 }
 
 func SetupRelativeHint(dir string) string {
