@@ -53,7 +53,8 @@ func (c *Client) VanillaJar(ctx context.Context, minecraft string) (ServerJar, e
 	if err := c.get(ctx, versionURL, &version, false); err != nil {
 		return ServerJar{}, err
 	}
-	if version.Downloads.Server == nil || version.Downloads.Server.URL == "" {
+	if version.Downloads.Server == nil || version.Downloads.Server.URL == "" ||
+		version.Downloads.Server.SHA1 == "" {
 		return ServerJar{}, fmt.Errorf("vanilla server download not found: %s", minecraft)
 	}
 	return ServerJar{URL: version.Downloads.Server.URL, Sum: version.Downloads.Server.SHA1}, nil
@@ -85,7 +86,7 @@ func (c *Client) PaperJar(ctx context.Context, minecraft string) (ServerJar, err
 		}
 	}
 	download, ok := selected.Downloads["server:default"]
-	if !ok || download.URL == "" {
+	if !ok || download.URL == "" || download.Checksums.SHA256 == "" {
 		return ServerJar{}, fmt.Errorf("paper server download not found: %s", minecraft)
 	}
 	return ServerJar{URL: download.URL, Sum: download.Checksums.SHA256, SHA256: true}, nil
@@ -161,20 +162,11 @@ func Download(ctx context.Context, httpClient *http.Client, jar ServerJar, dest 
 	if digest != nil && hex.EncodeToString(digest.Sum(nil)) != jar.Sum {
 		return fmt.Errorf("checksum mismatch for %s", jar.URL)
 	}
-	// 先に空ファイルを排他的に置き、既存ファイルを上書きしないことを保証する。
-	placeholder, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
+	if err := os.Chmod(name, 0o644); err != nil {
 		return err
 	}
-	if err := placeholder.Close(); err != nil {
-		_ = os.Remove(dest)
-		return err
-	}
-	if err := os.Rename(name, dest); err != nil {
-		_ = os.Remove(dest)
-		return err
-	}
-	return nil
+	// rename は既存ファイルを置き換えてしまうので link で置く。dest があれば失敗する。
+	return os.Link(name, dest)
 }
 
 type progressReader struct {
