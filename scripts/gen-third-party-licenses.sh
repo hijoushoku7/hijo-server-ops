@@ -9,14 +9,23 @@ out=THIRD_PARTY_LICENSES.md
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-# 冒頭の見出し行と著作権行を落とし、本文だけを出す。BSD のように本文の途中に
-# "copyright notice, ..." で始まる行があるため、落とすのは本文が始まる前だけ。
-body() {
-  awk '
-    !started && (/^[[:space:]]*$/ || tolower($0) ~ /^[[:space:]]*(copyright|(the )?mit licen[cs]e)/) { next }
-    { started = 1; print }
+# ライセンスファイルは「見出し行と著作権行 → 本文」の順になっている。BSD のように
+# 本文の途中にも "copyright notice, ..." で始まる行があるため、両者を分ける境目は
+# 本文の 1 行目とし、そこから前を頭、後ろを本文として扱う。
+head_or_body() {
+  awk -v want="$2" '
+    !started && (/^[[:space:]]*$/ || tolower($0) ~ /^[[:space:]]*(copyright|(the )?mit licen[cs]e)/) {
+      if (want == "head" && tolower($0) ~ /^[[:space:]]*copyright/) print
+      next
+    }
+    { started = 1; if (want == "body") print }
   ' "$1"
 }
+
+body() { head_or_body "$1" body; }
+
+# 権利者が複数ある場合に落とさないよう、頭にある著作権行はすべて並べる。
+copyrights() { head_or_body "$1" head | paste -sd'; ' -; }
 
 # 本文が同一かどうかは空白を潰した文字列で判定する。同じ MIT でも改行位置や
 # "The MIT License (MIT)" の有無が違うだけのことが多い。
@@ -40,20 +49,25 @@ go list -deps -f '{{if .Module}}{{.Module.Path}}@{{.Module.Version}}	{{.Module.D
     mkdir -p "$work/$key"
     # 本文は最初に見つけたものを採用する。著作権行はモジュールごとに集める。
     [ -f "$work/$key/body" ] || cp "$license" "$work/$key/body"
-    printf '%s\t%s\n' "$mod" "$(grep -iE '^[[:space:]]*copyright' "$license" | head -1)" \
-      >> "$work/$key/mods"
+    printf '%s\t%s\n' "$mod" "$(copyrights "$license")" >> "$work/$key/mods"
   done
+
+  # Go 本体も静的リンクされる。LICENSE は golang.org/x/* と同一の BSD-3-Clause で、
+  # 同じ束に入って 1 つにまとまる。
+  goroot=$(go env GOROOT)
+  key=$(normalize "$goroot/LICENSE" | md5sum | cut -d' ' -f1)
+  mkdir -p "$work/$key"
+  [ -f "$work/$key/body" ] || cp "$goroot/LICENSE" "$work/$key/body"
+  printf '%s\t%s\n' "Go standard library and runtime" "$(copyrights "$goroot/LICENSE")" \
+    >> "$work/$key/mods"
 
 {
   echo "# サードパーティライセンス"
   echo
-  echo "hso のバイナリには以下の Go モジュールが静的リンクされている。"
+  echo "hso のバイナリには以下の Go モジュールと Go 本体が静的リンクされている。"
   echo "同じ本文のライセンスはまとめ、著作権表示を原文のまま列挙する。"
   echo
   echo "このファイルは \`./scripts/gen-third-party-licenses.sh\` で生成する。"
-  echo
-  echo "加えて Go 標準ライブラリとランタイム (BSD-3-Clause, Copyright 2009 The Go Authors)"
-  echo "も同梱される。全文は https://go.dev/LICENSE を参照。"
 
   # モジュール数の多い束から出す。
   for d in $(for k in "$work"/*/; do printf '%s\t%s\n' "$(wc -l < "$k/mods")" "$k"; done |

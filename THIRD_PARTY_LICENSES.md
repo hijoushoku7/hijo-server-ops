@@ -1,12 +1,9 @@
 # サードパーティライセンス
 
-hso のバイナリには以下の Go モジュールが静的リンクされている。
+hso のバイナリには以下の Go モジュールと Go 本体が静的リンクされている。
 同じ本文のライセンスはまとめ、著作権表示を原文のまま列挙する。
 
 このファイルは `./scripts/gen-third-party-licenses.sh` で生成する。
-
-加えて Go 標準ライブラリとランタイム (BSD-3-Clause, Copyright 2009 The Go Authors)
-も同梱される。全文は https://go.dev/LICENSE を参照。
 
 ## MIT License
 
@@ -51,6 +48,7 @@ SOFTWARE.
 
 - `golang.org/x/sync@v0.21.0` — Copyright 2009 The Go Authors.
 - `golang.org/x/sys@v0.46.0` — Copyright 2009 The Go Authors.
+- `Go standard library and runtime` — Copyright 2009 The Go Authors.
 
 ```
 Redistribution and use in source and binary forms, with or without
