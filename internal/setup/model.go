@@ -76,16 +76,20 @@ type model struct {
 	downloaded    atomic.Int64
 	downloadTotal atomic.Int64
 	java          string
+	cancelInstall context.CancelFunc
 	outputMu      sync.Mutex
 	installOutput []string
 }
 
 type versionsMsg struct {
+	kind      string
 	versions  []mcversions.Version
 	fetchedAt time.Time
 	err       error
 }
 type loadersMsg struct {
+	kind      string
+	minecraft string
 	loaders   []mcversions.Loader
 	fallback  []mcversions.Loader
 	fetchedAt time.Time
@@ -137,6 +141,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case loadersMsg:
 		return m.receiveLoaders(message)
 	case installedMsg:
+		m.cancelInstall = nil
 		if message.err != nil {
 			m.message = message.err.Error()
 			m.step = stepInstallConfirm
@@ -159,6 +164,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if key.String() == "ctrl+c" {
+		// 走っているインストーラを道連れにする。親が終わっても子は残るため。
+		if m.cancelInstall != nil {
+			m.cancelInstall()
+		}
 		m.canceled = true
 		return m, tea.Quit
 	}
@@ -332,7 +341,7 @@ func (m *model) loadVersions() tea.Cmd {
 			versions = cache.NeoForge
 		}
 		if cache.Fresh(time.Now()) && len(versions) != 0 {
-			return versionsMsg{versions: versions, fetchedAt: cache.FetchedAt}
+			return versionsMsg{kind: kind, versions: versions, fetchedAt: cache.FetchedAt}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -350,7 +359,7 @@ func (m *model) loadVersions() tea.Cmd {
 			versions, err = client.NeoForge(ctx)
 		}
 		if err != nil {
-			return versionsMsg{err: err}
+			return versionsMsg{kind: kind, err: err}
 		}
 		// 取得時刻は種別ごとに分けていないので、取り直した種別だけを残す。
 		// 他の種別を抱えたままにすると、取得時刻の更新でまとめて延命されてしまう。
@@ -368,11 +377,15 @@ func (m *model) loadVersions() tea.Cmd {
 			cache.NeoForge = versions
 		}
 		_ = mcversions.WriteCache(dir, cache)
-		return versionsMsg{versions: versions, fetchedAt: cache.FetchedAt}
+		return versionsMsg{kind: kind, versions: versions, fetchedAt: cache.FetchedAt}
 	}
 }
 
 func (m *model) receiveVersions(message versionsMsg) (tea.Model, tea.Cmd) {
+	// 取得中に別の種別へ移っていたら、古い応答は捨てる。
+	if message.kind != m.installKind || m.step != stepInstallVersion {
+		return m, nil
+	}
 	if message.err != nil || len(message.versions) == 0 {
 		if m.installKind == "forge" || m.installKind == "neoforge" {
 			// 版とローダーが対で決まるので、版だけ手入力しても選べない。種別選択へ戻す。
@@ -468,23 +481,33 @@ func (m *model) loadLoaders() tea.Cmd {
 		cache, _ := mcversions.ReadCache(dir)
 		if cache.FabricLoader != nil && cache.FabricLoader.Fresh(time.Now()) &&
 			cache.FabricLoader.Minecraft == minecraft && len(cache.FabricLoader.Loaders) != 0 {
-			return loadersMsg{loaders: cache.FabricLoader.Loaders, fetchedAt: cache.FabricLoader.FetchedAt}
+			return loadersMsg{
+				kind: "fabric", minecraft: minecraft,
+				loaders: cache.FabricLoader.Loaders, fetchedAt: cache.FabricLoader.FetchedAt,
+			}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		loaders, err := client.FabricLoaders(ctx, minecraft)
 		if err != nil {
-			return loadersMsg{err: err}
+			return loadersMsg{kind: "fabric", minecraft: minecraft, err: err}
 		}
 		cache.FabricLoader = &mcversions.FabricLoaderCache{
 			Minecraft: minecraft, FetchedAt: time.Now(), Loaders: loaders,
 		}
 		_ = mcversions.WriteCache(dir, cache)
-		return loadersMsg{loaders: loaders, fetchedAt: cache.FabricLoader.FetchedAt}
+		return loadersMsg{
+			kind: "fabric", minecraft: minecraft,
+			loaders: loaders, fetchedAt: cache.FabricLoader.FetchedAt,
+		}
 	}
 }
 
 func (m *model) receiveLoaders(message loadersMsg) (tea.Model, tea.Cmd) {
+	// 取得中に選び直していたら、古い応答は捨てる。
+	if message.kind != m.installKind || message.minecraft != m.minecraft || m.step != stepInstallLoader {
+		return m, nil
+	}
 	if message.err != nil || len(message.loaders) == 0 {
 		if len(message.fallback) != 0 {
 			m.loaders, m.cursor = message.fallback, 0
@@ -516,7 +539,10 @@ func (m *model) updateInstallLoader(key tea.Key) (tea.Model, tea.Cmd) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			loaders, err := client.ForgeLoaders(ctx, minecraft)
-			return loadersMsg{loaders: loaders, fallback: fallback, err: err}
+			return loadersMsg{
+				kind: "forge", minecraft: minecraft,
+				loaders: loaders, fallback: fallback, err: err,
+			}
 		}
 	}
 	switch key.Code {
@@ -562,13 +588,14 @@ func (m *model) updateInstallConfirm(key tea.Key) (tea.Model, tea.Cmd) {
 	m.installOutput = nil
 	m.outputMu.Unlock()
 	m.step = stepInstalling
-	return m, tea.Batch(m.install(), installTick())
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancelInstall = cancel
+	return m, tea.Batch(m.install(ctx), installTick())
 }
 
-func (m *model) install() tea.Cmd {
+func (m *model) install(ctx context.Context) tea.Cmd {
 	client, httpClient, kind, minecraft, loader, dir := m.client, m.httpClient, m.installKind, m.minecraft, m.loader, m.workDir
 	return func() tea.Msg {
-		ctx := context.Background()
 		var jar mcversions.ServerJar
 		var err error
 		switch kind {
@@ -677,7 +704,7 @@ func (m *model) prepareInstallerRunScript(dir, minecraft, loader string) error {
 	runPath := filepath.Join(dir, "run.sh")
 	if info, err := os.Stat(runPath); err == nil {
 		if info.Mode().Perm()&0o111 == 0 {
-			return os.Chmod(runPath, info.Mode().Perm()|0o111)
+			return grantExecute(runPath)
 		}
 		return nil
 	} else if !os.IsNotExist(err) {

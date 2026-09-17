@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"crypto/sha1"
 	"fmt"
 	"net/http"
@@ -59,7 +60,7 @@ func TestInstallCreatesVanillaServer(t *testing.T) {
 	model.installKind = "vanilla"
 	model.minecraft = "1.21.1"
 	model.step = stepInstalling
-	message := model.install()()
+	message := model.install(context.Background())()
 	if result := message.(installedMsg); result.err != nil {
 		t.Fatal(result.err)
 	}
@@ -124,7 +125,7 @@ func testInstallerLayout(t *testing.T, minecraft, loader, javaBody string, legac
 	model.installKind = "forge"
 	model.minecraft = minecraft
 	model.loader = loader
-	message := model.install()()
+	message := model.install(context.Background())()
 	if result := message.(installedMsg); result.err != nil {
 		t.Fatal(result.err)
 	}
