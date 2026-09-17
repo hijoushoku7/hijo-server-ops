@@ -778,6 +778,7 @@ func TestServerVersion(t *testing.T) {
 		{"vanilla", "1.21.4", "", "Vanilla 1.21.4"},
 		{"neoforge", "1.21.1", "21.1.90", "NeoForge 1.21.1 (21.1.90)"},
 		{"", "1.21.4", "", ""},
+		{"forge", "", "47.2.0", ""},
 	} {
 		got := serverVersion(testCase.kind, testCase.minecraft, testCase.loader)
 		if got != testCase.want {
@@ -789,5 +790,19 @@ func TestServerVersion(t *testing.T) {
 	written := render("./run.sh", "/srv/mc", "/srv/mc", "", "Forge 1.20.4 (47.2.0)")
 	if !strings.Contains(written, `version = "Forge 1.20.4 (47.2.0)"`) {
 		t.Errorf("render に version が無い: %q", written)
+	}
+}
+
+// 種別と版を選んだあと Esc で戻り、元からある起動スクリプトを選んだときに、
+// 入れていない版が設定へ残らないことを確かめる。
+func TestPreviewOmitsVersionWithoutInstall(t *testing.T) {
+	m := &model{configDir: "/srv/mc", workDir: "/srv/mc", command: "./run.sh"}
+	m.installKind, m.minecraft = "paper", "1.21.4"
+	if strings.Contains(m.preview(), "version = ") {
+		t.Errorf("インストールしていないのに version が入った: %q", m.preview())
+	}
+	m.installed = serverVersion(m.installKind, m.minecraft, m.loader)
+	if !strings.Contains(m.preview(), `version = "Paper 1.21.4"`) {
+		t.Errorf("インストール後に version が無い: %q", m.preview())
 	}
 }

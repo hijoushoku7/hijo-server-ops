@@ -246,23 +246,41 @@ func render(command, workDir, configDir, java, version string) string {
 	return out.String()
 }
 
-// loaderLabels はインストール種別の表示名。ToUpper で作ると NeoForge が
-// Neoforge になるので、表示に出す綴りはここに持つ。
-var loaderLabels = map[string]string{
-	"vanilla":  "Vanilla",
-	"fabric":   "Fabric",
-	"paper":    "Paper",
-	"forge":    "Forge",
-	"neoforge": "NeoForge",
+// installKinds はインストールできる種別。選択肢の並び順と、ダウンロード先を
+// 選ぶ id と、画面に出す綴りをここだけに持つ。別々に持つと一覧の順と id が
+// ずれたり、種別を足したときに片方だけ漏れたりする。
+var installKinds = []struct{ id, label string }{
+	{"vanilla", "Vanilla"},
+	{"fabric", "Fabric"},
+	{"paper", "Paper"},
+	{"forge", "Forge"},
+	{"neoforge", "NeoForge"},
 }
 
-// serverVersion は設定に書く版の 1 行を作る。分かるのはウィザードから
-// インストールしたときだけで、手持ちのサーバーを登録した場合は空を返す。
+func installKindLabels() []string {
+	labels := make([]string, len(installKinds))
+	for i, kind := range installKinds {
+		labels[i] = kind.label
+	}
+	return labels
+}
+
+func installKindLabel(id string) string {
+	for _, kind := range installKinds {
+		if kind.id == id {
+			return kind.label
+		}
+	}
+	return id
+}
+
+// serverVersion は設定に書く版の 1 行を作る。インストールが済んだときだけ
+// 呼ばれる。
 func serverVersion(kind, minecraft, loader string) string {
-	label, known := loaderLabels[kind]
-	if !known || minecraft == "" {
+	if kind == "" || minecraft == "" {
 		return ""
 	}
+	label := installKindLabel(kind)
 	if loader != "" {
 		return label + " " + minecraft + " (" + loader + ")"
 	}

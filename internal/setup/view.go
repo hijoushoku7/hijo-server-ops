@@ -78,7 +78,7 @@ func (m *model) body() []string {
 			"  " + string(m.input) + "█",
 		}
 	case stepInstallKind:
-		return append([]string{msg.SetupStepInstallKind, ""}, selectionLines([]string{"Vanilla", "Fabric", "Paper", "Forge", "NeoForge"}, m.cursor)...)
+		return append([]string{msg.SetupStepInstallKind, ""}, selectionLines(installKindLabels(), m.cursor)...)
 	case stepInstallVersion:
 		versions := m.visibleVersions()
 		if m.versions == nil {
