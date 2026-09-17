@@ -12,12 +12,15 @@ import (
 )
 
 const (
-	vanillaURL      = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
-	fabricGameURL   = "https://meta.fabricmc.net/v2/versions/game"
-	fabricLoaderURL = "https://meta.fabricmc.net/v2/versions/loader/"
-	paperURL        = "https://fill.papermc.io/v3/projects/paper"
-	forgeURL        = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
-	neoForgeURL     = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
+	vanillaURL         = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+	fabricGameURL      = "https://meta.fabricmc.net/v2/versions/game"
+	fabricLoaderURL    = "https://meta.fabricmc.net/v2/versions/loader/"
+	fabricInstallerURL = "https://meta.fabricmc.net/v2/versions/installer"
+	fabricServerURL    = "https://meta.fabricmc.net/v2/versions/loader/"
+	paperURL           = "https://fill.papermc.io/v3/projects/paper"
+	paperBuildsURL     = "https://fill.papermc.io/v3/projects/paper/versions/"
+	forgeURL           = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
+	neoForgeURL        = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
 )
 
 // Version は Minecraft の版と、その版で選択できるローダーを表す。
@@ -42,7 +45,7 @@ type Client struct {
 }
 
 type urls struct {
-	vanilla, fabricGame, fabricLoader, paper, forge, neoForge string
+	vanilla, fabricGame, fabricLoader, fabricInstaller, fabricServer, paper, paperBuilds, forge, neoForge string
 }
 
 // NewClient は一覧取得用のクライアントを作る。version は hso のバージョンで、
@@ -53,7 +56,8 @@ func NewClient(httpClient *http.Client, version string) *Client {
 	}
 	return &Client{httpClient: httpClient, version: version, urls: urls{
 		vanilla: vanillaURL, fabricGame: fabricGameURL, fabricLoader: fabricLoaderURL,
-		paper: paperURL, forge: forgeURL, neoForge: neoForgeURL,
+		fabricInstaller: fabricInstallerURL, fabricServer: fabricServerURL,
+		paper: paperURL, paperBuilds: paperBuildsURL, forge: forgeURL, neoForge: neoForgeURL,
 	}}
 }
 

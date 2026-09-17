@@ -77,6 +77,46 @@ func (m *model) body() []string {
 			"",
 			"  " + string(m.input) + "█",
 		}
+	case stepInstallKind:
+		return append([]string{msg.SetupStepInstallKind, ""}, selectionLines([]string{"Vanilla", "Fabric", "Paper"}, m.cursor)...)
+	case stepInstallVersion:
+		versions := m.visibleVersions()
+		if m.versions == nil {
+			return []string{msg.SetupStepInstallVersion, "", "  " + msg.SetupLoading, "", dimStyle.Render("  " + msg.SetupCacheTime(m.fetchedAt))}
+		}
+		labels := make([]string, len(versions))
+		for i, version := range versions {
+			labels[i] = version.Version
+		}
+		lines := append([]string{msg.SetupStepInstallVersion, ""}, selectionLines(labels, m.cursor)...)
+		return append(lines, "", dimStyle.Render("  "+msg.SetupCacheTime(m.fetchedAt)))
+	case stepInstallVersionInput:
+		return []string{msg.SetupStepInstallVersionInput, "", "  " + string(m.input) + "█"}
+	case stepInstallLoader:
+		if m.loaders == nil {
+			return []string{msg.SetupStepInstallLoader, "", "  " + msg.SetupLoading, "", dimStyle.Render("  " + msg.SetupCacheTime(m.fetchedAt))}
+		}
+		labels := make([]string, len(m.loaders))
+		for i, loader := range m.loaders {
+			labels[i] = loader.Version
+		}
+		lines := append([]string{msg.SetupStepInstallLoader, ""}, selectionLines(labels, m.cursor)...)
+		return append(lines, "", dimStyle.Render("  "+msg.SetupCacheTime(m.fetchedAt)))
+	case stepInstallConfirm:
+		return []string{
+			msg.SetupStepInstallConfirm, "",
+			"  " + msg.SetupInstallDirectory(m.workDir),
+			"  " + msg.SetupInstallSelection(m.installDescription()), "",
+			"  " + msg.SetupEULA,
+			dimStyle.Render("  https://aka.ms/MinecraftEULA"),
+		}
+	case stepInstalling:
+		done, total := m.downloaded.Load(), m.downloadTotal.Load()
+		progress := msg.SetupDownloadingBytes(done)
+		if total > 0 {
+			progress = msg.SetupDownloadingProgress(done, total)
+		}
+		return []string{msg.SetupInstalling, "", "  " + progress}
 	default:
 		lines := []string{
 			msg.SetupStepConfirm,
@@ -107,13 +147,17 @@ func (m *model) chmodLine() string {
 }
 
 func (m *model) candidateLines() []string {
-	labels := make([]string, 0, len(m.candidates)+1)
+	labels := make([]string, 0, len(m.candidates)+2)
 	for _, item := range m.candidates {
 		labels = append(labels, item.label())
 	}
 	labels = append(labels, msg.SetupManualEntry)
+	labels = append(labels, msg.SetupInstallEntry)
+	return selectionLines(labels, m.cursor)
+}
 
-	start := windowStart(m.cursor, len(labels), listViewport)
+func selectionLines(labels []string, cursor int) []string {
+	start := windowStart(cursor, len(labels), listViewport)
 	end := min(start+listViewport, len(labels))
 	lines := make([]string, 0, end-start)
 	for index := start; index < end; index++ {
@@ -122,7 +166,7 @@ func (m *model) candidateLines() []string {
 			number = fmt.Sprintf("%d ", index+1)
 		}
 		label := number + labels[index]
-		if index == m.cursor {
+		if index == cursor {
 			lines = append(lines, "  "+selectedStyle.Render(" "+label+" "))
 			continue
 		}
@@ -185,6 +229,16 @@ func (m *model) keybar() string {
 			[2]string{"Enter", msg.KeyNext},
 			[2]string{"Esc", msg.KeyBack},
 		)
+	case stepInstallKind, stepInstallLoader:
+		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"Enter", msg.KeyConfirm}, [2]string{"Esc", msg.KeyBack})
+	case stepInstallVersion:
+		keys = append(keys, [2]string{"↑↓ / 1-9", msg.KeySelect}, [2]string{"s", msg.KeyToggleSnapshots}, [2]string{"Enter", msg.KeyConfirm}, [2]string{"Esc", msg.KeyBack})
+	case stepInstallVersionInput:
+		keys = append(keys, [2]string{"Enter", msg.KeyNext}, [2]string{"Esc", msg.KeyBack})
+	case stepInstallConfirm:
+		keys = append(keys, [2]string{"Enter", msg.KeyAgreeInstall}, [2]string{"Esc", msg.KeyBack})
+	case stepInstalling:
+		keys = nil
 	default:
 		keys = append(keys, [2]string{"Enter", msg.KeyCreate})
 		if m.needsChmod {

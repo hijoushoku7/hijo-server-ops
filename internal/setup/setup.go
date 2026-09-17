@@ -16,7 +16,7 @@ import (
 
 // Run は設定ファイルを対話的に作る。作成したら作成先のパスを返す。
 // ユーザーが中止したときは空文字列を返す。
-func Run(configPath string) (string, error) {
+func Run(configPath, version string) (string, error) {
 	path, err := filepath.Abs(configPath)
 	if err != nil {
 		return "", msg.ConfigAbsPathFailed(err)
@@ -36,7 +36,7 @@ func Run(configPath string) (string, error) {
 		return "", msg.ConfigAlreadyRegistered(name, path)
 	}
 
-	model := newModel(path, servers)
+	model := newModelWithVersion(path, servers, version, filepath.Dir(registryPath))
 	if _, err := tea.NewProgram(model).Run(); err != nil {
 		return "", err
 	}

@@ -117,7 +117,7 @@ func run() error {
 	// できたらそのままサーバーを起動する。端末がないときはウィザードを出せ
 	// ないので、従来どおり config.Load のエラーを返す。
 	if missingConfig(*configPath) && interactive() {
-		created, err := setup.Run(*configPath)
+		created, err := setup.Run(*configPath, version)
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func runSetup(output io.Writer) error {
 		return runExistingConfig("hso.toml", true, true, output,
 			config.Load, registeredName, setup.Register, launchLoaded)
 	}
-	created, err := setup.Run("hso.toml")
+	created, err := setup.Run("hso.toml", version)
 	if err != nil {
 		return err
 	}
