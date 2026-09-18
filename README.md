@@ -19,7 +19,8 @@ Installs into `~/.local/bin`. No root privileges are needed, but you may need to
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh
-
+```
+```bash
 curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --lang ja # japanese version
 ```
 
