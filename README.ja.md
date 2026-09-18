@@ -26,9 +26,9 @@ Vanilla,Spigot,Paper,Forge,NeoForge,Fabricなど様々な環境で動作しま�
 
 ## クイックスタート
 
-### ユーザーインストール（推奨）
+### ユーザーインストール
 
-`~/.local/bin` に入ります。root 権限は要りません。
+`~/.local/bin` に入ります。root 権限は要りませんが、PATH の設定が必要になる場合があります。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh

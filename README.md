@@ -13,9 +13,9 @@ Works with Vanilla, Spigot, Paper, Forge, NeoForge, Fabric and other setups.
 
 ## Quick start
 
-### User Install (recommended)
+### User Install
 
-Installs into `~/.local/bin`. No root privileges are needed.
+Installs into `~/.local/bin`. No root privileges are needed, but you may need to add it to your PATH.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh
@@ -27,7 +27,7 @@ If `~/.local/bin` is not on your PATH, the installer prints the single line to a
 
 ### If you want it available to every user
 
-Every user can run it and no PATH setup is needed. **ROOT REQUIRED! (BUT DONT PUT SUDO, INSTALLER ASKS YOU!)**
+No PATH setup is needed, but root privileges are required. **ROOT REQUIRED! (BUT DONT PUT SUDO, INSTALLER ASKS YOU!)**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --system
