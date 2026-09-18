@@ -13,7 +13,7 @@ Vanilla,Spigot,Paper,Forge,NeoForge,Fabricなど様々な環境で動作しま�
 
 ## 機能
 
-- 操作可能な **カッコいい** TUI コンソール
+- 操作可能なTUI コンソール
 - 簡単な各種 loader（Fabric, Forge, NeoForge, Vanilla, Paper）の初期設定
 - Heap（Java が確保したメモリ）と RSS（実際の使用メモリ）のグラフ。
 - プレイヤーを選んでコマンドを実行
