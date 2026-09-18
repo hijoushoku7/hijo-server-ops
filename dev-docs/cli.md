@@ -3,8 +3,7 @@
 > 管理 issue: hijoushoku7/hijo-server-ops#53（#51 を吸収）
 
 `hso` をサーバーディレクトリに置くバイナリから、どこからでも呼べるコマンドへ広げる。
-全体の仕様と位置づけは [spec.md](spec.md)、ビルド手順は [build.md](build.md)、
-シェル補完は [completion.md](completion.md)。
+全体の仕様と位置づけは [spec.md](spec.md)、ビルド手順は [build.md](build.md)。
 
 ## 目的
 
@@ -1162,60 +1161,3 @@ rm -rf "${XDG_RUNTIME_DIR:-/tmp}"/hso      # pidfile（再起動でも消える�
 - `release.yml` のリリースノート（`notes.md`）のインストール手順も install.sh 方式に直す
 - CI（`test.yml` / `deps.yml` / `release.yml`）の構成は変えない。**足すのは
   `test.yml` への `shellcheck -s sh install.sh` 1 ステップだけ**（→「sh の範囲」）
-
----
-
-## 実装順
-
-各段でリリース可能な形に切る。**1〜5 はバイナリの既存の挙動を一切変えない。**
-
-1. バージョン埋め込みと `hso version` — 最小で、`update` と install.sh の前提
-2. `install.sh` と README のクイックスタート差し替え — 既存のリリース資産だけで書ける。
-   ただし**リポジトリの public 化が前提**（未認証で取れないと `curl | sh` が成立しない）
-3. `internal/registry`（一覧の Load / Save）
-4. `hso list` — registry だけで書ける。状態表示は 5 の後で埋める
-5. pidfile と生存確認
-6. `hso setup` — 名前入力の追加と登録
-7. `hso start` — 選択 UI
-8. `hso update` — タグ取得と展開は install.sh と同じ手順をなぞる
-9. `hso uninstall` — 単体で書けるので順番はどこでもよいが、`--purge` が消す対象
-   （一覧・pidfile）が 3〜5 で確定してからにする。**README のアンインストール手順は
-   2 の時点では `rm` で書いておき、ここで `hso uninstall` に差し替える**
-
-2 を先に出せる（1 のバージョン埋め込みさえあれば、サブコマンドが 1 つも無くても
-「入れて `./hso` と同じことができる」状態になる）。install.sh の取得ロジックを先に固めて
-おくと、8 はそれを Go へ移すだけになる。
-
----
-
-## 他の issue との関係
-
-#51（エイリアス追加）は一覧と `~/.config/hso/config.toml` の設計がまるごと重なるので、
-**この設計に吸収して close する。**
-
-#52（入力候補の灰色表示）・#49（hjkl 操作）・#46（`/tell` をチャットへ）・#30（汎用コマンド
-の選択）は `internal/ui` と `internal/serverlog` に閉じている。CLI 化との接点は
-「`config.Config` を作って TUI を起動する」1 本の呼び出しだけなので、**前後どちらでも
-難易度は変わらない**。
-
----
-
-## 未決定・要検証
-
-かつての未決定 6 件（取得先 / 名前の文字範囲 / pidfile のフォールバック / sh か bash か /
-PATH の案内文 / flock の併用）は上の各節で決着した。残っているのは実機確認と、
-外部条件が 1 つ。
-
-flock は別のロックファイルや `hso.toml` ではなく pidfile 自身へ掛けることで決着した。
-`Running` は表示と事前確認を担い、作成時の `LOCK_EX|LOCK_NB` が排他を担う（→「書き込みと
-後始末」）。
-
-1. **リポジトリの public 化**（→「前提: リポジトリを公開する必要がある」）。
-   これだけは設計ではなく判断待ちで、**実装順の 2 が丸ごとこれに乗っている**
-2. **Alpine（BusyBox ash）での install.sh の実走**。dash では通って ash で落ちる書き方が
-   ないことを確認する（→「sh の範囲」）
-3. **`/tmp` フォールバック時の mtime 更新が効くこと**の確認。tmpfiles の掃除条件
-   （atime / mtime / ctime が全部 10 日より古い）は `systemd-tmpfiles --clean --dry-run` で
-   狙って再現できる。1 時間おきの `utime` で対象から外れることを一度は見る
-4. **PATH 案内の文面**は英語 1 種類で下書きしただけ（→「PATH に無いときの案内」）。
-   語調と行数は要調整
