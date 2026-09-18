@@ -6,53 +6,89 @@
 
 ## hijo Server Ops
 
-Linux で使える Minecraft サーバー用の TUI 画面ソフトウェアです。サーバーのラッパーとして動くので、いま使っている起動スクリプトはそのままで構いません。
+Linuxでマイクラサーバー立てたいけどシェルコマンド?! java?! めんどくさいしもう嫌ｯ！！という方に朗報です。HSOが解決します。
+
+Linux で使える Minecraft サーバー用の TUI 画面ソフトウェアです。サーバーのラッパーとして動くので、いま使っている*.shはそのままで構いません。
 Vanilla,Spigot,Paper,Forge,NeoForge,Fabricなど様々な環境で動作します。
+
+## 機能
+
+- 操作可能な **カッコいい** TUI コンソール
+- 簡単な各種 loader（Fabric, Forge, NeoForge, Vanilla, Paper）の初期設定
+- Heap（Java が確保したメモリ）と RSS（実際の使用メモリ）のグラフ。
+- プレイヤーを選んでコマンドを実行
+- チャットをコンソールと分けて表示
+- 自動再起動
+- javaバージョンの選択
+- server.propertiesの編集
+
+サーバー側にプラグインや MOD を入れる必要はありません。
 
 ## クイックスタート
 
-### システムにインストールする（推奨）
+### ユーザーインストール（推奨）
 
-`/usr/local/bin` に入ります。全ユーザーが使えて、PATH の設定は要りません。日本語版を入れるには次を実行します。
+`~/.local/bin` に入ります。root 権限は要りません。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh
+
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --lang ja # 日本語バージョンのインストール
+```
+
+`~/.local/bin` が PATH に無い環境では、インストール後に追記する 1 行が表示されます。
+
+Minecraft サーバーを専用ユーザーで動かしている場合は、**そのユーザーで**実行してください。
+
+### 全ユーザーで使いたい場合
+
+`--system` を付けると `/usr/local/bin` に入ります。全ユーザーが使えて PATH の設定も要りませんが、root 権限が必要です。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --system --lang ja
 ```
 
-`sudo` はパイプに付けないでください。スクリプトは一般ユーザーの権限でダウンロードと検証を行い、`/usr/local/bin` へ置く最後の処理だけ `sudo` を使います。
-
-### 自分のホームにインストールする
-
-root 権限が無い、または使いたくない場合は `~/.local/bin` に入れます。
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --lang ja
-```
-
-`~/.local/bin` が PATH に無い環境では、インストール後に追記する 1 行が表示されます。
-
-表示は既定で英語です。上記の `--lang ja` を外すと英語版が入り、環境変数を使う場合は `curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | env HSO_LANG=ja sh -s -- --system` のように指定できます。フラグの指定は環境変数より優先されます。
-
-インストール後に Minecraft サーバーのディレクトリで `hso setup` を実行すると、設定ウィザードが開きます。サーバーのディレクトリを入力し、起動スクリプトを一覧から選ぶだけで、そのままサーバーが立ち上がります。2 回目からは `hso start` で登録済みのサーバーを選んで起動します。hso 本体は `sudo` で実行しないでください。
+`sudo` は付けないでください。スクリプトは一般ユーザーの権限でダウンロードと検証を行い、`/usr/local/bin` へ置く最後の処理だけ `sudo` / `doas` を使います。この場合は更新と削除でも root 権限が要ります（→ [更新](#更新) / [アンインストール](#アンインストール)）。
 
 コマンドの一覧は `hso` または `hso help` で表示できます（→ [コマンド一覧](dev-docs/commands.md)）。
 
-## 機能
+### サーバーのセットアップ
 
-- Heap（Java が確保したメモリ）と RSS（実際の使用メモリ）を別々に表示。その差分も出すので、`-Xmx` を積んだのにメモリ不足になるなどの原因が見える
-- メモリ推移のグラフと GC の統計
-- プレイヤー一覧から選んでコマンドを実行
-- ログからチャットだけを抜き出して表示
+`hso setup` でウィザードが開きます。どちらの場合にも対応します。
 
-サーバー側にプラグインや MOD を入れる必要はありません。
+- **すでにサーバーがある場合**: そのディレクトリで実行し、いま使っている起動スクリプトを一覧から選びます。そのままの構成で立ち上がります。
+- **新規構築の場合**: サーバーファイルを入れたいディレクトリで実行し、「新しくサーバーをインストールする」を選びます。Minecraft のバージョンとローダー（Vanilla, Paper, Fabric, Forge, NeoForge）を選んで EULA に同意すると、hso が取得して設置します。
+
+どちらもサーバー一覧に登録されるので、2 回目以降は `hso start` で選んで起動できます。hso 本体は `sudo` で実行しないでください。
+
+```bash
+hso setup     # 初回: サーバーを用意して起動する
+hso start     # 2 回目以降: 登録済みのサーバーを選ぶ
+```
+
+### サーバーの初期設定
+
+![hijo Server Ops](hso-setup.gif)
+
+### カスタマイズ
+
+![hijo Server Ops](hso-theme.gif)
+
+### コマンド
+
+![hijo Server Ops](hso-players.gif)
+
+### 再起動
+
+![hijo Server Ops](hso-restart.gif)
 
 ## 手動インストール
 
 [Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) から環境に合うアーカイブを取得して展開します。
 
 ```bash
-tar xzf hso_v0.1.1_linux_amd64_ja.tar.gz
-cd hso_v0.1.1_linux_amd64_ja
+tar xzf hso_v0.*.*_linux_amd64_ja.tar.gz
+cd hso_v0.*.*_linux_amd64_ja
 ./hso setup
 ```
 
@@ -80,17 +116,17 @@ hso update
 ## アンインストール
 
 ```bash
-hso uninstall
+hso uninstall #アンインストール
 ```
 
-削除するパスを表示して確認を取ってから、いま動いているバイナリを削除します。サーバー一覧は残り、サーバーディレクトリ内の `hso.toml` やワールドには触れません。確認を省略するには `-y` / `--yes` を付けます。
+ツールのアンインストールのみで、サーバーディレクトリは削除されません。削除するパスを表示して確認を取ってから、いま動いているバイナリを削除します。確認を省略するには `-y` / `--yes` を付けます。
 
 `/usr/local/bin` に入れているバイナリだけを削除する場合は、`sudo hso uninstall` を実行します。アンインストール自身が `sudo` / `doas` を起動することはありません。
 
 サーバー一覧と pidfile も消す場合は、**sudo を付けずに**実行します。
 
 ```bash
-hso uninstall --purge
+hso uninstall --purge #hsoの設定削除
 ```
 
 `/usr/local/bin` に入れている場合は、先に通常ユーザーで設定を消し、残ったバイナリを root で削除します。

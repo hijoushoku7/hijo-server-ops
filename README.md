@@ -6,53 +6,85 @@ English | [日本語](README.ja.md)
 
 ## hijo Server Ops
 
+Tired of setting up server on LINUX? Don't worry, it would be so easy with HSO!
+
 A TUI console for Minecraft servers on Linux. It runs as a wrapper around your server, so the start script you already use stays as it is.
 Works with Vanilla, Spigot, Paper, Forge, NeoForge, Fabric and other setups.
 
 ## Quick start
 
-### Install system-wide (recommended)
+### User Install (recommended)
 
-Installs into `/usr/local/bin`. Every user can run it, and no PATH setup is needed.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --system
-```
-
-Do not put `sudo` in front of the pipe. The script downloads and verifies as your normal user, and only the final move into `/usr/local/bin` uses `sudo`.
-
-### Install into your home directory
-
-If you have no root privileges, or would rather not use them, install into `~/.local/bin`.
+Installs into `~/.local/bin`. No root privileges are needed.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh
+
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --lang ja # japanese version
 ```
 
 If `~/.local/bin` is not on your PATH, the installer prints the single line to add.
 
-The interface is English by default. Add `--lang ja` to the commands above for the Japanese build, or use the environment variable: `curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | env HSO_LANG=ja sh -s -- --system`. The flag takes precedence over the environment variable.
+### If you want it available to every user
 
-Run `hso setup` in your Minecraft server directory after installing and the setup wizard opens. Enter your server directory, pick the start script from the list, and the server comes up right away. From then on, `hso start` brings up a registered server. Do not run hso itself with `sudo`.
+Every user can run it and no PATH setup is needed. **ROOT REQUIRED! (BUT DONT PUT SUDO, INSTALLER ASKS YOU!)**
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/hijoushoku7/hijo-server-ops/main/install.sh | sh -s -- --system
+```
 Run `hso` or `hso help` for the list of commands (see [Command reference](dev-docs/commands.md), written in Japanese).
+
+### How to set up your server
+
+Run `hso setup` to open the setup wizard. It handles both cases:
+
+- **You already have a server**: run it in that directory and pick the start script you already use from the list. The server comes up as it is.
+- **You have nothing yet**: run it in the directory you want the server in and choose *install a new server*. Pick the Minecraft version and the loader (Vanilla, Paper, Fabric, Forge, NeoForge), agree to the EULA, and hso downloads and sets it up.
+
+Either way the server is registered, so from the second time on `hso start` lets you choose one of the registered servers. Do not run hso itself with `sudo`.
+
+```bash
+hso setup     # first time: set up the server and start it
+hso start     # after that: pick a registered server
+```
 
 ## Features
 
-- Heap (memory Java reserved) and RSS (memory actually used) shown separately, along with the gap between them, so you can see why the server runs out of memory even though you raised `-Xmx`
-- Memory graph over time and GC statistics
-- Pick a player from the list and run a command against them
-- Chat pulled out of the log and shown on its own
+- Interactive and **COOL** TUI console
+- Easy Initial settings for multiple loader (Fabric,Forge,Neoforge,Vanilla,Paper)
+- Heap and RSS (memory actually used) Graphs
+- Easy commands to specific player
+- Chat separated from console
+- Auto restart
+- Pick the Java version to run with
+- editing server.properties
 
 No plugin or mod has to be installed on the server side.
+
+
+### Easy Server Setup
+
+![hijo Server Ops](hso-setup.gif)
+
+### Customizable theme
+
+![hijo Server Ops](hso-theme.gif)
+
+### Commands
+
+![hijo Server Ops](hso-players.gif)
+
+### Easy restarting
+![hijo Server Ops](hso-restart.gif)
+
 
 ## Manual install
 
 Download the archive matching your environment from [Releases](https://github.com/hijoushoku7/hijo-server-ops/releases) and extract it.
 
 ```bash
-tar xzf hso_v0.1.1_linux_amd64_en.tar.gz
-cd hso_v0.1.1_linux_amd64_en
+tar xzf hso_v0.*.*_linux_amd64_en.tar.gz
+cd hso_v0.*.*_linux_amd64_en
 ./hso setup
 ```
 
@@ -72,8 +104,7 @@ hso java list
 ```bash
 hso update
 ```
-
-Fetches the binary for the same architecture and same interface language as the one currently running from the latest release, verifies it with SHA-256, then replaces itself. If it is already up to date, nothing happens.
+It's not that hard! Fetches the binary for the same architecture and interface language as the one currently running, verifies it with SHA-256, then replaces itself. If it is already up to date, nothing happens.
 
 If it lives in `/usr/local/bin`, `sudo` / `doas` asks for your password **for the replacement step only**. There is no need to type `sudo hso update` (that would run the download and the extraction as root as well). In `~/.local/bin` it goes through without any elevation.
 
@@ -82,12 +113,12 @@ If it lives in `/usr/local/bin`, `sudo` / `doas` asks for your password **for th
 ```bash
 hso uninstall
 ```
-
-Prints the paths to be removed, asks for confirmation, and then deletes the binary that is currently running. The server list is kept, and `hso.toml` and the worlds inside your server directory are left alone. Add `-y` / `--yes` to skip the confirmation.
+Don't worry! It just uninstall hso, not the server directories!
+It prints the paths it is about to delete and asks you to confirm before removing the binary that is currently running. Add `-y` / `--yes` to skip that confirmation.
 
 To remove only the binary installed in `/usr/local/bin`, run `sudo hso uninstall`. The uninstall never invokes `sudo` / `doas` by itself.
 
-To remove the server list and the pidfile as well, run it **without sudo**.
+To remove the server list and the pidfile as well, add `--purge` and run it **without sudo**.
 
 ```bash
 hso uninstall --purge
