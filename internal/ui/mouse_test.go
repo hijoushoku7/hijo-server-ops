@@ -99,12 +99,105 @@ func TestModelMouseIgnoresModalAndClickOpensPlayerCommands(t *testing.T) {
 		t.Fatalf("click state = panel %d, mode %d, stage %d, target %q", model.panel, model.mode, model.playerStage, model.playerTarget)
 	}
 
-	// コマンドモーダル中は背後のクリックとホイールを捨てる。
+	// コマンドモーダル中のホイールは背後ではなくコマンドのカーソルを動かす。
+	// playerCursor が動くとモーダルの表示位置ごとずれる。
 	model.playerCursor = 0
 	_, _ = model.Update(tea.MouseWheelMsg{X: x, Y: 0, Button: tea.MouseWheelDown})
+	if model.playerCursor != 0 || model.commandCursor != 1 {
+		t.Fatalf("wheel = player %d, command %d", model.playerCursor, model.commandCursor)
+	}
+	// 枠の外のクリックは一覧へ戻したうえで、そのまま背後のパネルに効く。
 	_, _ = model.Update(tea.MouseClickMsg{X: 0, Y: statsHeight + model.layout.bodyHeight, Button: tea.MouseLeft})
-	if model.panel != panelPlayers || model.playerCursor != 0 {
-		t.Fatalf("modal accepted mouse input: panel %d, cursor %d", model.panel, model.playerCursor)
+	if model.playerStage != playerStagePlayers || model.panel != panelConsole ||
+		model.mode != modeSelect {
+		t.Fatalf("outside click = stage %d, panel %d, mode %d",
+			model.playerStage, model.panel, model.mode)
+	}
+}
+
+// モーダルの位置は背後の playerCursor で動く。Bubble Tea はメッセージごとに
+// View を呼ぶとは限らないので、描画を挟まずに 2 回クリックが届いても、
+// 1 回目で開いた位置ではなく今の位置で当たりを取る。
+func TestModelMouseCommandModalFollowsPlayerWithoutRedraw(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 40)
+	model.playerList = []string{"alice", "bob", "carol", "dave"}
+	x := model.layout.statsWidth + model.layout.metersWidth + 1
+
+	// 先頭のプレイヤーで一度開いて描き、その位置を控えさせる。
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 1, Button: tea.MouseLeft})
+	_ = model.View()
+	model.playerStage = playerStagePlayers
+
+	// 別の行を、描画を挟まずに 2 回クリックする。
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 4, Button: tea.MouseLeft})
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 4, Button: tea.MouseLeft})
+	if model.playerStage != playerStageCommands || len(model.input) != 0 {
+		t.Fatalf("stage = %d, input = %q", model.playerStage, string(model.input))
+	}
+}
+
+// 画面が低いとモーダルは上へ押し戻され、開いた行そのものを覆う。上にも下にも
+// 出せない高さがあるので、位置ではなく行のクリックを捨てることで塞ぐ。
+func TestModelMouseCommandModalIgnoresOpeningRow(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, minimumHeight)
+	model.playerList = []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	x := model.layout.statsWidth + model.layout.metersWidth + 1
+
+	for _, row := range []int{1, model.layout.playerLines()} {
+		model.playerStage = playerStagePlayers
+		model.input = nil
+		_, _ = model.Update(tea.MouseClickMsg{X: x, Y: row, Button: tea.MouseLeft})
+		_, _ = model.Update(tea.MouseClickMsg{X: x, Y: row, Button: tea.MouseLeft})
+		if model.playerStage != playerStageCommands || len(model.input) != 0 {
+			t.Fatalf("row %d: stage = %d, input = %q",
+				row, model.playerStage, string(model.input))
+		}
+	}
+}
+
+// コマンド一覧もマウスで押せる。押した項目は Console に置かれる。
+func TestModelMouseSelectsPlayerCommand(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 24)
+	model.playerList = []string{"alice"}
+	x := model.layout.statsWidth + model.layout.metersWidth + 1
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 1, Button: tea.MouseLeft})
+	// 当たり判定は描画のたびに作る。
+	_ = model.View()
+
+	// フォーカス中でも、ボタンを押していない移動を端末から受け取る。
+	// CellMotion のままではホバーが一切来ない。
+	if got := model.View().MouseMode; got != tea.MouseModeAllMotion {
+		t.Fatalf("mouse mode = %v, want AllMotion", got)
+	}
+
+	const kick = 1
+	frame, list := model.commandHitboxes()
+	row := list.y0 + kick
+	_, _ = model.Update(tea.MouseMotionMsg{X: list.x0, Y: row})
+	if model.commandCursor != kick {
+		t.Fatalf("hover cursor = %d, want %d", model.commandCursor, kick)
+	}
+	// ホバーした項目は選択色（背景つき）で描く。
+	box, _, _ := model.commandModal()
+	if !styledWith(box, playerCommands[kick].label, selectedStyle) {
+		t.Fatalf("ホバーした項目に選択色が乗っていない: %q", stripANSI(box))
+	}
+	// 枠の中で項目を外したクリックは何も起こさない。
+	_, _ = model.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: frame.x0, Y: frame.y0,
+	})
+	if model.playerStage != playerStageCommands {
+		t.Fatal("枠を押しただけで閉じた")
+	}
+
+	_, _ = model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: list.x0, Y: row})
+	if model.panel != panelConsole || model.playerStage != playerStagePlayers ||
+		string(model.input) != "kick alice " {
+		t.Fatalf("click state = panel %d, stage %d, input %q",
+			model.panel, model.playerStage, string(model.input))
 	}
 }
 

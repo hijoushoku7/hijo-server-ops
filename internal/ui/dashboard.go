@@ -286,12 +286,30 @@ func (model *Model) renderPlayersPanel() string {
 	)
 }
 
-func (model *Model) commandModal() (string, int, int) {
-	width := stringWidth(model.playerTarget) + 5
+// commandModalBounds はコマンドモーダルの左上と大きさを返す。位置は背後の
+// playerCursor で動くので、描画時に控えず必要なたびに計算する。控えると、
+// 描画を挟まずに 2 回クリックが届いたとき古い位置で当たりを取ってしまう。
+func (model *Model) commandModalBounds() (x, y, width, height int) {
+	width = stringWidth(model.playerTarget) + 5
 	for index, command := range playerCommands {
 		width = max(width, stringWidth(command.label)+stringWidth(commandAccelerator(index))+4)
 	}
-	height := len(playerCommands) + 2
+	height = len(playerCommands) + 2
+
+	start := windowStart(
+		model.playerCursor,
+		len(model.playerList),
+		model.layout.playerLines(),
+	)
+	x = model.layout.statsWidth + model.layout.metersWidth
+	y = model.playerCursor - start + 2
+	x = clamp(x, 0, max(0, model.layout.width-width))
+	y = clamp(y, 0, max(0, model.layout.height-height))
+	return x, y, width, height
+}
+
+func (model *Model) commandModal() (string, int, int) {
+	x, y, width, height := model.commandModalBounds()
 
 	lines := make([]string, 0, len(playerCommands))
 	for index, command := range playerCommands {
@@ -305,16 +323,6 @@ func (model *Model) commandModal() (string, int, int) {
 		}
 		lines = append(lines, line)
 	}
-
-	start := windowStart(
-		model.playerCursor,
-		len(model.playerList),
-		model.layout.playerLines(),
-	)
-	x := model.layout.statsWidth + model.layout.metersWidth
-	y := model.playerCursor - start + 2
-	x = clamp(x, 0, max(0, model.layout.width-width))
-	y = clamp(y, 0, max(0, model.layout.height-height))
 
 	box := renderPanel(model.playerTarget, lines, width, height, false, modalFrame)
 	return box, x, y

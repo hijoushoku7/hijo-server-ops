@@ -4,9 +4,34 @@ import tea "charm.land/bubbletea/v2"
 
 func (model *Model) mouseDiscarded() bool {
 	return model.settingsOpen || model.timeModal != nil || model.completionOpen ||
-		model.quitMenuOpen || model.confirmOpen ||
-		(model.mode == modeFocus && model.panel == panelPlayers &&
-			model.playerStage == playerStageCommands)
+		model.quitMenuOpen || model.confirmOpen
+}
+
+// commandModalOpen はプレイヤーへのコマンド一覧が出ているかを返す。
+func (model *Model) commandModalOpen() bool {
+	return model.mode == modeFocus && model.panel == panelPlayers &&
+		model.playerStage == playerStageCommands
+}
+
+// commandHitboxes はコマンドモーダルの枠込みの範囲と、本文行だけの範囲を返す。
+func (model *Model) commandHitboxes() (frame, list hitbox) {
+	x, y, width, height := model.commandModalBounds()
+	frame = hitbox{x0: x, x1: x + width - 1, y0: y, y1: y + height - 1}
+	list = hitbox{
+		x0: x + 1, x1: x + width - 2,
+		y0: y + 1, y1: y + len(playerCommands),
+	}
+	return frame, list
+}
+
+// commandAt はコマンドモーダルのどの項目を指しているかを返す。1 行 1 項目
+// なので添字は行番号の差から出る。
+func (model *Model) commandAt(x, y int) (int, bool) {
+	_, list := model.commandHitboxes()
+	if !list.contains(x, y) {
+		return 0, false
+	}
+	return y - list.y0, true
 }
 
 func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
@@ -21,6 +46,17 @@ func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, te
 		return model, nil
 	}
 	if model.exit != nil || model.mouseDiscarded() {
+		return model, nil
+	}
+	// コマンド一覧の上ではカーソルそのものを動かす。選んでも副作用が無いので
+	// メニューのような専用のホバー用フィールドは持たない。
+	if model.commandModalOpen() {
+		// 閉じたあと選択モードへ戻ったときに、ポインタの無いパネルへホバー枠が
+		// 残らないよう、モーダル中も位置は捨てておく。
+		model.hovering = false
+		if index, ok := model.commandAt(message.X, message.Y); ok {
+			model.commandCursor = index
+		}
 		return model, nil
 	}
 	target, ok := model.layout.panelAt(message.X, message.Y)
@@ -60,6 +96,28 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 	}
 	if model.mouseDiscarded() {
 		return model, nil
+	}
+	// 項目を押せば実行。枠の中を外しただけなら何もしない。枠の外を押したら
+	// 一覧へ戻したうえで、そのクリックを背後の処理へ渡す。捨てると、行の
+	// ダブルクリックが「開いてすぐ閉じる」になる。
+	if model.commandModalOpen() {
+		// 開いた行そのものへのクリックは捨てる。画面が低いとモーダルが上へ
+		// 押し戻されてその行を覆うので、ダブルクリックの 2 回目が下の項目に
+		// 当たってしまう。上にも下にも出せない高さがあり、位置の調整では
+		// 塞げない。
+		if index, ok := model.playerAt(message.X, message.Y); ok &&
+			index == model.playerCursor {
+			return model, nil
+		}
+		if index, ok := model.commandAt(message.X, message.Y); ok {
+			model.commandCursor = index
+			model.applyPlayerCommand(index)
+			return model, nil
+		}
+		if frame, _ := model.commandHitboxes(); frame.contains(message.X, message.Y) {
+			return model, nil
+		}
+		model.playerStage = playerStagePlayers
 	}
 	if index, ok := model.playerAt(message.X, message.Y); ok {
 		model.playerCursor = index
@@ -106,6 +164,11 @@ func (model *Model) handleMouseWheel(message tea.MouseWheelMsg) (tea.Model, tea.
 		return model, nil
 	}
 	if model.mouseDiscarded() {
+		return model, nil
+	}
+	// モーダル中に playerCursor を動かすと、モーダルの表示位置ごと飛ぶ。
+	if model.commandModalOpen() {
+		model.commandCursor = clamp(model.commandCursor-delta, 0, len(playerCommands)-1)
 		return model, nil
 	}
 	target, ok := model.layout.panelAt(message.X, message.Y)
