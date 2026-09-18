@@ -143,15 +143,11 @@ type Model struct {
 	playerStage       playerStage
 	playerTarget      string
 	commandCursor     int
-	// commandBox は最後に描いたコマンドモーダルの枠込みの範囲、
-	// commandListBox はその本文行だけ。1 行 1 項目なので添字は y から出る。
-	commandBox     hitbox
-	commandListBox hitbox
-	chat           lineBuffer
-	logs           lineBuffer
-	samples        sampleBuffer
-	settings       Settings
-	settingsOpen   bool
+	chat              lineBuffer
+	logs              lineBuffer
+	samples           sampleBuffer
+	settings          Settings
+	settingsOpen      bool
 	// updateVersion は取得できた新しいリリースのタグ。空なら表示しない。
 	updateVersion  string
 	settingCursor  int

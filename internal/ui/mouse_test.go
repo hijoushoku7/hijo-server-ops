@@ -106,10 +106,34 @@ func TestModelMouseIgnoresModalAndClickOpensPlayerCommands(t *testing.T) {
 	if model.playerCursor != 0 || model.commandCursor != 1 {
 		t.Fatalf("wheel = player %d, command %d", model.playerCursor, model.commandCursor)
 	}
-	// 背後のクリックはモーダルを閉じるだけで、そのパネルへは移らない。
+	// 枠の外のクリックは一覧へ戻したうえで、そのまま背後のパネルに効く。
 	_, _ = model.Update(tea.MouseClickMsg{X: 0, Y: statsHeight + model.layout.bodyHeight, Button: tea.MouseLeft})
-	if model.panel != panelPlayers || model.playerStage != playerStagePlayers {
-		t.Fatalf("modal accepted mouse input: panel %d, stage %d", model.panel, model.playerStage)
+	if model.playerStage != playerStagePlayers || model.panel != panelConsole ||
+		model.mode != modeSelect {
+		t.Fatalf("outside click = stage %d, panel %d, mode %d",
+			model.playerStage, model.panel, model.mode)
+	}
+}
+
+// モーダルの位置は背後の playerCursor で動く。Bubble Tea はメッセージごとに
+// View を呼ぶとは限らないので、描画を挟まずに 2 回クリックが届いても、
+// 1 回目で開いた位置ではなく今の位置で当たりを取る。
+func TestModelMouseCommandModalFollowsPlayerWithoutRedraw(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 40)
+	model.playerList = []string{"alice", "bob", "carol", "dave"}
+	x := model.layout.statsWidth + model.layout.metersWidth + 1
+
+	// 先頭のプレイヤーで一度開いて描き、その位置を控えさせる。
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 1, Button: tea.MouseLeft})
+	_ = model.View()
+	model.playerStage = playerStagePlayers
+
+	// 別の行を、描画を挟まずに 2 回クリックする。
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 4, Button: tea.MouseLeft})
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 4, Button: tea.MouseLeft})
+	if model.playerStage != playerStageCommands || len(model.input) != 0 {
+		t.Fatalf("stage = %d, input = %q", model.playerStage, string(model.input))
 	}
 }
 
@@ -130,8 +154,9 @@ func TestModelMouseSelectsPlayerCommand(t *testing.T) {
 	}
 
 	const kick = 1
-	row := model.commandListBox.y0 + kick
-	_, _ = model.Update(tea.MouseMotionMsg{X: model.commandListBox.x0, Y: row})
+	frame, list := model.commandHitboxes()
+	row := list.y0 + kick
+	_, _ = model.Update(tea.MouseMotionMsg{X: list.x0, Y: row})
 	if model.commandCursor != kick {
 		t.Fatalf("hover cursor = %d, want %d", model.commandCursor, kick)
 	}
@@ -142,13 +167,13 @@ func TestModelMouseSelectsPlayerCommand(t *testing.T) {
 	}
 	// 枠の中で項目を外したクリックは何も起こさない。
 	_, _ = model.Update(tea.MouseClickMsg{
-		Button: tea.MouseLeft, X: model.commandBox.x0, Y: model.commandBox.y0,
+		Button: tea.MouseLeft, X: frame.x0, Y: frame.y0,
 	})
 	if model.playerStage != playerStageCommands {
 		t.Fatal("枠を押しただけで閉じた")
 	}
 
-	_, _ = model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: model.commandListBox.x0, Y: row})
+	_, _ = model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: list.x0, Y: row})
 	if model.panel != panelConsole || model.playerStage != playerStagePlayers ||
 		string(model.input) != "kick alice " {
 		t.Fatalf("click state = panel %d, stage %d, input %q",

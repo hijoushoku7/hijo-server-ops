@@ -13,16 +13,25 @@ func (model *Model) commandModalOpen() bool {
 		model.playerStage == playerStageCommands
 }
 
-// commandAt は最後に描いたコマンドモーダルのどの項目を指しているかを返す。
+// commandHitboxes はコマンドモーダルの枠込みの範囲と、本文行だけの範囲を返す。
+func (model *Model) commandHitboxes() (frame, list hitbox) {
+	x, y, width, height := model.commandModalBounds()
+	frame = hitbox{x0: x, x1: x + width - 1, y0: y, y1: y + height - 1}
+	list = hitbox{
+		x0: x + 1, x1: x + width - 2,
+		y0: y + 1, y1: y + len(playerCommands),
+	}
+	return frame, list
+}
+
+// commandAt はコマンドモーダルのどの項目を指しているかを返す。1 行 1 項目
+// なので添字は行番号の差から出る。
 func (model *Model) commandAt(x, y int) (int, bool) {
-	if !model.commandListBox.contains(x, y) {
+	_, list := model.commandHitboxes()
+	if !list.contains(x, y) {
 		return 0, false
 	}
-	index := y - model.commandListBox.y0
-	if index < 0 || index >= len(playerCommands) {
-		return 0, false
-	}
-	return index, true
+	return y - list.y0, true
 }
 
 func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
@@ -42,6 +51,9 @@ func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, te
 	// コマンド一覧の上ではカーソルそのものを動かす。選んでも副作用が無いので
 	// メニューのような専用のホバー用フィールドは持たない。
 	if model.commandModalOpen() {
+		// 閉じたあと選択モードへ戻ったときに、ポインタの無いパネルへホバー枠が
+		// 残らないよう、モーダル中も位置は捨てておく。
+		model.hovering = false
 		if index, ok := model.commandAt(message.X, message.Y); ok {
 			model.commandCursor = index
 		}
@@ -85,18 +97,19 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 	if model.mouseDiscarded() {
 		return model, nil
 	}
-	// コマンド一覧が出ている間は背後を触らせない。項目を押せば実行、枠の中を
-	// 外しただけなら何もせず、外を押したときだけ一覧へ戻る。
+	// 項目を押せば実行。枠の中を外しただけなら何もしない。枠の外を押したら
+	// 一覧へ戻したうえで、そのクリックを背後の処理へ渡す。捨てると、行の
+	// ダブルクリックが「開いてすぐ閉じる」になる。
 	if model.commandModalOpen() {
 		if index, ok := model.commandAt(message.X, message.Y); ok {
 			model.commandCursor = index
 			model.applyPlayerCommand(index)
 			return model, nil
 		}
-		if !model.commandBox.contains(message.X, message.Y) {
-			model.playerStage = playerStagePlayers
+		if frame, _ := model.commandHitboxes(); frame.contains(message.X, message.Y) {
+			return model, nil
 		}
-		return model, nil
+		model.playerStage = playerStagePlayers
 	}
 	if index, ok := model.playerAt(message.X, message.Y); ok {
 		model.playerCursor = index
