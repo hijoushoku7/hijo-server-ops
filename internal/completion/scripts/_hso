@@ -15,4 +15,6 @@ _hso() {
     _describe 'hso' candidates
 }
 
-compdef _hso hso
+# fpath から autoload されるとこのファイル全体が _hso の本体になる。最後に
+# 自分を呼ばないと、1 回目の Tab が関数定義だけで終わって候補が出ない。
+_hso "$@"
