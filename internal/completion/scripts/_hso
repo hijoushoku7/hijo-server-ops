@@ -15,4 +15,11 @@ _hso() {
     _describe 'hso' candidates
 }
 
-compdef _hso hso
+# fpath から autoload されるとこのファイル全体が _hso の本体になる。その場合は
+# 最後に自分を呼ばないと 1 回目の Tab が関数定義だけで終わって候補が出ない。
+# source で読まれたときは compdef で登録するだけでよい。
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    _hso "$@"
+else
+    compdef _hso hso
+fi
