@@ -316,6 +316,14 @@ func (model *Model) commandModal() (string, int, int) {
 	x = clamp(x, 0, max(0, model.layout.width-width))
 	y = clamp(y, 0, max(0, model.layout.height-height))
 
+	model.commandBox = hitbox{
+		x0: x, x1: x + width - 1, y0: y, y1: y + height - 1,
+	}
+	model.commandListBox = hitbox{
+		x0: x + 1, x1: x + width - 2,
+		y0: y + 1, y1: y + len(playerCommands),
+	}
+
 	box := renderPanel(model.playerTarget, lines, width, height, false, modalFrame)
 	return box, x, y
 }

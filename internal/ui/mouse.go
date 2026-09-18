@@ -4,9 +4,25 @@ import tea "charm.land/bubbletea/v2"
 
 func (model *Model) mouseDiscarded() bool {
 	return model.settingsOpen || model.timeModal != nil || model.completionOpen ||
-		model.quitMenuOpen || model.confirmOpen ||
-		(model.mode == modeFocus && model.panel == panelPlayers &&
-			model.playerStage == playerStageCommands)
+		model.quitMenuOpen || model.confirmOpen
+}
+
+// commandModalOpen はプレイヤーへのコマンド一覧が出ているかを返す。
+func (model *Model) commandModalOpen() bool {
+	return model.mode == modeFocus && model.panel == panelPlayers &&
+		model.playerStage == playerStageCommands
+}
+
+// commandAt は最後に描いたコマンドモーダルのどの項目を指しているかを返す。
+func (model *Model) commandAt(x, y int) (int, bool) {
+	if !model.commandListBox.contains(x, y) {
+		return 0, false
+	}
+	index := y - model.commandListBox.y0
+	if index < 0 || index >= len(playerCommands) {
+		return 0, false
+	}
+	return index, true
 }
 
 func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
@@ -21,6 +37,14 @@ func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, te
 		return model, nil
 	}
 	if model.exit != nil || model.mouseDiscarded() {
+		return model, nil
+	}
+	// コマンド一覧の上ではカーソルそのものを動かす。選んでも副作用が無いので
+	// メニューのような専用のホバー用フィールドは持たない。
+	if model.commandModalOpen() {
+		if index, ok := model.commandAt(message.X, message.Y); ok {
+			model.commandCursor = index
+		}
 		return model, nil
 	}
 	target, ok := model.layout.panelAt(message.X, message.Y)
@@ -59,6 +83,19 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 		return model, nil
 	}
 	if model.mouseDiscarded() {
+		return model, nil
+	}
+	// コマンド一覧が出ている間は背後を触らせない。項目を押せば実行、枠の中を
+	// 外しただけなら何もせず、外を押したときだけ一覧へ戻る。
+	if model.commandModalOpen() {
+		if index, ok := model.commandAt(message.X, message.Y); ok {
+			model.commandCursor = index
+			model.applyPlayerCommand(index)
+			return model, nil
+		}
+		if !model.commandBox.contains(message.X, message.Y) {
+			model.playerStage = playerStagePlayers
+		}
 		return model, nil
 	}
 	if index, ok := model.playerAt(message.X, message.Y); ok {
@@ -106,6 +143,11 @@ func (model *Model) handleMouseWheel(message tea.MouseWheelMsg) (tea.Model, tea.
 		return model, nil
 	}
 	if model.mouseDiscarded() {
+		return model, nil
+	}
+	// モーダル中に playerCursor を動かすと、モーダルの表示位置ごと飛ぶ。
+	if model.commandModalOpen() {
+		model.commandCursor = clamp(model.commandCursor-delta, 0, len(playerCommands)-1)
 		return model, nil
 	}
 	target, ok := model.layout.panelAt(message.X, message.Y)

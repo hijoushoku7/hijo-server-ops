@@ -99,12 +99,60 @@ func TestModelMouseIgnoresModalAndClickOpensPlayerCommands(t *testing.T) {
 		t.Fatalf("click state = panel %d, mode %d, stage %d, target %q", model.panel, model.mode, model.playerStage, model.playerTarget)
 	}
 
-	// コマンドモーダル中は背後のクリックとホイールを捨てる。
+	// コマンドモーダル中のホイールは背後ではなくコマンドのカーソルを動かす。
+	// playerCursor が動くとモーダルの表示位置ごとずれる。
 	model.playerCursor = 0
 	_, _ = model.Update(tea.MouseWheelMsg{X: x, Y: 0, Button: tea.MouseWheelDown})
+	if model.playerCursor != 0 || model.commandCursor != 1 {
+		t.Fatalf("wheel = player %d, command %d", model.playerCursor, model.commandCursor)
+	}
+	// 背後のクリックはモーダルを閉じるだけで、そのパネルへは移らない。
 	_, _ = model.Update(tea.MouseClickMsg{X: 0, Y: statsHeight + model.layout.bodyHeight, Button: tea.MouseLeft})
-	if model.panel != panelPlayers || model.playerCursor != 0 {
-		t.Fatalf("modal accepted mouse input: panel %d, cursor %d", model.panel, model.playerCursor)
+	if model.panel != panelPlayers || model.playerStage != playerStagePlayers {
+		t.Fatalf("modal accepted mouse input: panel %d, stage %d", model.panel, model.playerStage)
+	}
+}
+
+// コマンド一覧もマウスで押せる。押した項目は Console に置かれる。
+func TestModelMouseSelectsPlayerCommand(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, 24)
+	model.playerList = []string{"alice"}
+	x := model.layout.statsWidth + model.layout.metersWidth + 1
+	_, _ = model.Update(tea.MouseClickMsg{X: x, Y: 1, Button: tea.MouseLeft})
+	// 当たり判定は描画のたびに作る。
+	_ = model.View()
+
+	// フォーカス中でも、ボタンを押していない移動を端末から受け取る。
+	// CellMotion のままではホバーが一切来ない。
+	if got := model.View().MouseMode; got != tea.MouseModeAllMotion {
+		t.Fatalf("mouse mode = %v, want AllMotion", got)
+	}
+
+	const kick = 1
+	row := model.commandListBox.y0 + kick
+	_, _ = model.Update(tea.MouseMotionMsg{X: model.commandListBox.x0, Y: row})
+	if model.commandCursor != kick {
+		t.Fatalf("hover cursor = %d, want %d", model.commandCursor, kick)
+	}
+	// ホバーした項目は選択色（背景つき）で描く。
+	box, _, _ := model.commandModal()
+	if !styledWith(box, playerCommands[kick].label, selectedStyle) {
+		t.Fatalf("ホバーした項目に選択色が乗っていない: %q", stripANSI(box))
+	}
+	// 枠の中で項目を外したクリックは何も起こさない。
+	_, _ = model.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: model.commandBox.x0, Y: model.commandBox.y0,
+	})
+	if model.playerStage != playerStageCommands {
+		t.Fatal("枠を押しただけで閉じた")
+	}
+
+	_, _ = model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: model.commandListBox.x0, Y: row})
+	if model.panel != panelConsole || model.playerStage != playerStagePlayers ||
+		string(model.input) != "kick alice " {
+		t.Fatalf("click state = panel %d, stage %d, input %q",
+			model.panel, model.playerStage, string(model.input))
 	}
 }
 

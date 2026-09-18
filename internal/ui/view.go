@@ -110,9 +110,10 @@ func (model *Model) View() tea.View {
 
 	view := tea.NewView(content)
 	view.MouseMode = tea.MouseModeCellMotion
-	// メニューはフォーカス中でも開けるので、ホバーを追うためにここでも
-	// 動きを受け取る。
-	if model.mode == modeSelect || model.quitMenuOpen {
+	// メニューとコマンド一覧はフォーカス中でも開くので、ホバーを追うために
+	// ここでも動きを受け取る。CellMotion のままだとボタンを押していない
+	// 移動が端末から届かず、ホバーが効かない。
+	if model.mode == modeSelect || model.quitMenuOpen || model.commandModalOpen() {
 		view.MouseMode = tea.MouseModeAllMotion
 	}
 	view.AltScreen = true
