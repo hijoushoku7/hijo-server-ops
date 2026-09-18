@@ -101,6 +101,14 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 	// 一覧へ戻したうえで、そのクリックを背後の処理へ渡す。捨てると、行の
 	// ダブルクリックが「開いてすぐ閉じる」になる。
 	if model.commandModalOpen() {
+		// 開いた行そのものへのクリックは捨てる。画面が低いとモーダルが上へ
+		// 押し戻されてその行を覆うので、ダブルクリックの 2 回目が下の項目に
+		// 当たってしまう。上にも下にも出せない高さがあり、位置の調整では
+		// 塞げない。
+		if index, ok := model.playerAt(message.X, message.Y); ok &&
+			index == model.playerCursor {
+			return model, nil
+		}
 		if index, ok := model.commandAt(message.X, message.Y); ok {
 			model.commandCursor = index
 			model.applyPlayerCommand(index)

@@ -137,6 +137,26 @@ func TestModelMouseCommandModalFollowsPlayerWithoutRedraw(t *testing.T) {
 	}
 }
 
+// 画面が低いとモーダルは上へ押し戻され、開いた行そのものを覆う。上にも下にも
+// 出せない高さがあるので、位置ではなく行のクリックを捨てることで塞ぐ。
+func TestModelMouseCommandModalIgnoresOpeningRow(t *testing.T) {
+	model := newTestModel()
+	model.resize(100, minimumHeight)
+	model.playerList = []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	x := model.layout.statsWidth + model.layout.metersWidth + 1
+
+	for _, row := range []int{1, model.layout.playerLines()} {
+		model.playerStage = playerStagePlayers
+		model.input = nil
+		_, _ = model.Update(tea.MouseClickMsg{X: x, Y: row, Button: tea.MouseLeft})
+		_, _ = model.Update(tea.MouseClickMsg{X: x, Y: row, Button: tea.MouseLeft})
+		if model.playerStage != playerStageCommands || len(model.input) != 0 {
+			t.Fatalf("row %d: stage = %d, input = %q",
+				row, model.playerStage, string(model.input))
+		}
+	}
+}
+
 // コマンド一覧もマウスで押せる。押した項目は Console に置かれる。
 func TestModelMouseSelectsPlayerCommand(t *testing.T) {
 	model := newTestModel()
