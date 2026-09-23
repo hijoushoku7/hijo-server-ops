@@ -53,6 +53,13 @@ func (model *Model) handleKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if model.quitMenuOpen {
 		return model.handleQuitMenuKey(key)
 	}
+	// compact では中段に Chat か Log のどちらかしか出せないので、← → を
+	// 入れ替えに使う。選択・フォーカスのどちらでも同じキーで効かせる。
+	if model.layout.compact && (key.Code == tea.KeyLeft || key.Code == tea.KeyRight) &&
+		(model.panel == panelChat || model.panel == panelLog) {
+		model.toggleCompactPane()
+		return model, nil
+	}
 	if model.mode == modeSelect {
 		return model.handleSelectKey(key)
 	}
@@ -73,7 +80,7 @@ func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	if model.exit.restarted {
 		if key.Code == tea.KeyEnter || key.Code == tea.KeyKpEnter {
 			model.exit = nil
-			model.leaveHiddenLog()
+			model.syncCompactPane()
 		}
 		return model, nil
 	}
@@ -275,6 +282,7 @@ func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
 			model.openQuitMenu()
 		}
 	}
+	model.syncCompactPane()
 	return model, nil
 }
 
@@ -417,6 +425,13 @@ func (model *Model) bufferFor(target panel) (*lineBuffer, bufferViewport) {
 			height: model.layout.chatLines(),
 		}
 	case panelLog:
+		// compact では Log も Chat と同じ中段の枠に入る。
+		if model.layout.compact {
+			return &model.logs, bufferViewport{
+				width:  model.layout.leftContentWidth(),
+				height: model.layout.chatLines(),
+			}
+		}
 		return &model.logs, bufferViewport{
 			width:  model.layout.rightContentWidth(),
 			height: model.layout.logLines(),

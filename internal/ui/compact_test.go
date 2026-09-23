@@ -205,3 +205,70 @@ func TestCompactMinimumFitsModals(t *testing.T) {
 		t.Fatalf("command modal overflows at y = %d:\n%s", y, stripANSI(box))
 	}
 }
+
+// ← → で中段の Chat と Log を入れ替える。Log もスクロールできること、
+// 入れ替えたまま Players へ抜けて戻っても表示が維持されることを見る。
+func TestCompactSwapsChatAndLog(t *testing.T) {
+	model := New(nil, nil, 0, DefaultSettings(), ServerInfo{})
+	model.resize(44, 22)
+	for index := 0; index < 50; index++ {
+		model.addLog(serverlog.Entry{
+			Kind:    serverlog.KindOther,
+			Raw:     fmt.Sprintf("line %d", index),
+			Message: fmt.Sprintf("line %d", index),
+		})
+	}
+	model.panel = panelChat
+	model.mode = modeSelect
+	model.selected = true
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if model.panel != panelLog {
+		t.Fatalf("panel = %d", model.panel)
+	}
+	view := stripANSI(model.View().Content)
+	if !strings.Contains(view, "Log") || !strings.Contains(view, "line 49") {
+		t.Fatalf("view does not show the log:\n%s", view)
+	}
+
+	// フォーカスして遡れる。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if model.logs.Following() {
+		t.Fatal("log did not scroll")
+	}
+
+	// Players へ抜けて戻っても Log のまま。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if model.panel != panelPlayers {
+		t.Fatalf("panel = %d", model.panel)
+	}
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if model.panel != panelLog {
+		t.Fatalf("panel = %d", model.panel)
+	}
+
+	// もう一度 ← で Chat へ戻る。
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if model.panel != panelChat || model.compactLog {
+		t.Fatalf("panel = %d, compactLog = %v", model.panel, model.compactLog)
+	}
+}
+
+// Esc で選択枠を消した状態から ← で入れ替えたときも、Enter でフォーカス
+// できる。矢印で選び直すのと同じ扱いにする。
+func TestCompactSwapReselects(t *testing.T) {
+	model := New(nil, nil, 0, DefaultSettings(), ServerInfo{})
+	model.resize(44, 22)
+	model.panel = panelChat
+	model.mode = modeSelect
+	model.selected = false
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.mode != modeFocus || model.panel != panelLog {
+		t.Fatalf("mode = %d, panel = %d", model.mode, model.panel)
+	}
+}

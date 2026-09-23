@@ -411,7 +411,7 @@ func (model *Model) onServerStarted() {
 	}
 	if !state.autoRestart {
 		model.exit = nil
-		model.leaveHiddenLog()
+		model.syncCompactPane()
 		return
 	}
 	state.restarted = true

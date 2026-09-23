@@ -108,20 +108,42 @@ func (model *Model) resetServerState() {
 
 func (model *Model) resize(width, height int) {
 	model.layout = calculateLayout(width, height)
-	model.leaveHiddenLog()
+	model.syncCompactPane()
 	// 履歴は表示可否や表示行数と切り離し、常に一定量を保持する。
 	model.chat.SetLimit(historyLines)
 	model.logs.SetLimit(historyLines)
 	model.samples.SetLimit(model.layout.graphWidth * 2)
 }
 
-// leaveHiddenLog は compact で選べない Log から Chat へ寄せる。端末を縮めた
-// ときと、Log を全面に出す終了モーダルから戻ったときの 2 経路がある。
-// どちらも残したままだと、画面に無いパネルへキーが吸われる。
-func (model *Model) leaveHiddenLog() {
-	if model.layout.compact && model.panel == panelLog {
-		model.panel = panelChat
+// compactPane は 1 列画面の中段に出しているパネル。
+func (model *Model) compactPane() panel {
+	if model.compactLog {
+		return panelLog
 	}
+	return panelChat
+}
+
+// syncCompactPane は compact で隠れているほうへ選択が残らないよう、中段に
+// 出しているパネルへ寄せる。端末を縮めたとき、Log を全面に出す終了モーダル
+// から戻ったとき、パネル間を移動したときの 3 経路がある。残したままだと
+// 画面に無いパネルへキーが吸われる。
+func (model *Model) syncCompactPane() {
+	if !model.layout.compact {
+		return
+	}
+	if model.panel == panelChat || model.panel == panelLog {
+		model.panel = model.compactPane()
+	}
+}
+
+// toggleCompactPane は中段の Chat と Log を入れ替える。選択もそのまま
+// 移すので、← の直後に ↑↓ でスクロールできる。
+// 選択枠を消したあとの ← → でも、矢印で選び直したときと同じく枠を出す。
+// 出さないと Enter がフォーカスに入らず、スクロールを始められない。
+func (model *Model) toggleCompactPane() {
+	model.compactLog = !model.compactLog
+	model.panel = model.compactPane()
+	model.selected = true
 }
 
 func (model *Model) addLog(entry serverlog.Entry) {

@@ -1,14 +1,21 @@
 package ui
 
 // スマホなどの小さい端末から ssh したとき用の 1 列画面。Stats / Meters /
-// Graph / Log は落とし、Players・Chat・Console だけを縦に積む。Options は
+// Graph は落とし、Players・Chat / Log・Console だけを縦に積む。中段は
+// Chat と Log を ← → で入れ替える。Options は
 // 通常画面と同じく g のメニューから開く（設定モーダルは自分で端末の幅と
 // 高さに合わせて縮む）。
 func (model *Model) renderCompact() (string, int) {
 	players := model.renderPlayersPanel()
-	chat := model.renderBufferPanel(
-		panelChat,
-		&model.chat,
+	// 中段は Chat と Log のどちらか。← → で入れ替える。
+	pane := model.compactPane()
+	buffer := &model.chat
+	if pane == panelLog {
+		buffer = &model.logs
+	}
+	middle := model.renderBufferPanel(
+		pane,
+		buffer,
 		model.layout.width,
 		model.layout.chatHeight,
 	)
@@ -21,7 +28,7 @@ func (model *Model) renderCompact() (string, int) {
 		false,
 		model.frameFor(panelConsole),
 	)
-	return players + "\n" + chat + "\n" + console + "\n" + model.keybar(), caretX
+	return players + "\n" + middle + "\n" + console + "\n" + model.keybar(), caretX
 }
 
 // compactConsoleTitle は Console の枠に運転状況を載せる。Stats を落とした
