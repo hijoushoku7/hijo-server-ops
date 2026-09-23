@@ -3,11 +3,16 @@ package ui
 const (
 	minimumWidth  = 72
 	minimumHeight = 21
-	// スマホからの ssh 向けの 1 列画面に切り替える下限。Players 3 行 +
-	// Chat 4 行 + Console 3 行 + キーバー 1 行で 11。幅は Minecraft の
-	// ユーザー名 16 文字に枠の 2 列を足した 18 を下回らせない。
-	compactMinWidth  = 20
-	compactMinHeight = 11
+	// スマホからの ssh 向けの 1 列画面に切り替える下限。パネル自体は
+	// もっと小さくても組めるが、**重ねるモーダルが設計どおりの大きさで
+	// 収まる**ところで切る。切れたモーダルは「QUIT の字形の 1 行目だけ
+	// 見えている」「終了の三択が画面外」のように、操作そのものを失う。
+	//   幅   終了モーダルの三択 36 桁 + 枠 2 + 左右の余白 4 で 42
+	//        （メニューの大きい文字は 31 桁なのでこれに収まる）
+	//   高さ 終了モーダルの exitModalHeight 17 行 + 上下の余白 3
+	// これを下回る端末は従来どおり「too small」に落とす。
+	compactMinWidth  = 42
+	compactMinHeight = 20
 	statsHeight      = 10
 	footerHeight     = 3
 	keybarHeight     = 1

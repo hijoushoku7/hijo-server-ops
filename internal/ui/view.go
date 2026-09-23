@@ -366,7 +366,7 @@ func (model *Model) keybar() string {
 		}
 	}
 
-	// 40 桁の端末に 4 項目は入らない。先頭 2 つと ^C だけ残す。
+	// 42 桁の端末に 4 項目は入らない。先頭 2 つと ^C だけ残す。
 	if model.layout.compact && len(keys) > 3 {
 		keys = [][2]string{keys[0], keys[1], keys[len(keys)-1]}
 	}
