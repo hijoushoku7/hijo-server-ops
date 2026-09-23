@@ -246,7 +246,7 @@ func windowStart(cursor, count, viewport int) int {
 }
 
 func (model *Model) handleSelectKey(key tea.Key) (tea.Model, tea.Cmd) {
-	move := neighbors[model.panel]
+	move := model.layout.neighborsFor(model.panel)
 	switch key.Code {
 	case tea.KeyUp:
 		model.selected = true

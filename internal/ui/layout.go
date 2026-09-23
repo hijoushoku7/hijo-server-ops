@@ -3,9 +3,14 @@ package ui
 const (
 	minimumWidth  = 72
 	minimumHeight = 21
-	statsHeight   = 10
-	footerHeight  = 3
-	keybarHeight  = 1
+	// スマホからの ssh 向けの 1 列画面に切り替える下限。Players 3 行 +
+	// Chat 4 行 + Console 3 行 + キーバー 1 行で 11。幅は Minecraft の
+	// ユーザー名 16 文字に枠の 2 列を足した 18 を下回らせない。
+	compactMinWidth  = 20
+	compactMinHeight = 11
+	statsHeight      = 10
+	footerHeight     = 3
+	keybarHeight     = 1
 	// historyLines は各ペインが保持する行数。表示行数と切り離すことで
 	// 画面外へ流れた行まで遡れる。
 	historyLines = 500
@@ -20,9 +25,12 @@ const (
 )
 
 type layout struct {
-	width        int
-	height       int
-	ready        bool
+	width  int
+	height int
+	ready  bool
+	// compact は 1 列画面。Stats / Meters / Graph / Log を落とし、
+	// Players / Chat / Console だけを縦に積む。
+	compact      bool
 	bodyHeight   int
 	leftWidth    int
 	rightWidth   int
@@ -32,15 +40,19 @@ type layout struct {
 	statsWidth   int
 	metersWidth  int
 	playersWidth int
+	// Players パネルの左上。通常は Stats と Meters の右、compact では原点。
+	playersX      int
+	playersHeight int
 }
 
 func calculateLayout(width, height int) layout {
 	result := layout{width: width, height: height}
 	if width < minimumWidth || height < minimumHeight {
-		return result
+		return compactLayout(result)
 	}
 
 	result.ready = true
+	result.playersHeight = statsHeight
 	result.bodyHeight = height - statsHeight - footerHeight - keybarHeight
 	result.leftWidth = width * 2 / 5
 	result.rightWidth = width - result.leftWidth
@@ -54,8 +66,28 @@ func calculateLayout(width, height int) layout {
 	result.playersWidth = clamp(width*3/20, minimumPlayersWidth, 22)
 	result.metersWidth = clamp(width/4, minimumMetersWidth, 28)
 	result.statsWidth = width - result.playersWidth - result.metersWidth
+	result.playersX = result.statsWidth + result.metersWidth
 	// Graph は左列の上半分。Y 軸ラベルの分だけ描画幅が狭い。
 	result.graphWidth = max(0, result.leftWidth-2-axisWidth)
+	return result
+}
+
+// compactLayout は 1 列画面の寸法を、通常画面と同じフィールドへ入れる。
+// leftWidth や chatHeight を使い回すことで、ログバッファや描画の補助関数を
+// そのまま通せる。
+func compactLayout(result layout) layout {
+	if result.width < compactMinWidth || result.height < compactMinHeight {
+		return result
+	}
+	result.ready = true
+	result.compact = true
+	result.bodyHeight = result.height - footerHeight - keybarHeight
+	// 上を Players、残り全部を Chat。人数で高さを変えると参加のたびに
+	// Chat の行数が動くので、割合で固定する。
+	result.playersHeight = clamp(result.bodyHeight/3, 3, 8)
+	result.chatHeight = result.bodyHeight - result.playersHeight
+	result.playersWidth = result.width
+	result.leftWidth = result.width
 	return result
 }
 
@@ -67,7 +99,7 @@ func (current layout) playerLines() int {
 	if !current.ready {
 		return 0
 	}
-	return max(0, statsHeight-2)
+	return max(0, current.playersHeight-2)
 }
 
 func (current layout) playersContentWidth() int {
@@ -119,10 +151,30 @@ func (current layout) rightContentWidth() int {
 	return max(0, current.rightWidth-2)
 }
 
+// consoleY は Console パネルの上辺の行。キャレットの位置と当たり判定が
+// ここを基準にする。
+func (current layout) consoleY() int {
+	if current.compact {
+		return current.playersHeight + current.chatHeight
+	}
+	return statsHeight + current.bodyHeight
+}
+
 // panelAt は画面座標にある操作対象のパネルを返す。表示専用パネルと枠線は
 // 選択対象にしないため false を返す。
 func (current layout) panelAt(x, y int) (panel, bool) {
 	if !current.ready || x < 0 || y < 0 || x >= current.width || y >= current.height {
+		return panelPlayers, false
+	}
+	if current.compact {
+		switch {
+		case y < current.playersHeight:
+			return panelPlayers, true
+		case y < current.consoleY():
+			return panelChat, true
+		case y < current.consoleY()+footerHeight:
+			return panelConsole, true
+		}
 		return panelPlayers, false
 	}
 	if y < statsHeight {

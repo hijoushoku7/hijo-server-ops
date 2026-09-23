@@ -19,8 +19,8 @@ func (model *Model) View() tea.View {
 			"hijo-server-ops\n\nterminal is too small: %dx%d\nminimum: %dx%d",
 			model.layout.width,
 			model.layout.height,
-			minimumWidth,
-			minimumHeight,
+			compactMinWidth,
+			compactMinHeight,
 		)
 	} else if model.exit != nil && !model.exit.autoRestart {
 		content = model.renderBufferPanelWithTitle(
@@ -35,43 +35,11 @@ func (model *Model) View() tea.View {
 			content = overlay(content, box, x, y)
 		}
 	} else {
-		stats := renderPanel(
-			model.statsTitle(),
-			model.statsLines(),
-			model.layout.statsWidth,
-			statsHeight,
-			false,
-			plainFrame,
-		)
-		top := joinColumns(
-			joinColumns(stats, model.renderMetersPanel()),
-			model.renderPlayersPanel(),
-		)
-		chat := model.renderBufferPanel(
-			panelChat,
-			&model.chat,
-			model.layout.leftWidth,
-			model.layout.chatHeight,
-		)
-		left := model.renderGraphPanel() + "\n" + chat
-		logs := model.renderBufferPanel(
-			panelLog,
-			&model.logs,
-			model.layout.rightWidth,
-			model.layout.bodyHeight,
-		)
-		body := joinColumns(left, logs)
-		var consoleText string
-		consoleText, caretX = model.consoleLine()
-		footer := renderPanel(
-			panelConsole.title(),
-			[]string{consoleText},
-			model.layout.width,
-			footerHeight,
-			false,
-			model.frameFor(panelConsole),
-		)
-		content = top + "\n" + body + "\n" + footer + "\n" + model.keybar()
+		if model.layout.compact {
+			content, caretX = model.renderCompact()
+		} else {
+			content, caretX = model.renderDashboard()
+		}
 		switch {
 		// 自動再起動の最中はダッシュボードを背景のまま残す。ログ全面に
 		// 切り替えると、勝手に戻ってくる画面で操作を促すことになる。
@@ -123,7 +91,7 @@ func (model *Model) View() tea.View {
 	// IME の候補窓は端末のカーソル位置に出る。キャレットを入力欄へ置かないと
 	// 直前の描画位置に取り残され、仮入力が画面の途中に現れる。
 	if caretX >= 0 {
-		view.Cursor = tea.NewCursor(caretX, statsHeight+model.layout.bodyHeight+1)
+		view.Cursor = tea.NewCursor(caretX, model.layout.consoleY()+1)
 	}
 	return view
 }
@@ -396,6 +364,11 @@ func (model *Model) keybar() string {
 			{"End", msg.BarLatest},
 			{"^C", msg.BarExit},
 		}
+	}
+
+	// 40 桁の端末に 4 項目は入らない。先頭 2 つと ^C だけ残す。
+	if model.layout.compact && len(keys) > 3 {
+		keys = [][2]string{keys[0], keys[1], keys[len(keys)-1]}
 	}
 
 	parts := make([]string, 0, len(keys))

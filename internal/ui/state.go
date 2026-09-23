@@ -108,6 +108,11 @@ func (model *Model) resetServerState() {
 
 func (model *Model) resize(width, height int) {
 	model.layout = calculateLayout(width, height)
+	// compact では Log を出さない。大きい端末から縮めたときに、選べない
+	// パネルへ選択やフォーカスが取り残されないよう Chat へ寄せる。
+	if model.layout.compact && model.panel == panelLog {
+		model.panel = panelChat
+	}
 	// 履歴は表示可否や表示行数と切り離し、常に一定量を保持する。
 	model.chat.SetLimit(historyLines)
 	model.logs.SetLimit(historyLines)
