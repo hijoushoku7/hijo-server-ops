@@ -96,6 +96,44 @@ var neighbors = [...]neighbor{
 	},
 }
 
+// compactNeighbors は 1 列画面の遷移表。Log を出さないので、Players と
+// Chat と Console を縦に回すだけ。左右は動かさない。
+var compactNeighbors = [...]neighbor{
+	panelPlayers: {
+		up:    panelPlayers,
+		down:  panelChat,
+		left:  panelPlayers,
+		right: panelPlayers,
+	},
+	panelChat: {
+		up:    panelPlayers,
+		down:  panelConsole,
+		left:  panelChat,
+		right: panelChat,
+	},
+	// Log は compact では選べないが、大きい端末から縮めた瞬間に残ることが
+	// あるので Chat へ逃がす。
+	panelLog: {
+		up:    panelPlayers,
+		down:  panelConsole,
+		left:  panelChat,
+		right: panelChat,
+	},
+	panelConsole: {
+		up:    panelChat,
+		down:  panelConsole,
+		left:  panelConsole,
+		right: panelConsole,
+	},
+}
+
+func (current layout) neighborsFor(target panel) neighbor {
+	if current.compact {
+		return compactNeighbors[target]
+	}
+	return neighbors[target]
+}
+
 func (current panel) title() string {
 	switch current {
 	case panelPlayers:

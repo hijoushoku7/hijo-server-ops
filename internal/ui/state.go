@@ -108,10 +108,20 @@ func (model *Model) resetServerState() {
 
 func (model *Model) resize(width, height int) {
 	model.layout = calculateLayout(width, height)
+	model.leaveHiddenLog()
 	// 履歴は表示可否や表示行数と切り離し、常に一定量を保持する。
 	model.chat.SetLimit(historyLines)
 	model.logs.SetLimit(historyLines)
 	model.samples.SetLimit(model.layout.graphWidth * 2)
+}
+
+// leaveHiddenLog は compact で選べない Log から Chat へ寄せる。端末を縮めた
+// ときと、Log を全面に出す終了モーダルから戻ったときの 2 経路がある。
+// どちらも残したままだと、画面に無いパネルへキーが吸われる。
+func (model *Model) leaveHiddenLog() {
+	if model.layout.compact && model.panel == panelLog {
+		model.panel = panelChat
+	}
 }
 
 func (model *Model) addLog(entry serverlog.Entry) {

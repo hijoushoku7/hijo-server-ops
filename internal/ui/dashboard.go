@@ -6,6 +6,46 @@ import (
 	"strings"
 )
 
+// renderDashboard は通常の画面全体と、入力欄のキャレットの桁を返す。
+func (model *Model) renderDashboard() (string, int) {
+	stats := renderPanel(
+		model.statsTitle(),
+		model.statsLines(),
+		model.layout.statsWidth,
+		statsHeight,
+		false,
+		plainFrame,
+	)
+	top := joinColumns(
+		joinColumns(stats, model.renderMetersPanel()),
+		model.renderPlayersPanel(),
+	)
+	chat := model.renderBufferPanel(
+		panelChat,
+		&model.chat,
+		model.layout.leftWidth,
+		model.layout.chatHeight,
+	)
+	left := model.renderGraphPanel() + "\n" + chat
+	logs := model.renderBufferPanel(
+		panelLog,
+		&model.logs,
+		model.layout.rightWidth,
+		model.layout.bodyHeight,
+	)
+	body := joinColumns(left, logs)
+	consoleText, caretX := model.consoleLine()
+	footer := renderPanel(
+		panelConsole.title(),
+		[]string{consoleText},
+		model.layout.width,
+		footerHeight,
+		false,
+		model.frameFor(panelConsole),
+	)
+	return top + "\n" + body + "\n" + footer + "\n" + model.keybar(), caretX
+}
+
 func (model *Model) statsTitle() string {
 	name := model.info.Name
 	if name == "" {
@@ -280,7 +320,7 @@ func (model *Model) renderPlayersPanel() string {
 		fmt.Sprintf("%s %d", panelPlayers.title(), len(model.playerList)),
 		lines,
 		model.layout.playersWidth,
-		statsHeight,
+		model.layout.playersHeight,
 		false,
 		model.frameFor(panelPlayers),
 	)
@@ -301,7 +341,7 @@ func (model *Model) commandModalBounds() (x, y, width, height int) {
 		len(model.playerList),
 		model.layout.playerLines(),
 	)
-	x = model.layout.statsWidth + model.layout.metersWidth
+	x = model.layout.playersX
 	y = model.playerCursor - start + 2
 	x = clamp(x, 0, max(0, model.layout.width-width))
 	y = clamp(y, 0, max(0, model.layout.height-height))

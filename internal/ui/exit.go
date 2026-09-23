@@ -411,6 +411,7 @@ func (model *Model) onServerStarted() {
 	}
 	if !state.autoRestart {
 		model.exit = nil
+		model.leaveHiddenLog()
 		return
 	}
 	state.restarted = true

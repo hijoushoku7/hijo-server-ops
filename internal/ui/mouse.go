@@ -190,10 +190,10 @@ func (model *Model) handleMouseWheel(message tea.MouseWheelMsg) (tea.Model, tea.
 
 // playerAt は Players の本文行に対応するプレイヤー一覧の添字を返す。
 func (model *Model) playerAt(x, y int) (int, bool) {
-	if !model.layout.ready || y < 1 || y > statsHeight-2 {
+	if !model.layout.ready || y < 1 || y > model.layout.playersHeight-2 {
 		return 0, false
 	}
-	left := model.layout.statsWidth + model.layout.metersWidth
+	left := model.layout.playersX
 	if x <= left || x >= left+model.layout.playersWidth-1 {
 		return 0, false
 	}
