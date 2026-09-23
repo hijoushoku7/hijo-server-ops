@@ -73,6 +73,7 @@ func (model *Model) handleExitKey(message tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	if model.exit.restarted {
 		if key.Code == tea.KeyEnter || key.Code == tea.KeyKpEnter {
 			model.exit = nil
+			model.leaveHiddenLog()
 		}
 		return model, nil
 	}

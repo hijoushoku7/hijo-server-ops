@@ -95,6 +95,33 @@ func TestCompactMovesBetweenThreePanels(t *testing.T) {
 	}
 }
 
+// 終了モーダルの「ログを読む」は Log を全面に出してそこへフォーカスする。
+// 立ち直って compact のダッシュボードへ戻ったとき、画面に無い Log へキーが
+// 吸われたままにしない。
+func TestCompactLeavesHiddenLogAfterRestart(t *testing.T) {
+	for _, restore := range []string{"auto", "manual"} {
+		model := New(nil, nil, 0, DefaultSettings(), ServerInfo{})
+		model.resize(44, 22)
+		_, _ = model.Update(ProcessExitedMsg{Err: errors.New("boom"), ExitCode: 1})
+		model.closeExitModal()
+		if model.panel != panelLog {
+			t.Fatalf("%s: panel = %d", restore, model.panel)
+		}
+
+		if restore == "auto" {
+			model.exit.autoRestart = true
+		}
+		model.onServerStarted()
+		if restore == "auto" {
+			// 自動再起動はモーダルを残す。Enter で閉じたときに戻す。
+			_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		}
+		if model.exit != nil || model.panel != panelChat {
+			t.Fatalf("%s: exit = %v, panel = %d", restore, model.exit, model.panel)
+		}
+	}
+}
+
 func TestCompactPanelAtMapsRows(t *testing.T) {
 	layout := calculateLayout(44, 22)
 	cases := []struct {
