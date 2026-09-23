@@ -256,3 +256,19 @@ func TestCompactSwapsChatAndLog(t *testing.T) {
 		t.Fatalf("panel = %d, compactLog = %v", model.panel, model.compactLog)
 	}
 }
+
+// Esc で選択枠を消した状態から ← で入れ替えたときも、Enter でフォーカス
+// できる。矢印で選び直すのと同じ扱いにする。
+func TestCompactSwapReselects(t *testing.T) {
+	model := New(nil, nil, 0, DefaultSettings(), ServerInfo{})
+	model.resize(44, 22)
+	model.panel = panelChat
+	model.mode = modeSelect
+	model.selected = false
+
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	_, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.mode != modeFocus || model.panel != panelLog {
+		t.Fatalf("mode = %d, panel = %d", model.mode, model.panel)
+	}
+}

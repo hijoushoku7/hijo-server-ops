@@ -138,9 +138,12 @@ func (model *Model) syncCompactPane() {
 
 // toggleCompactPane は中段の Chat と Log を入れ替える。選択もそのまま
 // 移すので、← の直後に ↑↓ でスクロールできる。
+// 選択枠を消したあとの ← → でも、矢印で選び直したときと同じく枠を出す。
+// 出さないと Enter がフォーカスに入らず、スクロールを始められない。
 func (model *Model) toggleCompactPane() {
 	model.compactLog = !model.compactLog
 	model.panel = model.compactPane()
+	model.selected = true
 }
 
 func (model *Model) addLog(entry serverlog.Entry) {
