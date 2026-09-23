@@ -59,7 +59,7 @@ func (model *Model) handleMouseMotion(message tea.MouseMotionMsg) (tea.Model, te
 		}
 		return model, nil
 	}
-	target, ok := model.layout.panelAt(message.X, message.Y)
+	target, ok := model.panelAt(message.X, message.Y)
 	model.hovering = ok
 	if ok {
 		model.hover = target
@@ -129,7 +129,7 @@ func (model *Model) handleMouseClick(message tea.MouseClickMsg) (tea.Model, tea.
 		model.selected = true
 		return model, nil
 	}
-	if target, ok := model.layout.panelAt(message.X, message.Y); ok {
+	if target, ok := model.panelAt(message.X, message.Y); ok {
 		// 1 回目のクリックは仮選択（選択モードで枠だけ）。同じパネルをもう
 		// 一度押すとフォーカスへ入る。キーボードの「矢印で選ぶ → Enter」と
 		// 同じ 2 段にしておき、1 回のクリックで入力やスクロールの当たり先が
@@ -171,7 +171,7 @@ func (model *Model) handleMouseWheel(message tea.MouseWheelMsg) (tea.Model, tea.
 		model.commandCursor = clamp(model.commandCursor-delta, 0, len(playerCommands)-1)
 		return model, nil
 	}
-	target, ok := model.layout.panelAt(message.X, message.Y)
+	target, ok := model.panelAt(message.X, message.Y)
 	if !ok {
 		return model, nil
 	}
@@ -202,4 +202,14 @@ func (model *Model) playerAt(x, y int) (int, bool) {
 		return 0, false
 	}
 	return index, true
+}
+
+// panelAt は layout.panelAt の結果を compact の表示状態に合わせる。中段は
+// Chat と Log を入れ替えて使うので、座標だけではどちらか決まらない。
+func (model *Model) panelAt(x, y int) (panel, bool) {
+	target, ok := model.layout.panelAt(x, y)
+	if ok && model.layout.compact && target == panelChat {
+		return model.compactPane(), true
+	}
+	return target, ok
 }

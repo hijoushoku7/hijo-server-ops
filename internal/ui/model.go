@@ -124,7 +124,10 @@ type Model struct {
 	selected bool
 	hover    panel
 	hovering bool
-	busy     bool
+	// compactLog は 1 列画面の中段に Chat ではなく Log を出している状態。
+	// ← → で入れ替える。
+	compactLog bool
+	busy       bool
 	// quitting は ^C でサーバーに stop を送り、終わるのを待っている状態。
 	quitting          bool
 	generation        uint64
