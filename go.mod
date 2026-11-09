@@ -1,6 +1,6 @@
 module github.com/hijoushoku7/hijo-server-ops
 
-go 1.25.13
+go 1.26.10
 
 require (
 	charm.land/bubbletea/v2 v2.0.8
