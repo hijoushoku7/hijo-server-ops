@@ -2,7 +2,7 @@
 
 set -eu
 
-go_version=1.25.13
+go_version=1.26.10
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 if command -v go >/dev/null 2>&1; then

@@ -8,5 +8,5 @@
 # 反映: mise install
 
 [tools]
-go = "1.25.13"
+go = "1.26.10"
 shellcheck = "latest"
